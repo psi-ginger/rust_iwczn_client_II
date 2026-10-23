@@ -16,7 +16,7 @@
 | **1.1** | Cargo Scaffold & Minimal Workspace | `PASSED` | `d7e5fa1` | Clean minimal tokio/bytes deps; verified by QC |
 | **1.2** | GoonZu Wire Header (5-byte LE) | `PASSED` | `5ff9bd4` | 5-byte LE wire truth verified; 12/12 tests pass; RCA filed |
 | **1.3** | Cipher Primitives (Link & Session) | `PASSED` | `236229f` | Bit-exact ITZ rolling cipher; full legacy vectors match; 20/20 tests |
-| **2.1** | TCP Session & Timeout Management | `PENDING` | - | Bounded connect/read timeout |
+| **2.1** | TCP Session & Timeout Management | `PASSED` | `afcee87` | Bounded dial/read timeouts; wire-faithful Nagle; 30/30 tests |
 | **2.2** | Framed Packet Decoder | `PENDING` | - | Stream fragmentation & multi-frame test |
 | **2.3** | Framed Packet Encoder | `PENDING` | - | Pre-recorded C++ packet vector match |
 | **3.1** | Front Connect & SecretKey Handshake | `PENDING` | - | Opcode 30000; session seed extraction |

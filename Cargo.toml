@@ -1,0 +1,17 @@
+[package]
+name = "goonzu_client"
+version = "0.1.0"
+edition = "2021"
+description = "Native Rust port of the GoonZu World client (1-1 OOP parity with GoonZu_Source)"
+
+# Step 1.1 scope: minimal, high-performance dependencies only.
+# - tokio: async runtime (rt/net/macros/time) for TCP sessions and tickers
+# - bytes: zero-copy wire buffers for framed packet codec
+# - tracing / tracing-subscriber: structured protocol logging
+# - thiserror: typed protocol/IO error definitions
+[dependencies]
+tokio = { version = "1", features = ["rt", "net", "macros", "time"] }
+bytes = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "2"

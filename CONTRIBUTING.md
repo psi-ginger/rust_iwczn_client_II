@@ -13,10 +13,11 @@ Each step has an isolated scope, strict acceptance criteria, and zero tolerance 
   - Path: `Cargo.toml`, `src/lib.rs`, `src/main.rs`
   - Scope: Minimal, high-performance dependencies (`tokio` with rt/net/macros/time, `bytes`, `tracing`, `tracing-subscriber`, `thiserror`). No bloated frameworks.
   - Acceptance: `cargo check` and `cargo test` pass cleanly.
-* **Step 1.2: GoonZu Wire Header & Checksum**
+* **Step 1.2: GoonZu Wire Header (5-Byte)**
   - Path: `src/protocol/header.rs`
-  - Scope: Parse and serialize the standard 8-byte wire header (`size: u16`, `checksum: u16`, `opcode: u16`, `param: u16`). Implement the exact C++ checksum algorithm.
-  - Acceptance: Unit test asserting bit-exact checksum against C++ sample byte arrays.
+  - Scope: Parse and serialize the standard 5-byte wire header (`usSize: u16` total frame length, `ucChk: u8` reserved byte, `usCmd: u16` opcode), little-endian, per `GoonZu_Source/NetworkLib/ITZNetLib/itzbase.h:63-68` and the server wire truth (`rust_Iwcgz_server/crates/gz-net`: `HEADER_SIZE = 5`). There is **no checksum**: `ucChk` is never computed or validated by any legacy producer/consumer; treat it as reserved (the cipher reuses it as a resync tag on encrypted links). Enforce the legacy recv guards: reject declared size `< 2` and `> PACKET_MAX_SIZE - 8` (64992), and reject `2..=4` as too small to hold a header (BUG-013, parity with server `gz-net`). Opcode bit 15 (`0x8000`) is the LZF compression flag, owned by the decompressing consumer, exposed via a helper.
+  - Acceptance: Unit tests asserting bit-exact little-endian header byte layout (encode + decode round-trip against `sPacketHeader` sample arrays) and the full size-guard table.
+  - Note: The original spec of this step (8-byte header with `checksum: u16` + `param: u16`, "exact C++ checksum algorithm") did not match the legacy or server wire truth — no such header or algorithm exists. See `docs/rca/2026-10-23-step-1.2-header-spec-mismatch.md`.
 * **Step 1.3: GoonZu Cipher Primitives (Link & Session)**
   - Path: `src/net/cipher.rs`
   - Scope: Implement `Cipher` table and byte-level rolling cipher:
@@ -33,11 +34,11 @@ Each step has an isolated scope, strict acceptance criteria, and zero tolerance 
   - Acceptance: Test attempting connection to an open/closed local port handling timeouts gracefully without blocking.
 * **Step 2.2: Framed Packet Decoder (Stream -> Packets)**
   - Path: `src/net/codec.rs`
-  - Scope: Read streaming bytes into a ring/bytes buffer, extract 8-byte headers, verify size and checksum, apply inbound cipher (if active), and emit full packet frames.
+  - Scope: Read streaming bytes into a ring/bytes buffer, extract 5-byte headers, validate declared size against the guard table, apply inbound cipher (if active), and emit full packet frames.
   - Acceptance: Unit test decoding fragmented streams (split packets) and multi-frame bursts.
 * **Step 2.3: Framed Packet Encoder (Packets -> Wire)**
   - Path: `src/net/codec.rs`
-  - Scope: Take opcode, param, and payload; prepend 8-byte header; compute checksum; apply outbound cipher (if active); flush to socket.
+  - Scope: Take opcode and payload; prepend the 5-byte header (`usSize`, reserved byte, `usCmd`); apply outbound cipher (if active); flush to socket.
   - Acceptance: Unit test asserting exact wire byte output against pre-recorded C++ packet captures.
 
 ---

@@ -1,10 +1,11 @@
 //! GoonZu client library — native Rust port of the GoonZu World client.
 //!
-//! Phase II, Step 1.1 establishes the minimal cargo workspace scaffold. The
-//! protocol modules described in `CONTRIBUTING.md` (`protocol::header`,
-//! `net::cipher`, `net::session`, `net::codec`, `auth::*`, `game::*`,
-//! `client::*`) are introduced by their own micro-steps and are intentionally
-//! absent here.
+//! Phase II micro-steps land here one at a time per `CONTRIBUTING.md`:
+//! `protocol::header` (Step 1.2) delivers the 5-byte wire frame header;
+//! `net::cipher`, `net::session`, `net::codec`, `auth::*`, `game::*`, and
+//! `client::*` arrive with their own steps and are intentionally absent.
+
+pub mod protocol;
 
 /// Version string of the client scaffold, sourced from `Cargo.toml`.
 pub const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");

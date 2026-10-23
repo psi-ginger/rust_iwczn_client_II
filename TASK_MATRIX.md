@@ -13,7 +13,7 @@
 
 | Step | Target Milestone | Status | Verified Commit | QC Gate / Notes |
 | :---: | :--- | :---: | :---: | :--- |
-| **1.1** | Cargo Scaffold & Minimal Workspace | `PENDING` | - | Minimal tokio/bytes deps; no bloat |
+| **1.1** | Cargo Scaffold & Minimal Workspace | `PASSED` | `d7e5fa1` | Clean minimal tokio/bytes deps; verified by QC |
 | **1.2** | GoonZu Wire Header & Checksum | `PENDING` | - | Bit-exact C++ checksum unit test |
 | **1.3** | Cipher Primitives (Link & Session) | `PENDING` | - | Reversible cipher test vectors |
 | **2.1** | TCP Session & Timeout Management | `PENDING` | - | Bounded connect/read timeout |

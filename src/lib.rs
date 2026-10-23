@@ -1,10 +1,12 @@
 //! GoonZu client library — native Rust port of the GoonZu World client.
 //!
 //! Phase II micro-steps land here one at a time per `CONTRIBUTING.md`:
-//! `protocol::header` (Step 1.2) delivers the 5-byte wire frame header;
-//! `net::cipher`, `net::session`, `net::codec`, `auth::*`, `game::*`, and
-//! `client::*` arrive with their own steps and are intentionally absent.
+//! `protocol::header` (Step 1.2) delivers the 5-byte wire frame header,
+//! `net::cipher` (Step 1.3) the ITZ rolling link/session cipher;
+//! `net::session`, `net::codec`, `auth::*`, `game::*`, and `client::*`
+//! arrive with their own steps and are intentionally absent.
 
+pub mod net;
 pub mod protocol;
 
 /// Version string of the client scaffold, sourced from `Cargo.toml`.

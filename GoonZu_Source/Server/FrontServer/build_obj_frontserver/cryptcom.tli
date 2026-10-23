@@ -1,0 +1,26 @@
+﻿// Created by Microsoft (R) C/C++ Compiler Version 14.51.36246.0 (da1a45d8).
+//
+// C:\Users\Home\Documents\Online_work\Goonzu Source Code\Server_Core\GoonZu_Source\Server\FrontServer\build_obj_frontserver\cryptcom.tli
+//
+// Wrapper implementations for Win32 type library cryptcom.tlb
+// compiler-generated file - DO NOT EDIT!
+
+#pragma once
+
+//
+// interface ISimpleCrypt wrapper method implementations
+//
+
+inline _bstr_t ISimpleCrypt::Encode ( _bstr_t sSource, _bstr_t sKey ) {
+    BSTR _result = 0;
+    HRESULT _hr = raw_Encode(sSource, sKey, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _bstr_t(_result, false);
+}
+
+inline _bstr_t ISimpleCrypt::Decode ( _bstr_t sSource, _bstr_t sKey ) {
+    BSTR _result = 0;
+    HRESULT _hr = raw_Decode(sSource, sKey, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _bstr_t(_result, false);
+}

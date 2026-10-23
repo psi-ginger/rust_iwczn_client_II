@@ -1,0 +1,60 @@
+﻿// Created by Microsoft (R) C/C++ Compiler Version 14.51.36246.0 (4af97f83).
+//
+// C:\Users\Home\Documents\Online_work\Goonzu Source Code\Server_Core\GoOnZu_Source\DBManager\GameDBManager_World\build_obj_release_english\bxPGCLI.tli
+//
+// Wrapper implementations for Win32 type library bxPGCLI.tlb
+// compiler-generated file - DO NOT EDIT!
+
+#pragma once
+
+//
+// interface IIPGCli wrapper method implementations
+//
+
+inline _variant_t IIPGCli::Get_Approve ( VARIANT * vsMenu_id, VARIANT * vsCompany_cd, VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vsAgTxNo, VARIANT * vIAmount, VARIANT * vsBxTxNo, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_Get_Approve(vsMenu_id, vsCompany_cd, vsUser_id, vsUser_no, vsAgTxNo, vIAmount, vsBxTxNo, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IIPGCli::ConfirmTX ( VARIANT * vsMenu_id, VARIANT * vsCompany_cd, VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vIAmount, VARIANT * vsBxTxNo, VARIANT * vsUsedUrl, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_ConfirmTX(vsMenu_id, vsCompany_cd, vsUser_id, vsUser_no, vIAmount, vsBxTxNo, vsUsedUrl, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IIPGCli::CancelTX ( VARIANT * vsMenu_id, VARIANT * vsCompany_cd, VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vIAmount, VARIANT * vsBxTxNo, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_CancelTX(vsMenu_id, vsCompany_cd, vsUser_id, vsUser_no, vIAmount, vsBxTxNo, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IIPGCli::GetUserCash ( VARIANT * vsUser_no, VARIANT * vsCompanyCd, VARIANT * vsUser_id, VARIANT * vIRemainAmt, VARIANT * vICashShop, VARIANT * vICashContents, VARIANT * vICashBonus, VARIANT * vICashEtc, VARIANT * vIMileageShop, VARIANT * vIMileageContents, VARIANT * vIRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_GetUserCash(vsUser_no, vsCompanyCd, vsUser_id, vIRemainAmt, vICashShop, vICashContents, vICashBonus, vICashEtc, vIMileageShop, vIMileageContents, vIRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IIPGCli::CheckHnf ( VARIANT * vsUserNo, VARIANT * vsCompanyCd, VARIANT * vsUserId, VARIANT * vsMenuId, VARIANT * vIMixBillNo, VARIANT * vIVerNo, VARIANT * vsRegDateTime, VARIANT * vsStartDateTime, VARIANT * vsEndDateTime, VARIANT * vsKeyValue, VARIANT * vIRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_CheckHnf(vsUserNo, vsCompanyCd, vsUserId, vsMenuId, vIMixBillNo, vIVerNo, vsRegDateTime, vsStartDateTime, vsEndDateTime, vsKeyValue, vIRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IIPGCli::CheckFix ( VARIANT * vsUserNo, VARIANT * vsCompanyCd, VARIANT * vsUserId, VARIANT * vsMenuId, VARIANT * vIMixBillNo, VARIANT * vIVerNo, VARIANT * vsRegDateTime, VARIANT * vsStartDateTime, VARIANT * vsEndDateTime, VARIANT * vIRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_CheckFix(vsUserNo, vsCompanyCd, vsUserId, vsMenuId, vIMixBillNo, vIVerNo, vsRegDateTime, vsStartDateTime, vsEndDateTime, vIRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}

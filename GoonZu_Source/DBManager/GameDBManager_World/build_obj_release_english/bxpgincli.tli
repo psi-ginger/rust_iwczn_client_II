@@ -1,0 +1,52 @@
+﻿// Created by Microsoft (R) C/C++ Compiler Version 14.51.36246.0 (274c00ea).
+//
+// C:\Users\Home\Documents\Online_work\Goonzu Source Code\Server_Core\GoOnZu_Source\DBManager\GameDBManager_World\build_obj_release_english\bxpgincli.tli
+//
+// Wrapper implementations for Win32 type library bxpgincli.tlb
+// compiler-generated file - DO NOT EDIT!
+
+#pragma once
+
+//
+// interface IPGTXCli wrapper method implementations
+//
+
+inline _variant_t IPGTXCli::ReqGive ( VARIANT * vsEvent_cd, VARIANT * vsMenu_id, VARIANT * vsCompanyCd, VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vsAgTxNo, VARIANT * vIAmount, VARIANT * vsBxTxNo, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_ReqGive(vsEvent_cd, vsMenu_id, vsCompanyCd, vsUser_id, vsUser_no, vsAgTxNo, vIAmount, vsBxTxNo, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IPGTXCli::CancelBonus ( VARIANT * vsEvent_cd, VARIANT * vsMenu_id, VARIANT * vsCompanyCd, VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vsAgTxNo, VARIANT * vIAmount, VARIANT * vsBxTxNo, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_CancelBonus(vsEvent_cd, vsMenu_id, vsCompanyCd, vsUser_id, vsUser_no, vsAgTxNo, vIAmount, vsBxTxNo, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IPGTXCli::PkgMeterRate ( VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vsCompanyCd, VARIANT * vsEvent_cd, VARIANT * vlAmount, VARIANT * vsStart_dt, VARIANT * vsEnd_dt, VARIANT * vsBxAID, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_PkgMeterRate(vsUser_id, vsUser_no, vsCompanyCd, vsEvent_cd, vlAmount, vsStart_dt, vsEnd_dt, vsBxAID, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IPGTXCli::CancelPkgCash ( VARIANT * vsUser_id, VARIANT * vsUser_no, VARIANT * vsCompanyCd, VARIANT * vsEvent_cd, VARIANT * vlAmount, VARIANT * vsStart_dt, VARIANT * vsEnd_dt, VARIANT * vsBxAID, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_CancelPkgCash(vsUser_id, vsUser_no, vsCompanyCd, vsEvent_cd, vlAmount, vsStart_dt, vsEnd_dt, vsBxAID, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}
+
+inline _variant_t IPGTXCli::GetUserPkgCash ( VARIANT * vsUser_no, VARIANT * vsCompany_cd, VARIANT * vsUser_id, VARIANT * vIPkg_no, VARIANT * vIRemainPkgAmt, VARIANT * vsRetVal, VARIANT * vsRetMessage ) {
+    VARIANT _result;
+    VariantInit(&_result);
+    HRESULT _hr = raw_GetUserPkgCash(vsUser_no, vsCompany_cd, vsUser_id, vIPkg_no, vIRemainPkgAmt, vsRetVal, vsRetMessage, &_result);
+    if (FAILED(_hr)) _com_issue_errorex(_hr, this, __uuidof(this));
+    return _variant_t(_result, false);
+}

@@ -1,0 +1,86 @@
+﻿// Created by Microsoft (R) C/C++ Compiler Version 14.51.36246.0 (da1a45d8).
+//
+// C:\Users\Home\Documents\Online_work\Goonzu Source Code\Server_Core\GoonZu_Source\Server\FrontServer\build_obj_frontserver\cryptcom.tlh
+//
+// C++ source equivalent of Win32 type library cryptcom.tlb
+// compiler-generated file - DO NOT EDIT!
+
+#pragma once
+#pragma pack(push, 8)
+
+#include <comdef.h>
+
+namespace CRYPTCOMLib {
+
+//
+// Forward references and typedefs
+//
+
+struct __declspec(uuid("7b66374d-6b66-439e-b6bf-f77fbb6cdf06"))
+/* LIBID */ __CRYPTCOMLib;
+struct __declspec(uuid("fee2b996-789c-499b-9fc4-500575d4615f"))
+/* dual interface */ ISimpleCrypt;
+struct /* coclass */ SimpleCrypt;
+
+//
+// Smart pointer typedef declarations
+//
+
+_COM_SMARTPTR_TYPEDEF(ISimpleCrypt, __uuidof(ISimpleCrypt));
+
+//
+// Type library items
+//
+
+struct __declspec(uuid("fee2b996-789c-499b-9fc4-500575d4615f"))
+ISimpleCrypt : IDispatch
+{
+    //
+    // Wrapper methods for error-handling
+    //
+
+    _bstr_t Encode (
+        _bstr_t sSource,
+        _bstr_t sKey );
+    _bstr_t Decode (
+        _bstr_t sSource,
+        _bstr_t sKey );
+
+    //
+    // Raw methods provided by interface
+    //
+
+      virtual HRESULT __stdcall raw_Encode (
+        /*[in]*/ BSTR sSource,
+        /*[in]*/ BSTR sKey,
+        /*[out,retval]*/ BSTR * psResult ) = 0;
+      virtual HRESULT __stdcall raw_Decode (
+        /*[in]*/ BSTR sSource,
+        /*[in]*/ BSTR sKey,
+        /*[out,retval]*/ BSTR * psResult ) = 0;
+};
+
+struct __declspec(uuid("bb6b1123-a4b9-4a75-87e4-bd62c3a69f90"))
+SimpleCrypt;
+    // [ default ] interface ISimpleCrypt
+
+//
+// Named GUID constants initializations
+//
+
+extern "C" const GUID __declspec(selectany) LIBID_CRYPTCOMLib =
+    {0x7b66374d,0x6b66,0x439e,{0xb6,0xbf,0xf7,0x7f,0xbb,0x6c,0xdf,0x06}};
+extern "C" const GUID __declspec(selectany) IID_ISimpleCrypt =
+    {0xfee2b996,0x789c,0x499b,{0x9f,0xc4,0x50,0x05,0x75,0xd4,0x61,0x5f}};
+extern "C" const GUID __declspec(selectany) CLSID_SimpleCrypt =
+    {0xbb6b1123,0xa4b9,0x4a75,{0x87,0xe4,0xbd,0x62,0xc3,0xa6,0x9f,0x90}};
+
+//
+// Wrapper method implementations
+//
+
+#include "C:\Users\Home\Documents\Online_work\Goonzu Source Code\Server_Core\GoonZu_Source\Server\FrontServer\build_obj_frontserver\cryptcom.tli"
+
+} // namespace CRYPTCOMLib
+
+#pragma pack(pop)

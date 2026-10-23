@@ -14,7 +14,7 @@
 | Step | Target Milestone | Status | Verified Commit | QC Gate / Notes |
 | :---: | :--- | :---: | :---: | :--- |
 | **1.1** | Cargo Scaffold & Minimal Workspace | `PASSED` | `d7e5fa1` | Clean minimal tokio/bytes deps; verified by QC |
-| **1.2** | GoonZu Wire Header & Checksum | `PENDING` | - | Bit-exact C++ checksum unit test |
+| **1.2** | GoonZu Wire Header (5-byte LE) | `PASSED` | `5ff9bd4` | 5-byte LE wire truth verified; 12/12 tests pass; RCA filed |
 | **1.3** | Cipher Primitives (Link & Session) | `PENDING` | - | Reversible cipher test vectors |
 | **2.1** | TCP Session & Timeout Management | `PENDING` | - | Bounded connect/read timeout |
 | **2.2** | Framed Packet Decoder | `PENDING` | - | Stream fragmentation & multi-frame test |

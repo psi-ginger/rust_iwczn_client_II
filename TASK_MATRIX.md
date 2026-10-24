@@ -18,7 +18,7 @@
 | **1.3** | Cipher Primitives (Link & Session) | `PASSED` | `236229f` | Bit-exact ITZ rolling cipher; full legacy vectors match; 20/20 tests |
 | **2.1** | TCP Session & Timeout Management | `PASSED` | `afcee87` | Bounded dial/read timeouts; wire-faithful Nagle; 30/30 tests |
 | **2.2** | Framed Packet Decoder | `PASSED` | `19cd996` | Sticky poison guards; pull-time cipher; 47/47 tests pass |
-| **2.3** | Framed Packet Encoder | `PENDING` | - | Pre-recorded C++ packet vector match |
+| **2.3** | Framed Packet Encoder | `PASSED` | `1330a20` | Outbound cipher framing; C++ vector match; 53/53 tests pass |
 | **3.1** | Front Connect & SecretKey Handshake | `PENDING` | - | Opcode 30000; session seed extraction |
 | **3.2** | WorldList & Notice Request | `PENDING` | - | Full WorldInfo parse without dropping bytes |
 | **3.3** | Front Login & Auth Key Acquisition | `PENDING` | - | 4-byte auth_key captured in state |

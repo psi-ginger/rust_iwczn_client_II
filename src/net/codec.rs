@@ -1010,7 +1010,7 @@ mod tests {
     use legacy::{Case, Divergence, CASES, DIVERGENT};
 
     fn unhex(hex: &str) -> Vec<u8> {
-        assert!(hex.len() % 2 == 0, "odd-length hex {hex:?}");
+        assert!(hex.len().is_multiple_of(2), "odd-length hex {hex:?}");
         hex.as_bytes()
             .chunks(2)
             .map(|pair| {

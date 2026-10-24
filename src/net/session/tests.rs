@@ -48,6 +48,10 @@ async fn connect_times_out_on_a_black_holed_address() {
     // 192.0.2.0/24 is TEST-NET-1 (RFC 5737): reserved for documentation,
     // unroutable, and verified a black hole on the dev host (SYN
     // silently dropped, no ICMP reply).
+    //
+    // F-01 (QC decision, CAR-2026-10-24-RETRO01): synthetic address —
+    // pending live ingestion against the real Front (5700) and Game (4010)
+    // servers. This proves the window bounds the dial, not reachability.
     let addr: SocketAddr = "192.0.2.1:81".parse().unwrap();
     let timeouts = SessionTimeouts {
         connect: Duration::from_millis(300),
@@ -110,6 +114,53 @@ async fn read_times_out_when_the_peer_sends_nothing() {
         "read window must bound the wait ({elapsed:?})"
     );
     holder.abort();
+}
+
+#[tokio::test]
+async fn a_read_timeout_leaves_the_socket_usable() {
+    // F-02 (QC decision, CAR-2026-10-24-RETRO01): the read window is
+    // decoupled from session teardown — a ReadTimeout bounds one wait and
+    // closes nothing. The SAME session must still deliver the peer's bytes
+    // afterwards; a game-session loop that treated ReadTimeout as fatal
+    // would drop connections the legacy kept alive.
+    //
+    // Timing: the peer is silent past the 200 ms window, then writes at
+    // ~300 ms. The first read times out at ~200 ms; the retry (started
+    // then, same 200 ms window) must catch the write before ~400 ms.
+    let (listener, addr) = local_listener().await;
+    let sender = tokio::spawn(async move {
+        let (mut stream, _addr) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        stream.write_all(b"late bytes").await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    });
+
+    let timeouts = SessionTimeouts {
+        read: Duration::from_millis(200),
+        ..SessionTimeouts::default()
+    };
+    let mut session = Session::connect_with_timeouts(addr, timeouts)
+        .await
+        .expect("open port");
+
+    let mut buf = [0u8; 16];
+    let err = session.read(&mut buf).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            SessionError::ReadTimeout { timeout } if timeout == Duration::from_millis(200)
+        ),
+        "expected ReadTimeout, got {err:?}"
+    );
+
+    // Not EOF, not teardown: the socket is still there and the delayed
+    // write arrives through it.
+    session
+        .read_exact(&mut buf[..10])
+        .await
+        .expect("the same session must still read after a ReadTimeout");
+    assert_eq!(&buf[..10], b"late bytes");
+    sender.await.unwrap();
 }
 
 #[tokio::test]
@@ -192,6 +243,9 @@ async fn legacy_connect_window_is_selectable() {
 
 #[tokio::test]
 async fn resolve_maps_localhost_to_loopback() {
+    // F-01 (QC decision, CAR-2026-10-24-RETRO01): synthetic hostname —
+    // pending live ingestion against the real Front (5700) and Game (4010)
+    // servers; this asserts the resolver's loopback mapping only.
     let addrs = resolve("localhost", 5700).await.expect("resolves");
     assert!(
         addrs.iter().any(|a| a.ip().is_loopback()),

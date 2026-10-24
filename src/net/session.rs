@@ -32,6 +32,19 @@
 //! not rely on. A bounded read is what stops this port from parking a task
 //! forever on a half-open socket.
 //!
+//! QC decision **F-02** (CAR-2026-10-24-RETRO01): the read window is
+//! **decoupled from session teardown**. A [`SessionError::ReadTimeout`]
+//! bounds one *wait* only — no `shutdown`, no drop, no state change; the
+//! socket stays open and a later read on the same [`Session`] still delivers
+//! the peer's bytes (pinned by
+//! `session::tests::a_read_timeout_leaves_the_socket_usable`). Callers on the
+//! **game** link must treat `ReadTimeout` as "nothing arrived yet — keep
+//! waiting", never as a close signal: the game server can legitimately go
+//! quiet for longer than 5 s between world ticks. Both WBS numbers (5 s
+//! connect, 5 s read) are **pending live ingestion against the real Front
+//! (5700) and Game (4010) servers** (QC decision F-01/F-02) — revalidate
+//! there, not against synthetic loopback.
+//!
 //! # What the legacy `_connect` dance collapses to
 //!
 //! `ITZSession::_connect` (`ITZSession.cpp:206-274`) creates the socket,
@@ -71,6 +84,12 @@ use tokio::time::timeout;
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(5_000);
 
 /// Default bounded-read window (`CONTRIBUTING.md` Step 2.1).
+///
+/// **F-02 (QC decision):** this window bounds one wait, *not* the session —
+/// a [`SessionError::ReadTimeout`] never closes the socket, and the game
+/// link's receive loop must not treat it as teardown (module docs,
+/// *Timeouts*). Pending live ingestion against the real Front (5700) and
+/// Game (4010) servers (F-01/F-02).
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_millis(5_000);
 
 /// `GetTickCount() - m_dwConnectTick >= 7000` — the legacy's connect

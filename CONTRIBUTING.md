@@ -40,6 +40,18 @@ Each step has an isolated scope, strict acceptance criteria, and zero tolerance 
   - Path: `src/net/codec.rs`
   - Scope: Take opcode and payload; prepend the 5-byte header (`usSize`, reserved byte, `usCmd`); apply outbound cipher (if active); flush to socket.
   - Acceptance: Unit test asserting exact wire byte output against pre-recorded C++ packet captures.
+* **Step 2.4.1: Scan & Refactor MOD-01**
+  - Scope: Scan all files in MOD-01 (`src/protocol/`, `src/net/cipher.rs`) for excessive size, mixed responsibilities, or lack of OOP modularity. Refactor cleanly.
+  - Acceptance: 53/53 tests pass, `cargo clippy --all-targets -- -D warnings` clean.
+* **Step 2.4.2: MOD-01 Continuation / RCA & Risk Management**
+  - Scope: If Step 2.4.1 has remaining refactoring, finish it. If complete, produce an RCA & Risk Management document covering MOD-01 modularity, invariants, and residual risks.
+  - Acceptance: All tests green, clean audit report.
+* **Step 2.5.1: Scan & Refactor MOD-02**
+  - Scope: Scan all files in MOD-02 (`src/net/session.rs`, `src/net/codec.rs`) for excessive size, mixed responsibilities, or lack of OOP modularity. Refactor cleanly.
+  - Acceptance: 53/53 tests pass, `cargo clippy --all-targets -- -D warnings` clean.
+* **Step 2.5.2: MOD-02 Continuation / RCA & Risk Management**
+  - Scope: If Step 2.5.1 has remaining refactoring, finish it. If complete, produce an RCA & Risk Management document covering MOD-02 transport/codec separation and residual risks.
+  - Acceptance: All tests green, clean audit report.
 
 ---
 

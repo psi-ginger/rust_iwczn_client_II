@@ -373,6 +373,6 @@ mod tests {
         assert!(header.is_compressed());
         assert_eq!(header.cmd(), 0x8005, "framing must not clear the flag");
         assert_eq!(header.cmd_id(), 5);
-        assert_eq!(WireHeader::new(5, 0).unwrap().is_compressed(), false);
+        assert!(!WireHeader::new(5, 0).unwrap().is_compressed());
     }
 }

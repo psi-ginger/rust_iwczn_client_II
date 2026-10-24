@@ -22,7 +22,7 @@
 | **2.4.1** | Scan & Refactor MOD-01 | `PENDING` | - | Scan MOD-01 files; refactor modular OOP |
 | **2.4.2** | MOD-01 Continuation / Risk & RCA | `PENDING` | - | Complete remaining refactor or file RCA & Risk Management |
 | **2.5.1** | Scan & Refactor MOD-02 | `PASSED` | `1a0d2ff` | Decoupled fixtures & tests; unified declared_at guard; 53/53 tests pass |
-| **2.5.2** | MOD-02 Continuation / Risk & RCA | `PENDING` | - | Complete remaining refactor or file RCA & Risk Management |
+| **2.5.2** | MOD-02 Continuation / Risk & RCA | `PASSED` | `9704ed9` | Comprehensive RCA & R1-R10 residual risk posture filed; 53/53 tests pass |
 | **3.1** | Front Connect & SecretKey Handshake | `PENDING` | - | Opcode 30000; session seed extraction |
 | **3.2** | WorldList & Notice Request | `PENDING` | - | Full WorldInfo parse without dropping bytes |
 | **3.3** | Front Login & Auth Key Acquisition | `PENDING` | - | 4-byte auth_key captured in state |

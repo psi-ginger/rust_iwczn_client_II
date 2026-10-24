@@ -57,7 +57,11 @@ pub const MAX_FRAME_SIZE: u16 = PACKET_MAX_SIZE - 8;
 pub const COMPRESSION_FLAG: u16 = 0x8000;
 
 /// Errors produced while validating or decoding a wire header.
-#[derive(Debug, Error, PartialEq, Eq)]
+///
+/// `Clone, Copy`: the Step 2.2 decoder stores a refusal by value to keep it
+/// sticky for the connection's life (like `gz-net::FrameError`), so its error
+/// type must be storable and re-returnable without a heap allocation.
+#[derive(Debug, Clone, Copy, Error, PartialEq, Eq)]
 pub enum HeaderError {
     /// Declared size below the legacy's own `< 2` guard
     /// (`ITZRecvBuffer.cpp:163`).

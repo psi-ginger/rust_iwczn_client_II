@@ -68,7 +68,9 @@ pub const LINK_KEY2: u8 = 0x34;
 /// The legacy returns `void` from `Encode` and `FALSE` from `Decode`, and reads
 /// out of bounds when a length field lies; those cases are surfaced here
 /// instead of being silently undefined.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+/// `Clone, Copy` so the Step 2.2 decoder can keep a cipher refusal on file
+/// (sticky rejection) and hand it back by value, like `HeaderError`.
+#[derive(Debug, Clone, Copy, thiserror::Error, PartialEq, Eq)]
 pub enum CipherError {
     /// Fewer than 2 bytes, so the `usSize` field cannot be read at all.
     #[error("frame shorter than the 2-byte usSize field")]

@@ -4,7 +4,7 @@
 //! `protocol::header` (Step 1.2) delivers the 5-byte wire frame header,
 //! `net::cipher` (Step 1.3) the ITZ rolling link/session cipher,
 //! `net::session` (Step 2.1) the bounded async TCP transport,
-//! `net::codec` (Step 2.2) the stream-to-frame decoder;
+//! `net::codec` (Steps 2.2–2.3) the framed-packet decoder and encoder;
 //! `auth::*`, `game::*`, and `client::*` arrive with their own steps and are
 //! intentionally absent.
 

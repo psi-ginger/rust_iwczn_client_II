@@ -1,18 +1,25 @@
-//! Framed packet decoder: byte stream → complete frames (Step 2.2).
+//! Framed packet codec: byte stream ⇄ complete frames — decoder (Step 2.2),
+//! encoder (Step 2.3).
 //!
-//! This is the framing layer the WBS describes as "stream → packets": feed it
-//! whatever [`session::Session::read`] handed you, pull whole frames out with
-//! [`Decoder::next_frame`]. A frame split across any number of chunks and
-//! several frames sharing one chunk are both handled — the legacy has the same
-//! property, it just does it with a ring buffer and a `PACKET_MAX_SIZE`-byte
-//! slack zone (`ITZRecvBuffer::CreateRecvBuffer`, `ITZRecvBuffer.cpp:56-58`)
-//! instead of a deque.
+//! The inbound half is the framing layer the WBS describes as "stream →
+//! packets": feed it whatever [`session::Session::read`] handed you, pull whole
+//! frames out with [`Decoder::next_frame`]. A frame split across any number of
+//! chunks and several frames sharing one chunk are both handled — the legacy
+//! has the same property, it just does it with a ring buffer and a
+//! `PACKET_MAX_SIZE`-byte slack zone (`ITZRecvBuffer::CreateRecvBuffer`,
+//! `ITZRecvBuffer.cpp:56-58`) instead of a deque.
 //!
-//! It composes the three primitives already landed:
+//! The outbound half, [`Encoder`] (Step 2.3), is the WBS's "packets → wire":
+//! take an opcode and a payload, prepend the 5-byte header, apply the outbound
+//! cipher if one is active, flush to the socket.
+//!
+//! It composes the primitives already landed:
 //! - [`crate::protocol::header`] (Step 1.2): the 5-byte header layout and the
 //!   one guard table (`validate_size`) — this module never re-derives size rules.
-//! - [`crate::net::cipher`] (Step 1.3): the inbound cipher, applied **if active**.
-//! - [`crate::net::session`] (Step 2.1): the transport the chunks come off.
+//! - [`crate::net::cipher`] (Step 1.3): the inbound **and outbound** ciphers,
+//!   each applied **if active**.
+//! - [`crate::net::session`] (Step 2.1): the transport chunks come off and
+//!   frames are flushed to.
 //!
 //! # Rejection is sticky: a refusal is a disconnect, not a dropped packet
 //!
@@ -58,7 +65,39 @@
 //! plaintext — Step 3.1); [`Decoder::with_cipher`] activates one (the game
 //! link's fixed `0x12,0x34` link cipher). There is deliberately no way to
 //! install a cipher mid-stream: no legacy link ever switches its inbound side
-//! after establishment.
+//! after establishment — unlike the *outbound* side, which gains its key
+//! partway through the connection (see [`Encoder`] below).
+//!
+//! # The outbound half: packets → wire (Step 2.3)
+//!
+//! The legacy send path, in order (`SendFrontServerMsg`,
+//! `Client-Winsock.cpp:139-150`; `SendMsgToServer`, `:155-211`):
+//!
+//! 1. The caller fills an `sPacketHeader`-headed message (`usSize`, `usCmd`),
+//!    optionally LZF-compresses the body itself and sets `usCmd |= 0x8000`
+//!    (`:178-196`). Compression therefore sits **above** this codec:
+//!    [`Encoder`] passes `cmd` through untouched, flag bits included.
+//! 2. `GetEncrypt()->Encode(frame, cSecretBuffer)` (`:146,195,200,242`) —
+//!    [`Cipher::encode`] over the whole frame: keys ticked first, `usSize`
+//!    read from the header, kept in the clear, byte 2 overwritten with the
+//!    resync tag (`ITZEncrypt.cpp:30-67`).
+//! 3. `GetSendBuffer()->Write(cSecretBuffer)` (`:147,203,243`) — on the
+//!    client this is a plain ring copy: the factory is built with the default
+//!    `bEncrypt = false` (`:92`, `ITZSessionFactory.h:15`), so `Write`'s own
+//!    cipher branch (`ITZSendBuffer.cpp:122-126`) never runs. **The bytes
+//!    `Encode` produced are the bytes on the wire.**
+//! 4. The IOCP drains the ring with `send` (`GetSendParam` → `Completion`,
+//!    `ITZSendBuffer.cpp:67-112`).
+//!
+//! [`Encoder::encode`] is steps 1–2; [`Encoder::send`] replaces steps 3–4
+//! with one awaited `write_all` over [`Session::stream`] — the legacy's ring
+//! exists only to feed that overlapped send loop, so a port with none needs
+//! no equivalent. Whether a link ciphers at all is the **caller's** gate in
+//! the legacy: `bFrontServerSecretKeySwitch`/`bGameServerSecretKeySwitch`
+//! refuse the whole call before the cipher is reached
+//! (`Client-Winsock.cpp:141,171`; `LogIn.cpp:310` notes nothing may be sent
+//! to the front server before the key arrives) — that policy belongs to Steps
+//! 3.1/4.2, not to framing.
 //!
 //! # No ring: no second ceiling (BUG-014)
 //!
@@ -97,31 +136,60 @@
 //!   observable, and this decoder is poisoned past that point anyway.
 //! - **`headerType == 1`** (byte-swapped size + 8) has no call site in the tree
 //!   and is not implemented; see `docs/rca/2026-10-23-step-1.2-header-spec-mismatch.md`.
+//! - **An over-limit payload is refused before the cipher ticks** (encoder):
+//!   [`Encoder::encode`] returns [`HeaderError::PayloadTooLarge`] with the
+//!   keys untouched. The legacy had no encode-time ceiling at all — but no
+//!   legacy client send could have reached one: its messages top out near
+//!   `sizeof(cltMsg)` (`MAX_CLTMSG_DATA_SIZE` is 11000,
+//!   `GoonZuWorld/CommonLogic/MsgType.h:2943`), far under the 64992 that the
+//!   peer's receive guard disconnects on (`ITZRecvBuffer.cpp:172`). The port
+//!   guards anyway instead of emitting a frame a peer would kill the
+//!   connection for.
+//! - **A full local buffer backpressures instead of dropping** (encoder):
+//!   the legacy's fixed send ring refused `Write` once full
+//!   (`ITZSendBuffer.cpp:141`) and the client ignored the `FALSE`
+//!   (`Client-Winsock.cpp:147,203`) — the frame was silently lost. With no
+//!   ring, [`Encoder::send`] awaits `write_all`; the bytes wait in the
+//!   socket, never on a buffer that can overflow.
 //!
 //! # Thread safety
 //!
 //! Not shared. The legacy relied on the enclosing session's critical section
-//! for the same reason; give each connection its own [`Decoder`] — one per
-//! direction would be wrong anyway: only the *inbound* side is decoded.
+//! (and, on `_CHINA` builds, an extra send critical section,
+//! `Client-Winsock.cpp:159`) for the same reason, and [`Cipher`] is not
+//! `Sync` either. Give each connection exactly one [`Decoder`] and one
+//! [`Encoder`]: the inbound and the outbound direction, never crossed.
 //!
 //! [`session::Session::read`]: crate::net::session::Session::read
+//! [`Session::stream`]: crate::net::session::Session::stream
+//! [`Cipher`]: crate::net::cipher::Cipher
+//! [`Cipher::encode`]: crate::net::cipher::Cipher::encode
 //! [`Cipher::decode`]: crate::net::cipher::Cipher::decode
 //! [`MAX_FRAME_SIZE`]: crate::protocol::header::MAX_FRAME_SIZE
 
 use bytes::BytesMut;
 use thiserror::Error;
+use tokio::io::AsyncWriteExt;
 
 use super::cipher::{Cipher, CipherError};
-use crate::protocol::header::{validate_size, HeaderError, HEADER_SIZE};
+use super::session::Session;
+use crate::protocol::header::{validate_size, HeaderError, WireHeader, HEADER_SIZE};
 
-/// Why a frame could not be decoded.
+/// Why a frame could not be decoded — or built for sending.
 ///
-/// Every variant means **kill the connection**, not "drop this packet" — the
-/// legacy turns both refusal paths into teardown: a bad header is
-/// `Completion() == FALSE` → `SESSION_STATE_DISCONNECTED`
+/// From [`Decoder`] every variant means **kill the connection**, not "drop
+/// this packet" — the legacy turns both refusal paths into teardown: a bad
+/// header is `Completion() == FALSE` → `SESSION_STATE_DISCONNECTED`
 /// (`ITZNetIOCP.cpp:145-150`), a failed cipher check is `Decode() == false` →
 /// `return false`/`CloseSocket()` (`Client-Winsock.cpp:889`,
 /// `FrontClientProtocol.cpp:90`). Hence [`Decoder`]'s sticky failure state.
+///
+/// From [`Encoder::encode`] the reachable variant is [`CodecError::Header`]
+/// (`PayloadTooLarge`): no frame was built, no byte was sent, and no key
+/// ticked — the connection is fine, only the message is (the legacy had no
+/// encode-time refusal at all; see the module docs' divergences).
+/// [`CodecError::Integrity`] is decode-only; [`CodecError::Cipher`] is kept
+/// for the encoder on the same unreachability argument its variant documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum CodecError {
     /// A declared size failed the guard table — see [`HeaderError`] for the
@@ -163,6 +231,26 @@ pub enum CodecError {
         /// Key 2 after the failed decode's tick.
         key2: u8,
     },
+}
+
+/// Why a frame could not be flushed to the socket ([`Encoder::send`]).
+///
+/// Deliberately separate from [`CodecError`]: a flush fails the way I/O
+/// fails, and `io::Error` is neither `Copy` nor `Eq`, while [`CodecError`]
+/// must stay `Copy` (Step 2.2 stores a refusal by value to keep it sticky for
+/// the connection's life).
+#[derive(Debug, Error)]
+pub enum SendError {
+    /// The frame could not be built (payload past the guard ceiling) — sent
+    /// nothing, so no byte reached the socket.
+    #[error(transparent)]
+    Encode(#[from] CodecError),
+    /// The socket write failed **after** the frame was encoded: the outbound
+    /// keys have already ticked once for it (see [`Encoder::send`]), exactly
+    /// as the legacy ticked while filling its send buffer, before and
+    /// independently of the socket write completing.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 /// One complete, validated packet: header bytes and payload exactly as they
@@ -469,13 +557,181 @@ impl Default for Decoder {
     }
 }
 
+/// Packet → frame conversion: the outbound half of this codec (Step 2.3).
+///
+/// [`Encoder::encode`] takes an opcode and a payload, prepends the 5-byte
+/// header through [`WireHeader::new`] — so the one guard table decides what
+/// may be emitted — and applies the outbound cipher **if one is active**: the
+/// bytes `GetEncrypt()->Encode` produced for the same message
+/// (`Client-Winsock.cpp:146,195,200,242`), byte for byte. The module docs
+/// carry the full legacy send-path walkthrough.
+///
+/// The cipher owns the send path symmetrically with [`Decoder`]'s receive
+/// path: **one key tick per encoded frame**, and it happens at encode time,
+/// before any flush. The legacy ticked inside `Encode` while filling its send
+/// buffer (`ITZEncrypt.cpp:33-34`), decoupled from whether the socket write
+/// later completed — a flush that fails here likewise leaves the keys
+/// advanced for exactly that frame.
+///
+/// # The outbound side is the side that gains its key mid-connection
+///
+/// Unlike the inbound side (which never switches after establishment), the
+/// outbound cipher arrives partway through: opcode 30000 delivers
+/// `sResponse_SecretKey` → `GetEncrypt()->SetKey(...)`
+/// (`Client-Winsock.cpp:228`), and the game link's
+/// `GAMEMSG_RESPONSE_CLIENTCHARUNIQUE` does the same
+/// (`Client-SystemNPC.cpp:703`). [`Encoder::set_cipher`] is that `SetKey` —
+/// it is why this type holds `Option<Cipher>` at all (Steps 3.1 and 4.2 wire
+/// it).
+///
+/// # No send timeout, no local ring
+///
+/// The legacy sets no `SO_SNDTIMEO` on the client's links (the only use in
+/// the tree is an unrelated billing socket,
+/// `NHanGameBillingProcess.cpp:453`), so [`Encoder::send`] adds none:
+/// `write_all` waits exactly as the legacy's send loop waited. And where the
+/// legacy's fixed ring could overflow into a silently dropped frame
+/// (`ITZSendBuffer.cpp:141`, return ignored at `Client-Winsock.cpp:147`),
+/// this encoder has no ring: bytes wait in the socket under backpressure
+/// (module docs, divergences).
+///
+/// Not shared between tasks: one `Encoder` per connection, outbound
+/// direction. `Cipher` is not `Sync`; the legacy guarded the same state with
+/// its session critical section (plus a dedicated send critical section on
+/// `_CHINA` builds, `Client-Winsock.cpp:159`).
+#[derive(Debug)]
+pub struct Encoder {
+    /// The outbound cipher, while the link is keyed.
+    cipher: Option<Cipher>,
+}
+
+impl Encoder {
+    /// A plaintext encoder: no outbound cipher installed yet.
+    ///
+    /// Every keyed legacy client link *starts* unset and is barred from
+    /// sending before its key arrives — the `...SecretKeySwitch` gates refuse
+    /// the whole call before the cipher is ever reached
+    /// (`Client-Winsock.cpp:141,171`), so nothing actually goes out in
+    /// plaintext on those links; the state still exists, and
+    /// [`Encoder::set_cipher`] is how a link acquires its cipher (Step 3.1).
+    /// Programs that never negotiate a key (the legacy GM/log clients) stay
+    /// in this mode for every frame they send.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { cipher: None }
+    }
+
+    /// An encoder that enciphers every frame with `cipher`, from the first
+    /// frame on — for a link whose key is already in hand at construction.
+    #[must_use]
+    pub fn with_cipher(cipher: Cipher) -> Self {
+        Self { cipher: Some(cipher) }
+    }
+
+    /// `SetKey` on the outbound side (`ITZEncrypt.cpp:14`), as the message
+    /// handlers call it: opcode 30000 → `GetEncrypt()->SetKey(ucKey1, ucKey2)`
+    /// (`Client-Winsock.cpp:228`), `GAMEMSG_RESPONSE_CLIENTCHARUNIQUE` → same
+    /// (`Client-SystemNPC.cpp:703`).
+    ///
+    /// Replaces any installed cipher wholesale: frames encoded before this
+    /// call went out as header-only bytes, frames after it are enciphered
+    /// from the new keys' first tick.
+    pub fn set_cipher(&mut self, cipher: Cipher) {
+        self.cipher = Some(cipher);
+    }
+
+    /// The outbound cipher while one is active — the mirror of
+    /// [`Decoder::cipher`], reading key position the way the legacy's
+    /// `GetKey1()`/`GetKey2()` do.
+    #[must_use]
+    pub fn cipher(&self) -> Option<&Cipher> {
+        self.cipher.as_ref()
+    }
+
+    /// Builds the exact wire bytes for `cmd` and `payload`: the 5-byte header
+    /// (`usSize` little-endian, reserved byte **zeroed**, `usCmd`) followed by
+    /// the payload — then the outbound cipher, if active, over the whole
+    /// frame.
+    ///
+    /// `usSize` is the total frame length, header included: precisely the
+    /// value `ITZSendBuffer::Write` reads back to size its copy
+    /// (`ITZSendBuffer.cpp:132`). The reserved byte is zeroed the way Step
+    /// 1.2's [`WireHeader::new`] and the server's `Frame::new` zero it — no
+    /// legacy producer ever writes `ucChk` — and on a ciphered link it is
+    /// overwritten by the resync tag anyway (`ITZEncrypt.cpp:44`).
+    ///
+    /// The `0x8000` compression flag travels through `cmd` untouched: the
+    /// legacy sets it on the caller's side *before* `Encode`
+    /// (`Client-Winsock.cpp:192`) and clears it only after decompressing the
+    /// other way (`:911`).
+    ///
+    /// # Errors
+    ///
+    /// [`CodecError::Header`] when `HEADER_SIZE + payload.len()` exceeds
+    /// [`crate::protocol::header::MAX_FRAME_SIZE`] (64992) — a frame no peer
+    /// may accept
+    /// (`ITZRecvBuffer.cpp:172`) is never built, and the refusal happens
+    /// **before** the cipher runs, so the keys do not tick (module docs,
+    /// divergences). [`CodecError::Cipher`] is unreachable by construction:
+    /// the frame was just built with `usSize == len <= 64992`, below the
+    /// cipher's own `PACKET_MAX_SIZE` (same argument as [`Decoder`] uses).
+    pub fn encode(&mut self, cmd: u16, payload: &[u8]) -> Result<Frame, CodecError> {
+        let header = WireHeader::new(cmd, payload.len())?;
+        let mut bytes = Vec::with_capacity(usize::from(header.size()));
+        bytes.extend_from_slice(&header.encode());
+        bytes.extend_from_slice(payload);
+
+        let bytes = match &mut self.cipher {
+            None => bytes,
+            Some(cipher) => cipher.encode(&bytes)?,
+        };
+        Ok(Frame::from_validated_bytes(bytes))
+    }
+
+    /// Encodes with [`Encoder::encode`], then flushes every byte to
+    /// `session` — the WBS's "flush to socket".
+    ///
+    /// This replaces the legacy's ring copy plus overlapped send drain
+    /// (`ITZSendBuffer::Write` → `GetSendParam` → `Completion`,
+    /// `ITZSendBuffer.cpp:115-177,67-112`): `write_all` loops until the whole
+    /// frame is written, which is exactly what that `Completion(siSentBytes)`
+    /// loop advanced toward, minus the ring it fed.
+    ///
+    /// The tick order is the legacy's: the keys advance inside `encode`,
+    /// i.e. **before** the flush. A write that fails after a partial send
+    /// leaves the cipher advanced for that frame — its `Encode` had already
+    /// run while filling the buffer, and nothing ever rolled it back.
+    ///
+    /// # Errors
+    ///
+    /// [`SendError::Encode`] before any byte is written (nothing was sent),
+    /// then [`SendError::Io`] if the socket refuses or the connection dies
+    /// mid-frame.
+    pub async fn send(
+        &mut self,
+        session: &mut Session,
+        cmd: u16,
+        payload: &[u8],
+    ) -> Result<(), SendError> {
+        let frame = self.encode(cmd, payload)?;
+        session.stream().write_all(frame.as_bytes()).await?;
+        Ok(())
+    }
+}
+
+impl Default for Encoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::net::cipher::Cipher;
     use crate::net::session::Session;
     use crate::protocol::header::{WireHeader, MAX_FRAME_SIZE};
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     /// Recorded framing ground truth: the byte-for-byte unmodified legacy
@@ -765,8 +1021,8 @@ mod tests {
     }
 
     /// A well-formed plaintext frame: 5-byte header + payload, reserved byte
-    /// zeroed (the encoder Step 2.3 will formalise; built here from the Step
-    /// 1.2 header type so size/guard logic stays in one place).
+    /// zeroed — built straight from the Step 1.2 header type so encoder tests
+    /// have an expectation source that is not the encoder itself.
     fn plaintext_frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
         let header = WireHeader::new(cmd, payload.len()).expect("payload fits a frame");
         let mut bytes = header.encode().to_vec();
@@ -1481,5 +1737,445 @@ mod tests {
         assert_eq!(got, vec![frame_a, frame_b]);
         assert!(decoder.failure().is_none());
         assert!(decoder.is_empty());
+    }
+
+    // ------------------------------------------------------- encoder captures
+
+    /// Send-path captures: every selected `ITZEncrypt::Encode` call as
+    /// recorded from the **byte-for-byte unmodified** legacy `ITZEncrypt.cpp`
+    /// compiled with g++ (the server repo's `gz-cipher/reference` harness,
+    /// independently confirmed there by a Python reference). Copied from
+    /// `rust_Iwcgz_server/crates/gz-cipher/tests/data/vectors.rs` — the same
+    /// source `cipher.rs` replays against `Cipher::encode` directly (Step
+    /// 1.3). Here the identical inputs run through **this codec's
+    /// [`Encoder`]** instead, so a mismatch indicts the header prepend or the
+    /// wiring around the cipher, not only the cipher.
+    ///
+    /// Included: every case whose whole recorded op sequence is `Encode`
+    /// calls with a declared `usSize >= 5` — the smallest frame an encoder
+    /// can build carries the full 5-byte header, so sub-5 captures (A1–A5,
+    /// B1) cannot be replayed here (they are `cipher.rs`'s to pin, along with
+    /// every `Decode` op, including the round-trip halves of C6/D3). C4/C5
+    /// are absent because their encode ops are byte-identical to C1/C2; C7
+    /// because its later encodes were recorded after an unbuildable size-4
+    /// encode had already ticked the keys, so they are not first frames.
+    ///
+    /// Note on the reserved byte: several captures were recorded from an
+    /// input whose `ucChk` was nonzero (C1's `0xaa`, B4's `0x03`, D1's
+    /// `0x01`, ...), while the encoder always rebuilds it as `0`. Equality
+    /// with the recorded output still has to hold because `Encode` never
+    /// reads `src[2]` — its loop starts at offset 3 (`ITZEncrypt.cpp:55`)
+    /// and offset 2 is *computed* from the last plaintext byte (`:44`) — so
+    /// the input's reserved byte cannot leak into the wire bytes.
+    mod legacy_send {
+        /// One recorded `Encode` call: hex input frame, hex bytes written.
+        pub struct Op {
+            pub input: &'static str,
+            pub output: &'static str,
+        }
+
+        /// A recorded case against one initial key pair.
+        pub struct Case {
+            pub name: &'static str,
+            pub key1: u8,
+            pub key2: u8,
+            pub ops: &'static [Op],
+        }
+
+        pub static CASES: &[Case] = &[
+            Case {
+                name: "B2_encode_size5",
+                key1: 0,
+                key2: 0,
+                ops: &[Op { input: "0500001122", output: "0500231144" }],
+            },
+            Case {
+                name: "B3_encode_size8",
+                key1: 0,
+                key2: 0,
+                // Two trailing bytes beyond usSize: not part of the frame.
+                ops: &[Op { input: "08000011223344556677", output: "080056114435acbb" }],
+            },
+            Case {
+                name: "B4_encode_size64",
+                key1: 0,
+                key2: 0,
+                ops: &[Op {
+                    input: "4000030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7ae",
+                    output: "4000af0c251e518e8fc8f37069e20592d34ca7342d26395657909bf8f1ea6d7a1b14cfdcb5aea19e9f98c3c0f9f2556263dcf784bd36892667606b88817abdca",
+                }],
+            },
+            Case {
+                name: "C1_enc2_encode_size8",
+                key1: 18,
+                key2: 52,
+                ops: &[Op { input: "0800aabbccddeeff", output: "080012dd5475f02f" }],
+            },
+            Case {
+                name: "C2_enc2_encode_size16",
+                key1: 18,
+                key2: 52,
+                ops: &[Op {
+                    input: "1000f0efeeedecebeae9e8e7e6e5e4e3",
+                    output: "1000f631361112e3e8bbbc858a555617",
+                }],
+            },
+            Case {
+                name: "C3_enc2_counter_advances",
+                key1: 18,
+                key2: 52,
+                ops: &[
+                    Op { input: "0800aabbccddeeff", output: "080012dd5475f02f" },
+                    Op { input: "0800aabbccddeeff", output: "080013e5547bea37" },
+                ],
+            },
+            Case {
+                name: "C6_enc2_roundtrip_size64 (encode op only)",
+                key1: 18,
+                key2: 52,
+                ops: &[Op {
+                    input: "4000030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7ae",
+                    output: "4000c14e476077b0b10a19928b242bd4158ecd766f687f7899d2e11a332cb3bc3d56151ed7f0c7c0c1dae9e21b347ba4a51e1dc6ff78cf48a9a2b1aac3bc030c",
+                }],
+            },
+            Case {
+                name: "C8_trailing_byte_ignored",
+                key1: 18,
+                key2: 52,
+                ops: &[Op { input: "0800aabbccddeeff99", output: "080012dd5475f02f" }],
+            },
+            Case {
+                name: "D1_encode_wrap_ff",
+                key1: 255,
+                key2: 255,
+                ops: &[Op { input: "06000102030405", output: "06000402030a" }],
+            },
+            Case {
+                name: "D2_encode_wrap_across_calls",
+                key1: 254,
+                key2: 255,
+                ops: &[
+                    Op { input: "050010203040", output: "05002fdf0f" },
+                    Op { input: "050010203040", output: "0500302131" },
+                ],
+            },
+            Case {
+                name: "D3_roundtrip_wrap (encode op only)",
+                key1: 255,
+                key2: 254,
+                ops: &[Op { input: "06000102030405", output: "060004010209" }],
+            },
+        ];
+    }
+
+    #[test]
+    fn encoder_reproduces_every_recorded_cxx_capture_byte_for_byte() {
+        for case in legacy_send::CASES {
+            // One encoder per case, starting at the capture's initial keys —
+            // every op then plays out as the next frame on the same link.
+            let mut encoder = Encoder::with_cipher(Cipher::session_cipher(case.key1, case.key2));
+            for (index, op) in case.ops.iter().enumerate() {
+                let at = format!("{} op {index}", case.name);
+                let input = unhex(op.input);
+                let declared =
+                    usize::from(u16::from_le_bytes([input[0], input[1]]));
+                assert!(
+                    declared >= HEADER_SIZE,
+                    "{at}: capture is a frame too small for any encoder ({declared} bytes)"
+                );
+                assert!(
+                    declared <= input.len(),
+                    "{at}: capture declares {declared} bytes but carries only {}",
+                    input.len()
+                );
+                // Bytes past usSize are not part of the frame — the legacy
+                // reads exactly usSize (C8 pins that case by name).
+                let frame = &input[..declared];
+                let cmd = u16::from_le_bytes([frame[3], frame[4]]);
+                let payload = &frame[5..];
+
+                let got = encoder
+                    .encode(cmd, payload)
+                    .unwrap_or_else(|e| panic!("{at}: encoder refused a recorded frame: {e}"));
+                let want = unhex(op.output);
+                assert_eq!(
+                    got.as_bytes(),
+                    want.as_slice(),
+                    "{at}: wire bytes differ\n  recorded C++: {want:x?}\n  this port:    {:x?}\n  input frame:  {frame:x?}",
+                    got.as_bytes()
+                );
+            }
+        }
+        assert_eq!(
+            legacy_send::CASES.len(),
+            11,
+            "the capture table changed — re-verify it against gz-cipher's vectors.rs"
+        );
+    }
+
+    #[test]
+    fn encoder_rebuilds_every_recorded_plaintext_packet() {
+        // Every frame `GetFirstPacket` handed out across the recorded
+        // ITZRecvBuffer captures, rebuilt from its (cmd, payload) by the
+        // plaintext encoder: header prepend byte-exact, reserved byte zeroed.
+        let mut checked = 0usize;
+        let mut skipped = 0usize;
+        for case in CASES {
+            for step in case.steps {
+                for packet in step.packets {
+                    let bytes = unhex(packet);
+                    if bytes.len() < HEADER_SIZE {
+                        // Only the BUG-013 divergent cases record sub-header
+                        // packets; an encoder must not be able to build one.
+                        assert!(
+                            DIVERGENT.iter().any(|(name, kind)| {
+                                *name == case.name && *kind == Divergence::SubHeader
+                            }),
+                            "{}: a non-BUG-013 case recorded a sub-header packet",
+                            case.name
+                        );
+                        skipped += 1;
+                        continue;
+                    }
+                    assert_eq!(
+                        usize::from(u16::from_le_bytes([bytes[0], bytes[1]])),
+                        bytes.len(),
+                        "{}: recorded packet's usSize must equal its length",
+                        case.name
+                    );
+                    let cmd = u16::from_le_bytes([bytes[3], bytes[4]]);
+                    let got = Encoder::new()
+                        .encode(cmd, &bytes[5..])
+                        .unwrap_or_else(|e| panic!("{}: recorded frame refused: {e}", case.name));
+                    if bytes[2] == 0 {
+                        assert_eq!(
+                            got.as_bytes(),
+                            bytes.as_slice(),
+                            "{}: rebuild must be byte-identical",
+                            case.name
+                        );
+                    } else {
+                        // The nonzero reserved byte in these fixtures was
+                        // chosen by the recording harness — no legacy
+                        // producer ever writes ucChk (Step 1.2; the field is
+                        // only ever read, `GameProtocol.cpp:82,124`), and
+                        // the encoder emits 0 the way gz-net's `Frame::new`
+                        // does. Everything else must still match exactly.
+                        assert_eq!(got.as_bytes()[0..2], bytes[0..2], "{}: usSize", case.name);
+                        assert_eq!(got.as_bytes()[2], 0, "{}: reserved byte zeroed", case.name);
+                        assert_eq!(got.as_bytes()[3..], bytes[3..], "{}: cmd + payload", case.name);
+                    }
+                    checked += 1;
+                }
+            }
+        }
+        assert_eq!(skipped, 3, "exactly the three BUG-013 packets are unbuildable");
+        assert!(checked >= 11, "expected the recorded packet set, got {checked}");
+    }
+
+    #[test]
+    fn set_cipher_switches_the_outbound_side_mid_connection() {
+        let mut encoder = Encoder::new();
+        assert!(encoder.cipher().is_none(), "starts unset");
+        let before = encoder.encode(5, b"before the key").unwrap();
+        assert_eq!(
+            before.as_bytes(),
+            plaintext_frame(5, b"before the key"),
+            "an unset link emits header + payload verbatim"
+        );
+
+        // Opcode 30000 hands over the seeds; Steps 3.1/4.2 wire this call.
+        encoder.set_cipher(Cipher::session_cipher(18, 52));
+        // Two frames with identical content, replayed from the recorded C3
+        // capture pair: after the transition exactly one key tick per frame.
+        let first = encoder.encode(0xCCBB, &[0xDD, 0xEE, 0xFF]).unwrap();
+        assert_eq!(first.as_bytes(), unhex("080012dd5475f02f"));
+        let second = encoder.encode(0xCCBB, &[0xDD, 0xEE, 0xFF]).unwrap();
+        assert_eq!(second.as_bytes(), unhex("080013e5547bea37"));
+
+        let cipher = encoder.cipher().expect("cipher active after set_cipher");
+        assert_eq!(
+            (cipher.key1(), cipher.key2()),
+            (20, 54),
+            "two frames after set_cipher = two ticks"
+        );
+        assert_eq!(before.wire_len(), 5 + b"before the key".len());
+    }
+
+    #[test]
+    fn encoded_frames_round_trip_through_the_decoder_in_both_modes() {
+        let messages: &[(u16, &[u8])] = &[
+            (1, b"unique please"),
+            (5, &[9, 8, 7, 6]),
+            (30000, b""),
+            // Compression flag set: framing must pass it through untouched
+            // (the caller owns compression, both directions).
+            (0x8005, b"flag survives framing"),
+        ];
+        let expected: Vec<Vec<u8>> = messages
+            .iter()
+            .map(|(cmd, payload)| plaintext_frame(*cmd, payload))
+            .collect();
+        let wire: Vec<u8> = expected.concat();
+
+        // Plaintext link.
+        let mut plain_encoder = Encoder::new();
+        let mut plain_decoder = Decoder::new();
+        let built: Vec<Vec<u8>> = messages
+            .iter()
+            .map(|(cmd, payload)| {
+                plain_encoder
+                    .encode(*cmd, payload)
+                    .expect("fits the guard")
+                    .into_bytes()
+            })
+            .collect();
+        assert_eq!(built, expected, "encoder == the Step 1.2 frame builder");
+        plain_decoder.feed(&wire).expect("valid stream");
+        assert_eq!(
+            drain(&mut plain_decoder).expect("valid stream"),
+            expected,
+            "plaintext round trip is byte-exact"
+        );
+
+        // Ciphered link: the client's Encode and the server's Decode share
+        // one key stream (Step 1.3's invariant), so both sides start from
+        // identical initial keys.
+        let mut encoder = Encoder::with_cipher(Cipher::session_cipher(18, 52));
+        let mut decoder = Decoder::with_cipher(Cipher::session_cipher(18, 52));
+        let mut ciphered = Vec::new();
+        for (cmd, payload) in messages {
+            ciphered.extend_from_slice(encoder.encode(*cmd, payload).unwrap().as_bytes());
+        }
+        assert_ne!(ciphered, wire, "the cipher must actually encipher");
+        decoder.feed(&ciphered).expect("valid stream");
+        let mut frames: Vec<Frame> = Vec::new();
+        while let Some(frame) = decoder.next_frame().expect("valid stream") {
+            frames.push(frame);
+        }
+        let frame_bytes: Vec<Vec<u8>> = frames.iter().map(|f| f.as_bytes().to_vec()).collect();
+        assert_eq!(
+            frame_bytes, expected,
+            "ciphered round trip is byte-exact, reserved byte included"
+        );
+        assert_eq!(frames[2].cmd(), 30000, "empty-payload frame survives");
+        assert_eq!(frames[3].cmd(), 0x8005, "encoder must not mask the flag");
+
+        // N encodes and N decodes ticked N times each: the pair is still in
+        // step, so the next frame continues the same keystream.
+        let enc_keys = (
+            encoder.cipher().expect("cipher").key1(),
+            encoder.cipher().expect("cipher").key2(),
+        );
+        let dec_keys = (
+            decoder.cipher().expect("cipher").key1(),
+            decoder.cipher().expect("cipher").key2(),
+        );
+        assert_eq!(enc_keys, (18 + 4, 52 + 4), "one tick per encoded frame");
+        assert_eq!(enc_keys, dec_keys, "sender and receiver keystreams agree");
+    }
+
+    #[test]
+    fn an_oversized_payload_is_refused_before_the_cipher_ticks() {
+        let max_payload = MAX_FRAME_SIZE as usize - HEADER_SIZE;
+        let mut encoder = Encoder::with_cipher(Cipher::session_cipher(18, 52));
+
+        let largest = encoder
+            .encode(7, &vec![0xAB; max_payload])
+            .expect("the ceiling itself fits");
+        assert_eq!(largest.wire_len(), MAX_FRAME_SIZE as usize);
+        assert_eq!(largest.size(), MAX_FRAME_SIZE);
+        assert_eq!(
+            encoder.cipher().expect("cipher").key1(),
+            19,
+            "the accepted frame ticked exactly once"
+        );
+
+        assert_eq!(
+            encoder.encode(7, &vec![0xAB; max_payload + 1]),
+            Err(CodecError::Header(HeaderError::PayloadTooLarge {
+                len: max_payload + 1,
+            })),
+        );
+        assert_eq!(
+            encoder.cipher().expect("cipher").key1(),
+            19,
+            "a refused encode must leave the keys untouched (documented divergence)"
+        );
+
+        // What we emit at the ceiling is exactly what the peer's guard lets
+        // through: the receive side accepts its own worst case.
+        let mut decoder = Decoder::new();
+        decoder
+            .feed(largest.as_bytes())
+            .expect("our own ceiling frame is legal");
+        assert_eq!(drain(&mut decoder).unwrap(), vec![largest.into_bytes()]);
+    }
+
+    // ------------------------------------------------------- encoder flushing
+
+    #[tokio::test]
+    async fn send_flushes_exact_wire_bytes_over_the_session() {
+        // Composition proof for Steps 2.1 + 1.2 + 1.3 + 2.3: two ciphered
+        // frames flushed through a real socket. The expectation is built
+        // from the Step 1.2 header and the Step 1.3 cipher directly — each
+        // already vector-verified on its own — never from the encoder under
+        // test.
+        let messages: &[(u16, &[u8])] = &[(30000, b"front handshake"), (5, &[9, 8, 7, 6])];
+        let mut expectation = Cipher::session_cipher(18, 52);
+        let expected: Vec<u8> = messages
+            .iter()
+            .flat_map(|(cmd, payload)| {
+                expectation
+                    .encode(&plaintext_frame(*cmd, payload))
+                    .expect("cipher accepts a well-formed frame")
+            })
+            .collect();
+        let want_len = expected.len();
+        let mut encoder = Encoder::with_cipher(Cipher::session_cipher(18, 52));
+
+        let (listener, addr) = {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            (listener, addr)
+        };
+        let reader = tokio::spawn(async move {
+            let (mut stream, _addr) = listener.accept().await.expect("accept");
+            let mut got = Vec::with_capacity(want_len);
+            let mut buf = [0u8; 7]; // small buffer: TCP may deliver in any split
+            while got.len() < want_len {
+                let read = stream.read(&mut buf).await.expect("read");
+                if read == 0 {
+                    break; // writer closed before the frame arrived
+                }
+                got.extend_from_slice(&buf[..read]);
+            }
+            got
+        });
+
+        let mut session = Session::connect(addr).await.expect("connect");
+        encoder
+            .send(&mut session, messages[0].0, messages[0].1)
+            .await
+            .expect("first flush");
+        encoder
+            .send(&mut session, messages[1].0, messages[1].1)
+            .await
+            .expect("second flush");
+        drop(session);
+
+        let got = reader.await.expect("reader task");
+        assert_eq!(
+            got.as_slice(),
+            expected.as_slice(),
+            "wire bytes must equal header + cipher composition"
+        );
+
+        let cipher = encoder.cipher().expect("cipher still active");
+        assert_eq!(
+            (cipher.key1(), cipher.key2()),
+            (20, 54),
+            "two sends = two ticks"
+        );
     }
 }

@@ -19,7 +19,7 @@
 | **2.1** | TCP Session & Timeout Management | `PASSED` | `afcee87` | Bounded dial/read timeouts; wire-faithful Nagle; 30/30 tests |
 | **2.2** | Framed Packet Decoder | `PASSED` | `19cd996` | Sticky poison guards; pull-time cipher; 47/47 tests pass |
 | **2.3** | Framed Packet Encoder | `PASSED` | `1330a20` | Outbound cipher framing; C++ vector match; 53/53 tests pass |
-| **2.4.1** | Scan & Refactor MOD-01 | `PENDING` | - | Scan MOD-01 files; refactor modular OOP |
+| **2.4.1** | Scan & Refactor MOD-01 | `PASSED` | `72ea2e0` | Decoupled cipher/header tests & fixtures; tick() dedup; 53/53 tests |
 | **2.4.2** | MOD-01 Continuation / Risk & RCA | `PENDING` | - | Complete remaining refactor or file RCA & Risk Management |
 | **2.5.1** | Scan & Refactor MOD-02 | `PASSED` | `1a0d2ff` | Decoupled fixtures & tests; unified declared_at guard; 53/53 tests pass |
 | **2.5.2** | MOD-02 Continuation / Risk & RCA | `PASSED` | `9704ed9` | Comprehensive RCA & R1-R10 residual risk posture filed; 53/53 tests pass |

@@ -21,7 +21,7 @@
 | **2.3** | Framed Packet Encoder | `PASSED` | `1330a20` | Outbound cipher framing; C++ vector match; 53/53 tests pass |
 | **2.4.1** | Scan & Refactor MOD-01 | `PENDING` | - | Scan MOD-01 files; refactor modular OOP |
 | **2.4.2** | MOD-01 Continuation / Risk & RCA | `PENDING` | - | Complete remaining refactor or file RCA & Risk Management |
-| **2.5.1** | Scan & Refactor MOD-02 | `PENDING` | - | Scan MOD-02 files; refactor modular OOP |
+| **2.5.1** | Scan & Refactor MOD-02 | `PASSED` | `1a0d2ff` | Decoupled fixtures & tests; unified declared_at guard; 53/53 tests pass |
 | **2.5.2** | MOD-02 Continuation / Risk & RCA | `PENDING` | - | Complete remaining refactor or file RCA & Risk Management |
 | **3.1** | Front Connect & SecretKey Handshake | `PENDING` | - | Opcode 30000; session seed extraction |
 | **3.2** | WorldList & Notice Request | `PENDING` | - | Full WorldInfo parse without dropping bytes |

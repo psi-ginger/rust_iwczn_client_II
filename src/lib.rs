@@ -4,10 +4,12 @@
 //! `protocol::header` (Step 1.2) delivers the 5-byte wire frame header,
 //! `net::cipher` (Step 1.3) the ITZ rolling link/session cipher,
 //! `net::session` (Step 2.1) the bounded async TCP transport,
-//! `net::codec` (Steps 2.2–2.3) the framed-packet decoder and encoder;
-//! `auth::*`, `game::*`, and `client::*` arrive with their own steps and are
-//! intentionally absent.
+//! `net::codec` (Steps 2.2–2.3) the framed-packet decoder and encoder,
+//! `auth::front` (Step 3.1) the Front Server link and `SECRETKEY` handshake;
+//! `game::*` and the rest of `auth::*`/`client::*` arrive with their own
+//! steps and are intentionally absent.
 
+pub mod auth;
 pub mod net;
 pub mod protocol;
 

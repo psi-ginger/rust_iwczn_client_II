@@ -11,20 +11,20 @@
 
 ## Progress Tracker (Phase II)
 
-| Step | Target Milestone | Status | Verified Commit | QC Gate / Notes |
-| :---: | :--- | :---: | :---: | :--- |
-| **1.1** | Cargo Scaffold & Minimal Workspace | `PASSED` | `d7e5fa1` | Clean minimal tokio/bytes deps; verified by QC |
-| **1.2** | GoonZu Wire Header (5-byte LE) | `PASSED` | `5ff9bd4` | 5-byte LE wire truth verified; 12/12 tests pass; RCA filed |
-| **1.3** | Cipher Primitives (Link & Session) | `PASSED` | `236229f` | Bit-exact ITZ rolling cipher; full legacy vectors match; 20/20 tests |
-| **2.1** | TCP Session & Timeout Management | `PASSED` | `afcee87` | Bounded dial/read timeouts; wire-faithful Nagle; 30/30 tests |
-| **2.2** | Framed Packet Decoder | `PASSED` | `19cd996` | Sticky poison guards; pull-time cipher; 47/47 tests pass |
-| **2.3** | Framed Packet Encoder | `PASSED` | `1330a20` | Outbound cipher framing; C++ vector match; 53/53 tests pass |
-| **2.4.1** | Scan & Refactor MOD-01 | `PASSED` | `72ea2e0` | Decoupled cipher/header tests & fixtures; tick() dedup; 53/53 tests |
-| **2.4.2** | MOD-01 Continuation / Risk & RCA | `PASSED` | `e6bc650` | Comprehensive RCA & R1-R10 residual risk posture filed; 53/53 tests pass |
-| **2.5.1** | Scan & Refactor MOD-02 | `PASSED` | `1a0d2ff` | Decoupled fixtures & tests; unified declared_at guard; 53/53 tests pass |
-| **2.5.2** | MOD-02 Continuation / Risk & RCA | `PASSED` | `9704ed9` | Comprehensive RCA & R1-R10 residual risk posture filed; 53/53 tests pass |
-| **3.1** | Front Connect & SecretKey Handshake | `PASSED` | `e2ce7fd` | Opcode 30000; session seeds payload[2]/[4]; outbound cipher; 63/63 tests |
-| **3.2** | WorldList & Notice Request | `PENDING` | - | Full WorldInfo parse without dropping bytes |
+| Step | Target Milestone | Status | Verified Commit | Tests Baseline | Audited By / Notes |
+| :---: | :--- | :---: | :---: | :---: | :--- |
+| **1.1** | Cargo Scaffold & Minimal Workspace | `PASSED` | `d7e5fa1` | 1/1 | QC Lead (Aun) / Clean minimal tokio/bytes deps |
+| **1.2** | GoonZu Wire Header (5-byte LE) | `PASSED` | `5ff9bd4` | 12/12 | QC Lead (Aun) / 5-byte LE wire truth verified; RCA filed |
+| **1.3** | Cipher Primitives (Link & Session) | `PASSED` | `236229f` | 20/20 | QC Lead (Aun) / Bit-exact ITZ rolling cipher; full legacy vectors |
+| **2.1** | TCP Session & Timeout Management | `PASSED` | `afcee87` | 30/30 | QC Lead (Aun) / Bounded dial/read timeouts; wire-faithful Nagle |
+| **2.2** | Framed Packet Decoder | `PASSED` | `19cd996` | 47/47 | QC Lead (Aun) / Sticky poison guards; pull-time cipher |
+| **2.3** | Framed Packet Encoder | `PASSED` | `1330a20` | 53/53 | QC Lead (Aun) / Outbound cipher framing; C++ vector match |
+| **2.4.1** | Scan & Refactor MOD-01 | `PASSED` | `72ea2e0` | 53/53 | QC Lead (Aun) / Decoupled cipher/header tests & fixtures; tick() dedup |
+| **2.4.2** | MOD-01 Continuation / Risk & RCA | `PASSED` | `e6bc650` | 53/53 | QC Lead (Aun) / Comprehensive RCA & R1-R10 residual risk posture filed |
+| **2.5.1** | Scan & Refactor MOD-02 | `PASSED` | `1a0d2ff` | 53/53 | QC Lead (Aun) / Decoupled fixtures & tests; unified declared_at guard |
+| **2.5.2** | MOD-02 Continuation / Risk & RCA | `PASSED` | `9704ed9` | 53/53 | QC Lead (Aun) / Comprehensive RCA & R1-R10 residual risk posture filed |
+| **3.1** | Front Connect & SecretKey Handshake | `PASSED` | `e2ce7fd` | 63/63 | QC Lead (Aun) / Opcode 30000; session seeds payload[2]/[4] |
+| **3.2** | WorldList & Notice Request | `PENDING` | - | Target: ≥63 | Full WorldInfo parse without dropping bytes |
 | **3.3** | Front Login & Auth Key Acquisition | `PENDING` | - | 4-byte auth_key captured in state |
 | **4.1** | Game Connect with Immediate Link Cipher | `PENDING` | - | Port 4010 with `[0x12, 0x34]` link cipher |
 | **4.2** | ClientCharUnique Handshake (Opcode 1) | `PENDING` | - | Session cipher key initialization |

@@ -24,7 +24,8 @@
 | **2.5.1** | Scan & Refactor MOD-02 | `PASSED` | `1a0d2ff` | 53/53 | QC Lead (Aun) / Decoupled fixtures & tests; unified declared_at guard |
 | **2.5.2** | MOD-02 Continuation / Risk & RCA | `PASSED` | `9704ed9` | 53/53 | QC Lead (Aun) / Comprehensive RCA & R1-R10 residual risk posture filed |
 | **3.1** | Front Connect & SecretKey Handshake | `PASSED` | `e2ce7fd` | 63/63 | QC Lead (Aun) / Opcode 30000; session seeds payload[2]/[4] |
-| **3.2** | WorldList & Notice Request | `PENDING` | - | Target: ≥63 | Full WorldInfo parse without dropping bytes |
+| **3.2** | WorldList & Notice Request | `PASSED` | `c61256e` | 76/76 | QC Lead (Aun) / Strict 428B WorldInfo; no trailing drops; F-01/F-02/F-04 folded |
+| **3.3** | Front Login & Auth Key Acquisition | `PENDING` | - | Target: ≥76 | 4-byte auth_key captured in state |
 | **3.3** | Front Login & Auth Key Acquisition | `PENDING` | - | 4-byte auth_key captured in state |
 | **4.1** | Game Connect with Immediate Link Cipher | `PENDING` | - | Port 4010 with `[0x12, 0x34]` link cipher |
 | **4.2** | ClientCharUnique Handshake (Opcode 1) | `PENDING` | - | Session cipher key initialization |

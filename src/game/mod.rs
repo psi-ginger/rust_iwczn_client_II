@@ -6,5 +6,9 @@
 //! - Step 4.2: [`entry`]'s `GAMEMSG_RESPONSE_CLIENTCHARUNIQUE` (opcode 1)
 //!   handshake — strict 8-byte parse, negotiated state, the outbound
 //!   session cipher it keys, and the send gate it opens.
+//! - Step 4.3: [`login`], the `GAMEMSG_REQUEST_LOGIN` (opcode 2) submission
+//!   carrying the Step 3.3 `auth_key`, enciphered with the negotiated
+//!   session cipher.
 
 pub mod entry;
+pub mod login;

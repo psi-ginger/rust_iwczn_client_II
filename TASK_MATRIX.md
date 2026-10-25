@@ -27,9 +27,9 @@
 | **3.2** | WorldList & Notice Request | `PASSED` | `c61256e` | 76/76 | QC Lead (Aun) / Strict 428B WorldInfo; no trailing drops; F-01/F-02/F-04 folded |
 | **3.3** | Front Login & Auth Key Acquisition | `PASSED` | `c85fd44` | 85/85 | QC Lead (Aun) / 4-byte auth_key captured; strict response parse; 85/85 tests |
 | **4.1** | Game Connect with Immediate Link Cipher | `PASSED` | `abd0ab4` | 91/91 | QC Lead (Aun) / Port 4010; inbound link cipher [0x12, 0x34] from byte 0; F-02 idle timeout preserved |
-| **4.2** | ClientCharUnique Handshake (Opcode 1) | `PENDING` | - | Session cipher key initialization |
-| **4.3** | Game Login Submission (Opcode 2) | `PENDING` | - | Valid auth_key from 3.3; verified in server log |
-| **4.4** | Character List & Full MakeCharInfo | `PENDING` | - | 592-byte exact wire parse; zero stubs |
+| **4.2** | ClientCharUnique Handshake (Opcode 1) | `PASSED` | `c72ecdb` | 100/100 | QC Lead (Aun) / Strict 8-byte parse; session cipher keying & send gate |
+| **4.3** | Game Login Submission (Opcode 2) | `PASSED` | `92e0d18` | 106/106 | QC Lead (Aun) / 48-byte cltLogInInfo; 53B session-ciphered frame; auth_key carried |
+| **4.4** | Character List & Full MakeCharInfo | `PASSED` | `e089632` | 120/120 | QC Lead (Aun) / 984B roster; 592B MakeCharInfo; field-exact offsets; refuse LZF |
 | **5.1** | Non-Blocking Async Event Loop | `PENDING` | - | 100ms timeout select; no idle socket stalls |
 | **5.2** | In-Game Heartbeat Keepalive | `PENDING` | - | 10s ping ticker active 60s+ |
 | **5.3** | Graceful Teardown & Signal Handling | `PENDING` | - | Clean socket close on SIGINT |

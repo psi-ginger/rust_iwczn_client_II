@@ -30,7 +30,7 @@
 | **4.2** | ClientCharUnique Handshake (Opcode 1) | `PASSED` | `c72ecdb` | 100/100 | QC Lead (Aun) / Strict 8-byte parse; session cipher keying & send gate |
 | **4.3** | Game Login Submission (Opcode 2) | `PASSED` | `92e0d18` | 106/106 | QC Lead (Aun) / 48-byte cltLogInInfo; 53B session-ciphered frame; auth_key carried |
 | **4.4** | Character List & Full MakeCharInfo | `PASSED` | `e089632` | 120/120 | QC Lead (Aun) / 984B roster; 592B MakeCharInfo; field-exact offsets; refuse LZF |
-| **5.1** | Non-Blocking Async Event Loop | `PENDING` | - | 100ms timeout select; no idle socket stalls |
+| **5.1** | Non-Blocking Async Event Loop | `PASSED` | `a015db4` | 127/127 | QC Lead (Aun) / 100ms read budget; cancel-safe reassembly; tickers preserved |
 | **5.2** | In-Game Heartbeat Keepalive | `PENDING` | - | 10s ping ticker active 60s+ |
 | **5.3** | Graceful Teardown & Signal Handling | `PENDING` | - | Clean socket close on SIGINT |
 

@@ -26,7 +26,7 @@
 | **3.1** | Front Connect & SecretKey Handshake | `PASSED` | `e2ce7fd` | 63/63 | QC Lead (Aun) / Opcode 30000; session seeds payload[2]/[4] |
 | **3.2** | WorldList & Notice Request | `PASSED` | `c61256e` | 76/76 | QC Lead (Aun) / Strict 428B WorldInfo; no trailing drops; F-01/F-02/F-04 folded |
 | **3.3** | Front Login & Auth Key Acquisition | `PASSED` | `c85fd44` | 85/85 | QC Lead (Aun) / 4-byte auth_key captured; strict response parse; 85/85 tests |
-| **4.1** | Game Connect with Immediate Link Cipher | `PENDING` | - | Target: ≥85 | Port 4010 with `[0x12, 0x34]` link cipher |
+| **4.1** | Game Connect with Immediate Link Cipher | `PASSED` | `abd0ab4` | 91/91 | QC Lead (Aun) / Port 4010; inbound link cipher [0x12, 0x34] from byte 0; F-02 idle timeout preserved |
 | **4.2** | ClientCharUnique Handshake (Opcode 1) | `PENDING` | - | Session cipher key initialization |
 | **4.3** | Game Login Submission (Opcode 2) | `PENDING` | - | Valid auth_key from 3.3; verified in server log |
 | **4.4** | Character List & Full MakeCharInfo | `PENDING` | - | 592-byte exact wire parse; zero stubs |

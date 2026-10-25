@@ -177,7 +177,9 @@ pub enum WorldListError {
     /// The frame's opcode is not the response this parser expects — dispatch
     /// drift or a frame this port's contract does not cover
     /// (`FrontMsg.h:94-95`).
-    #[error("front opcode {cmd} is not the response this parser expects (notice 1001, worldlist 1002)")]
+    #[error(
+        "front opcode {cmd} is not the response this parser expects (notice 1001, worldlist 1002)"
+    )]
     UnexpectedOpcode {
         /// The opcode that arrived instead.
         cmd: u16,
@@ -221,7 +223,9 @@ pub enum WorldListError {
     },
     /// The notice payload is not the 16 bytes both known front servers send
     /// (`FrontClientProtocol.cpp:760`, `gz-proto/src/front.rs:26-28`).
-    #[error("notice payload of {len} bytes; both known front servers send exactly {NOTICE_PAYLOAD_LEN}")]
+    #[error(
+        "notice payload of {len} bytes; both known front servers send exactly {NOTICE_PAYLOAD_LEN}"
+    )]
     UnexpectedNoticeLength {
         /// Payload length actually received.
         len: usize,
@@ -350,12 +354,7 @@ fn le_u16(entry: &[u8], off: usize) -> u16 {
 
 /// Little-endian `i32` at `off`.
 fn le_i32(entry: &[u8], off: usize) -> i32 {
-    i32::from_le_bytes([
-        entry[off],
-        entry[off + 1],
-        entry[off + 2],
-        entry[off + 3],
-    ])
+    i32::from_le_bytes([entry[off], entry[off + 1], entry[off + 2], entry[off + 3]])
 }
 
 /// Fixed-width C string: `len` bytes from `off`, cut at the first NUL,
@@ -371,7 +370,11 @@ impl WorldInfo {
     /// Reads one entry from a slice of exactly [`WORLDINFO_LEN`] bytes —
     /// the caller ( [`parse_world_list`]) proves that length before slicing.
     fn from_entry(entry: &[u8]) -> Self {
-        debug_assert_eq!(entry.len(), WORLDINFO_LEN, "caller slices exactly one entry");
+        debug_assert_eq!(
+            entry.len(),
+            WORLDINFO_LEN,
+            "caller slices exactly one entry"
+        );
         Self {
             world_id: le_u16(entry, 0),
             world_name: cstr(entry, 2, 20),
@@ -430,9 +433,7 @@ pub fn parse_world_list(cmd: u16, payload: &[u8]) -> Result<WorldList, WorldList
         return Err(WorldListError::UnexpectedOpcode { cmd });
     }
     let Some(count_bytes) = payload.get(..2) else {
-        return Err(WorldListError::MissingCount {
-            len: payload.len(),
-        });
+        return Err(WorldListError::MissingCount { len: payload.len() });
     };
     let count = u16::from_le_bytes([count_bytes[0], count_bytes[1]]);
     // usize arithmetic: worst case 2 + 65535 * 428 = 28,048,982 — no
@@ -472,9 +473,7 @@ pub fn parse_notice(cmd: u16, payload: &[u8]) -> Result<String, WorldListError> 
         return Err(WorldListError::UnexpectedOpcode { cmd });
     }
     if payload.len() != NOTICE_PAYLOAD_LEN {
-        return Err(WorldListError::UnexpectedNoticeLength {
-            len: payload.len(),
-        });
+        return Err(WorldListError::UnexpectedNoticeLength { len: payload.len() });
     }
     Ok(cstr(payload, 0, NOTICE_PAYLOAD_LEN))
 }

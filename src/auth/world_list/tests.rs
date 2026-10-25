@@ -19,9 +19,7 @@ use tokio::net::{TcpListener, TcpStream};
 /// `FRONTMSG_RESPONSE_SECRETKEY` as it sits on the wire, in the clear:
 /// usSize 10, ucChk 0, usCmd 30000 LE, then the seed slots 0xA7/0x5C at
 /// payload offsets 2 and 4 (`FrontMsg.h:132-141`).
-const SECRETKEY_FRAME: [u8; 10] = [
-    0x0A, 0x00, 0x00, 0x30, 0x75, 0x00, 0x00, 0xA7, 0x00, 0x5C,
-];
+const SECRETKEY_FRAME: [u8; 10] = [0x0A, 0x00, 0x00, 0x30, 0x75, 0x00, 0x00, 0xA7, 0x00, 0x5C];
 const SEED_KEY1: u8 = 0xA7;
 const SEED_KEY2: u8 = 0x5C;
 
@@ -136,13 +134,11 @@ fn constants_match_the_wire_truth() {
     assert_eq!(RESPONSE_WORLDLIST, 1002, "FrontMsg.h:95");
     assert_eq!(ACCOUNT_ID_LEN, 20, "FrontMsg.h:490");
     assert_eq!(
-        WORLDINFO_LEN,
-        428,
+        WORLDINFO_LEN, 428,
         "FrontMsg.h:6-41 default-packed (gz-proto/src/front.rs:31)"
     );
     assert_eq!(
-        NOTICE_PAYLOAD_LEN,
-        16,
+        NOTICE_PAYLOAD_LEN, 16,
         "FrontClientProtocol.cpp:760 (usSize = 5 + 16)"
     );
 
@@ -172,7 +168,10 @@ fn account_id_payload_follows_stringchcopy_semantics() {
 
     // Boundary: 19 chars + terminator = exactly 20 (StringCchCopy fits).
     let p19 = worldlist_request_payload(&"a".repeat(19)).unwrap();
-    assert_eq!(p19[19], 0, "the 19-char id keeps its terminator at index 19");
+    assert_eq!(
+        p19[19], 0,
+        "the 19-char id keeps its terminator at index 19"
+    );
     assert!(p19[..19].iter().all(|&b| b == b'a'));
 
     // One byte more cannot fit: refused with the exact length, never
@@ -191,9 +190,10 @@ fn account_id_payload_follows_stringchcopy_semantics() {
     assert!(p[2..].iter().all(|&b| b == 0));
 
     // The empty id is an empty string, not an error.
-    assert!(
-        worldlist_request_payload("").unwrap().iter().all(|&b| b == 0)
-    );
+    assert!(worldlist_request_payload("")
+        .unwrap()
+        .iter()
+        .all(|&b| b == 0));
 }
 
 #[test]
@@ -310,8 +310,13 @@ fn empty_world_list_is_the_literal_seven_byte_frame() {
     const EMPTY_FRAME: [u8; 7] = [0x07, 0x00, 0x00, 0xEA, 0x03, 0x00, 0x00];
 
     let mut decoder = Decoder::new();
-    decoder.feed(&EMPTY_FRAME).expect("framing accepts a 7-byte frame");
-    let frame = decoder.next_frame().expect("no refusal").expect("one frame");
+    decoder
+        .feed(&EMPTY_FRAME)
+        .expect("framing accepts a 7-byte frame");
+    let frame = decoder
+        .next_frame()
+        .expect("no refusal")
+        .expect("one frame");
     assert_eq!(frame.size(), 7);
     assert_eq!(frame.cmd(), RESPONSE_WORLDLIST);
     assert_eq!(frame.payload(), &[0x00, 0x00], "usCount = 0, nothing else");
@@ -517,10 +522,7 @@ async fn worldlist_round_trip_over_loopback_is_byte_exact() {
         stream.write_all(&SECRETKEY_FRAME).await.unwrap();
         let mut cipher = Cipher::session_cipher(SEED_KEY1, SEED_KEY2);
         let (_raw, plain) = read_ciphered_frame(&mut stream, &mut cipher).await;
-        assert_eq!(
-            u16::from_le_bytes([plain[3], plain[4]]),
-            REQUEST_WORLDLIST
-        );
+        assert_eq!(u16::from_le_bytes([plain[3], plain[4]]), REQUEST_WORLDLIST);
         assert_eq!(
             &plain[5..25],
             &expected_id(b"haru"),

@@ -12,10 +12,13 @@
 //! Server link keyed by the fixed inbound link cipher and its opcode 1
 //! handshake, `game::login` (Step 4.3) the opcode 2 game login submission,
 //! `game::char_info` (Step 4.4) the character roster and the 592-byte
-//! `MakeCharInfo` detail record; the rest of `game::*` and
-//! `client::*` arrive with their own steps and are intentionally absent.
+//! `MakeCharInfo` detail record, `client::event_loop` (Step 5.1) the
+//! non-blocking `select!` receive loop with its strict 100 ms read budget and
+//! background tickers; the rest of `game::*` and `client::*` arrive with their
+//! own steps and are intentionally absent.
 
 pub mod auth;
+pub mod client;
 pub mod game;
 pub mod net;
 pub mod protocol;

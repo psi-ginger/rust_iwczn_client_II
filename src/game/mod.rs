@@ -9,6 +9,10 @@
 //! - Step 4.3: [`login`], the `GAMEMSG_REQUEST_LOGIN` (opcode 2) submission
 //!   carrying the Step 3.3 `auth_key`, enciphered with the negotiated
 //!   session cipher.
+//! - Step 4.4: [`char_info`], the opcode 3 character roster
+//!   (`cltCharListInfo`, 984 bytes) and the 592-byte `cltMakeCharInfo`
+//!   detail record of opcodes 5 and 6, each field at its literal offset.
 
+pub mod char_info;
 pub mod entry;
 pub mod login;

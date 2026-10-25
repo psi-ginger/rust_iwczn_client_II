@@ -10,8 +10,9 @@
 //! `WORLDINFO` response parser, `auth::login` (Step 3.3) the front login and
 //! the `auth_key` handoff token, `game::entry` (Steps 4.1–4.2) the Game
 //! Server link keyed by the fixed inbound link cipher and its opcode 1
-//! handshake, `game::login` (Step 4.3) the opcode 2 game login submission;
-//! the rest of `game::*` and
+//! handshake, `game::login` (Step 4.3) the opcode 2 game login submission,
+//! `game::char_info` (Step 4.4) the character roster and the 592-byte
+//! `MakeCharInfo` detail record; the rest of `game::*` and
 //! `client::*` arrive with their own steps and are intentionally absent.
 
 pub mod auth;

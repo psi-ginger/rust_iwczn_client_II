@@ -8,8 +8,9 @@
 //! `auth::front` (Step 3.1) the Front Server link and `SECRETKEY` handshake,
 //! `auth::world_list` (Step 3.2) the Notice/WorldList requests and the
 //! `WORLDINFO` response parser, `auth::login` (Step 3.3) the front login and
-//! the `auth_key` handoff token, `game::entry` (Step 4.1) the Game Server
-//! link keyed by the fixed inbound link cipher; the rest of `game::*` and
+//! the `auth_key` handoff token, `game::entry` (Steps 4.1–4.2) the Game
+//! Server link keyed by the fixed inbound link cipher and its opcode 1
+//! handshake; the rest of `game::*` and
 //! `client::*` arrive with their own steps and are intentionally absent.
 
 pub mod auth;

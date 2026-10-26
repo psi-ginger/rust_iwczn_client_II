@@ -12,7 +12,11 @@
 //! Server link keyed by the fixed inbound link cipher and its opcode 1
 //! handshake, `game::login` (Step 4.3) the opcode 2 game login submission,
 //! `game::char_info` (Step 4.4) the character roster and the 592-byte
-//! `MakeCharInfo` detail record, `client::event_loop` (Step 5.1) the
+//! `MakeCharInfo` detail record, `game::world_entry` (README Step 4.5–4.7)
+//! the select-character request, the SERVERINFO banner with its region gate,
+//! the opcode-5 record that populates the local `CharClient`, the village
+//! blueprint exchange and the derived in-world condition,
+//! `client::event_loop` (Step 5.1) the
 //! non-blocking `select!` receive loop with its strict 100 ms read budget and
 //! background tickers, `client::heartbeat` (Step 5.2) the in-game keepalive
 //! ticker and its header-only opcode 100 frame, `client::teardown` (Step

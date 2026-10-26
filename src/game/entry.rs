@@ -441,7 +441,19 @@ impl GameLink {
     /// `RemoveFirstPacket` (`Client-Winsock.cpp:866-916`).
     ///
     /// `Ok(None)` when the peer closes cleanly; buffered complete frames are
-    /// handed out before EOF is observed.
+    /// handed out before EOF is observed. EOF ends the connection: if the
+    /// decoder is still mid-frame at that point, the partial frame's bytes
+    /// are **discarded** (never an error, never delivered) — the peer died
+    /// mid-frame, so they are unrecoverable.
+    ///
+    /// The `[0u8; 4096]` scratch buffer below is a **port-chosen read
+    /// granularity, not a legacy-derived frame-size limit** (QC P-12): the
+    /// legacy `WSARecv` reads into its recv ring's *free space*
+    /// (`GetRecvParam`, `ITZNetIOCP.cpp:154`) and holds no 4096 constant
+    /// anywhere; a frame larger than one 4096 chunk — or split across any
+    /// number of chunks — is reassembled by the accumulating decoder
+    /// (pinned by
+    /// `crate::client::event_loop::tests::a_frame_split_across_two_read_windows_still_reassembles`).
     ///
     /// A [`SessionError::ReadTimeout`] is an ordinary answer here: nothing
     /// is torn down, the partial frame stays buffered, and the cipher
@@ -458,6 +470,8 @@ impl GameLink {
             if let Some(frame) = self.decoder.next_frame()? {
                 return Ok(Some(frame));
             }
+            // Port-chosen read granularity, not a frame-size limit: the
+            // decoder accumulates across reads (QC P-12; doc above).
             let mut buf = [0u8; 4096];
             let n = self.session.read(&mut buf).await?;
             if n == 0 {

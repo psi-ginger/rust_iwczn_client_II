@@ -283,7 +283,18 @@ impl FrontLink {
     /// ([`Decoder`] is never keyed on this link).
     ///
     /// `Ok(None)` when the peer closes the connection cleanly; buffered
-    /// complete frames are handed out before EOF is observed.
+    /// complete frames are handed out before EOF is observed. EOF ends the
+    /// connection: if the decoder is still mid-frame, the partial frame's
+    /// bytes are **discarded** (never an error, never delivered) — the peer
+    /// died mid-frame, so they are unrecoverable.
+    ///
+    /// The `[0u8; 4096]` scratch buffer below is a **port-chosen read
+    /// granularity, not a legacy-derived frame-size limit** (QC P-12): the
+    /// legacy `WSARecv` reads into its recv ring's *free space*
+    /// (`GetRecvParam`, `ITZNetIOCP.cpp:154`) and holds no 4096 constant
+    /// anywhere; a frame larger than one 4096 chunk — or split across any
+    /// number of chunks — is reassembled by the accumulating decoder
+    /// (pinned by `tests::handshake_reassembles_a_frame_split_across_reads`).
     ///
     /// # Errors
     ///
@@ -294,6 +305,8 @@ impl FrontLink {
             if let Some(frame) = self.decoder.next_frame()? {
                 return Ok(Some(frame));
             }
+            // Port-chosen read granularity, not a frame-size limit: the
+            // decoder accumulates across reads (QC P-12; doc above).
             let mut buf = [0u8; 4096];
             let n = self.session.read(&mut buf).await?;
             if n == 0 {

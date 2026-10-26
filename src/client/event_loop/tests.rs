@@ -14,7 +14,8 @@
 // same per-session pairing the game service uses (`main.rs:680`). Read
 // windows are pinned small so the 100 ms behaviour is observable in
 // milliseconds, not seconds. What these prove is the *loop's* contract: an
-// idle socket does not block, tickers keep firing alongside frames, a frame
+// idle socket does not block, tickers keep firing alongside frames, missed
+// ticker intervals coalesce into a single fire, a frame
 // split across budget windows reassembles (cancellation safety), frames
 // buffered ahead of a close are delivered before EOF ends the loop, a
 // handler error on either dispatch path propagates and stops the loop, and a
@@ -110,6 +111,76 @@ async fn an_idle_socket_does_not_block_the_loop_and_tickers_keep_firing() {
     assert!(
         last_fired >= 3,
         "tickers must keep firing while the socket is idle, got {last_fired}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn missed_intervals_coalesce_into_one_fire() {
+    // The coalescing contract (module docs, "tickers are checked"): a whole
+    // gap of missed intervals must produce ONE fire (the deadline stepping
+    // past `now` in a single catch-up), not one fire per missed interval.
+    // On a quiet socket the loop always wakes exactly on time — the virtual
+    // clock only advances while every task is idle — so the gap is made
+    // deterministically: the first fire's handler leaps virtual time forward
+    // by six intervals with `tokio::time::advance` (the handler runs between
+    // wakes, with the loop's select! futures already dropped). The leap is a
+    // single clock move, so the loop's next poll unavoidably finds its
+    // deadline six intervals in the past — the exact "busy for a while"
+    // situation, with no wall-clock window anywhere.
+    //
+    // Timeline (virtual): fire at 25 ms (fired=1) → clock jumps to 175 ms,
+    // having missed the 50/75/100/125/150 deadlines → ONE coalesced wake at
+    // 175 ms (fired=2, deadline stepped to 200) → on-time wake at 200 ms
+    // (fired=3) → the peer drops the connection at 212 ms (between ticks, so
+    // no select! branch race) → EOF ends the loop. A burst implementation
+    // would fire five extra times at 175 ms; a no-catch-up one would keep
+    // re-firing at 175 ms until it crept past it — both stretch the recorded
+    // sequence and fail the assertion.
+    let (listener, addr) = local_listener().await;
+    let _holder = tokio::spawn(async move {
+        let (_stream, _addr) = listener.accept().await.unwrap();
+        // Hold the link open across the leap, then close mid-quiet: EOF lands
+        // between ticker deadlines, so every wake in this test has exactly
+        // one ready select! branch.
+        tokio::time::sleep(Duration::from_millis(212)).await;
+        // Dropping `_stream` sends FIN.
+    });
+
+    const INTERVAL: Duration = Duration::from_millis(25);
+
+    let mut link = GameLink::connect(addr).await.expect("connect");
+    let tickers = [Ticker::new("coalesce", INTERVAL)];
+    let baseline = Instant::now();
+    let mut fires: Vec<(u64, Duration)> = Vec::new();
+    run(
+        &mut link,
+        &tickers,
+        |_link, ev| -> Result<Flow, Infallible> {
+            if let LoopEvent::Ticked { fired, .. } = ev {
+                fires.push((fired, Instant::now() - baseline));
+                if fired == 1 {
+                    // Leap six intervals in one step: five deadlines are
+                    // missed outright and the next wake must coalesce them.
+                    tokio::spawn(async move {
+                        tokio::time::advance(INTERVAL * 6).await;
+                    });
+                }
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await
+    .expect("loop");
+
+    assert_eq!(
+        fires,
+        vec![
+            (1u64, INTERVAL),           // 25 ms: on time
+            (2, INTERVAL * 7),          // 175 ms: ONE wake for the whole gap
+            (3, INTERVAL * 8),          // 200 ms: back on schedule
+        ],
+        "a five-interval gap must coalesce into a single fire (fired=2), \
+         not burst once per missed interval"
     );
 }
 

@@ -110,12 +110,21 @@
 //! next-fire deadline per ticker and awaits only the **earliest** in the
 //! `select!` (a single `sleep_until`, or a `pending()` future when no ticker
 //! exists), so N tickers cost no extra dependencies and no N-way select. When a
-//! deadline is reached, every ticker whose deadline has passed fires once and
-//! its deadline advances to the next whole interval boundary — the legacy's
-//! `now - last >= interval` check (`main.cpp:1625-1630`), which coalesces
-//! intervals missed while the loop was busy instead of bursting to catch up. A
-//! zero `interval` can never be awaited without a hot spin, so it is treated as
-//! disabled and never fires.
+//! deadline is reached, every ticker whose deadline has passed fires **once**
+//! and its deadline advances to the next whole interval boundary, so intervals
+//! missed while the loop was busy coalesce into a single fire instead of
+//! bursting to catch up (pinned by
+//! `tests::missed_intervals_coalesce_into_one_fire`).
+//!
+//! That cadence is a deliberate property of **this port**, not a legacy
+//! behavior (QC 2026-10-26, Finding #1): the legacy main loop has *no*
+//! per-ticker deadline check at all — each pump only stamps
+//! `CurrentClock = timeGetTime()` and calls `NetworkOperation()`
+//! (`main.cpp:1625-1630`) — so the deadline arithmetic below is defined
+//! directly by the Rust design and is not attributed to the C++ code.
+//!
+//! A zero `interval` can never be awaited without a hot spin, so it is
+//! treated as disabled and never fires.
 //!
 //! # Test addresses are synthetic (F-01/F-02)
 //!
@@ -257,6 +266,12 @@ async fn ticker_wait(deadline: Option<Instant>) {
 /// [`Flow::Break`]; [`LoopError::Link`] when the link fails, [`LoopError::Handler`]
 /// when the handler errors. A handler error stops the loop immediately.
 ///
+/// A clean close (EOF) also ends the loop when the decoder is mid-frame:
+/// [`GameLink::next_frame`] answers `Ok(None)`, the partial frame's bytes
+/// are **discarded**, and the loop returns `Ok(())` — an incomplete frame
+/// is never delivered to `handler`. The peer died mid-frame, so the bytes
+/// are unrecoverable; the caller closes the link.
+///
 /// # Errors
 ///
 /// As documented above; see each variant.
@@ -318,9 +333,11 @@ where
             Wake::Ticks => {
                 let now = Instant::now();
                 // Fire every ticker whose deadline has passed, in order; each
-                // advances to the next whole-interval boundary (coalescing any
-                // intervals missed while the loop was busy — the legacy's
-                // `now - last >= interval` check, not a burst).
+                // advances to the next whole-interval boundary, so intervals
+                // missed while the loop was busy coalesce into one fire
+                // instead of bursting. Port-defined cadence — the legacy main
+                // loop has no per-ticker deadline check (module docs,
+                // Finding #1); pinned by `missed_intervals_coalesce_into_one_fire`.
                 for state in states.iter_mut() {
                     if state.deadline <= now {
                         state.fired += 1;

@@ -95,7 +95,7 @@ async fn an_idle_socket_does_not_block_the_loop_and_tickers_keep_firing() {
     run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             if let LoopEvent::Ticked { fired, .. } = ev {
                 last_fired = fired;
                 if fired >= 3 {
@@ -155,7 +155,7 @@ async fn missed_intervals_coalesce_into_one_fire() {
     run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             if let LoopEvent::Ticked { fired, .. } = ev {
                 fires.push((fired, Instant::now() - baseline));
                 if fired == 1 {
@@ -203,7 +203,7 @@ async fn frames_are_delivered_while_tickers_keep_firing() {
     run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             match ev {
                 LoopEvent::Frame(_) => frames += 1,
                 LoopEvent::Ticked { .. } => ticks += 1,
@@ -247,7 +247,7 @@ async fn a_frame_sent_to_an_idle_link_is_delivered_within_the_read_budget() {
     run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             if let LoopEvent::Frame(f) = ev {
                 got = Some(f);
                 return Ok(Flow::Break);
@@ -294,7 +294,7 @@ async fn a_frame_split_across_two_read_windows_still_reassembles() {
     run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             if let LoopEvent::Frame(f) = ev {
                 got = Some(f);
                 return Ok(Flow::Break);
@@ -328,7 +328,7 @@ async fn a_clean_server_close_ends_the_loop() {
     let result = run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             if let LoopEvent::Frame(_) = ev {
                 frames += 1;
             }
@@ -362,7 +362,7 @@ async fn a_plaintext_frame_is_refused_and_stops_the_loop() {
     let result = run(
         &mut link,
         &tickers,
-        |_link, _ev| -> Result<Flow, Infallible> { Ok(Flow::Continue) },
+        async |_link, _ev| -> Result<Flow, Infallible> { Ok(Flow::Continue) },
     )
     .await;
 
@@ -409,13 +409,17 @@ async fn a_handler_error_on_the_tick_path_propagates_and_stops_the_loop() {
     let mut link = GameLink::connect(addr).await.expect("connect");
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut events = 0u32;
-    let result = run(&mut link, &tickers, |_link, ev| -> Result<Flow, Boom> {
-        events += 1;
-        if matches!(ev, LoopEvent::Ticked { .. }) {
-            return Err(Boom);
-        }
-        Ok(Flow::Continue)
-    })
+    let result = run(
+        &mut link,
+        &tickers,
+        async |_link, ev| -> Result<Flow, Boom> {
+            events += 1;
+            if matches!(ev, LoopEvent::Ticked { .. }) {
+                return Err(Boom);
+            }
+            Ok(Flow::Continue)
+        },
+    )
     .await;
 
     assert_eq!(
@@ -447,13 +451,17 @@ async fn a_handler_error_on_the_frame_path_propagates_and_stops_the_loop() {
     let mut link = GameLink::connect(addr).await.expect("connect");
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut frames = 0u32;
-    let result = run(&mut link, &tickers, |_link, ev| -> Result<Flow, Boom> {
-        if matches!(ev, LoopEvent::Frame(_)) {
-            frames += 1;
-            return Err(Boom);
-        }
-        Ok(Flow::Continue)
-    })
+    let result = run(
+        &mut link,
+        &tickers,
+        async |_link, ev| -> Result<Flow, Boom> {
+            if matches!(ev, LoopEvent::Frame(_)) {
+                frames += 1;
+                return Err(Boom);
+            }
+            Ok(Flow::Continue)
+        },
+    )
     .await;
 
     assert_eq!(
@@ -497,7 +505,7 @@ async fn frames_buffered_before_a_clean_close_are_delivered_before_eof() {
     let result = run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, Infallible> {
+        async |_link, ev| -> Result<Flow, Infallible> {
             if let LoopEvent::Frame(f) = ev {
                 got.push(f);
             }

@@ -6,6 +6,11 @@
 //! therefore never blocks the task longer than one budget, and a stream of
 //! frames never starves the tickers.
 //!
+//! As of Step 5.2 the `handler` is an **async** closure (`AsyncFnMut`), so a
+//! ticker handler can `.await` the keepalive it sends
+//! ([`crate::client::heartbeat::send_heartbeat`]). See "Why the handler is
+//! async" below.
+//!
 //! # The defect this replaces (legacy → port)
 //!
 //! The legacy client pumps the network once per frame from a Win32 message
@@ -126,6 +131,22 @@
 //! A zero `interval` can never be awaited without a hot spin, so it is
 //! treated as disabled and never fires.
 //!
+//! # Why the handler is async (Step 5.2 decision record)
+//!
+//! Step 5.1 shipped `handler: FnMut(&mut GameLink, LoopEvent) -> Result<Flow,
+//! E>`; Step 5.2 needs a ticker handler that **sends** the heartbeat, and
+//! `GameLink::send` is `async` (`game/entry.rs:498`) — a synchronous handler
+//! cannot `.await` it, so the bound is `F: AsyncFnMut(&mut GameLink, LoopEvent)
+//! -> Result<Flow, E>` and both dispatch sites `.await` the call. This is the
+//! smallest change that makes the 5.2 acceptance reachable: nothing else about
+//! the loop's timing, wake ordering, or error mapping changes, and every 5.1
+//! test still passes with its closure written `async |..|`.
+//!
+//! The handler runs to completion before the loop's next `select!`, so a
+//! heartbeat send is serialized with frame dispatch on the one task — no
+//! concurrent writer, exactly as the legacy's single pump thread sent from
+//! within its own frame (`Client.cpp:5041-5042`).
+//!
 //! # Test addresses are synthetic (F-01/F-02)
 //!
 //! As on every link so far (QC decisions on CAR-2026-10-24-RETRO01), the live
@@ -139,6 +160,7 @@
 
 use crate::game::entry::{GameError, GameLink};
 use crate::net::codec::Frame;
+use std::ops::AsyncFnMut;
 use std::time::Duration;
 use tokio::time::{sleep_until, Instant};
 
@@ -260,7 +282,9 @@ async fn ticker_wait(deadline: Option<Instant>) {
 /// Each iteration `select!`s between a frame read bounded by
 /// [`READ_POLL_BUDGET`] and the earliest [`Ticker`] deadline, then dispatches
 /// the resulting [`LoopEvent`] to `handler`. The handler receives `&mut link`
-/// so it can respond (e.g. send a keepalive) on the same task.
+/// so it can respond (e.g. send a keepalive) on the same task; it is an
+/// **async** closure (`AsyncFnMut`, module docs "Why the handler is async") so
+/// that send can be awaited.
 ///
 /// Returns `Ok(())` when the peer closes cleanly or the handler returns
 /// [`Flow::Break`]; [`LoopError::Link`] when the link fails, [`LoopError::Handler`]
@@ -281,7 +305,7 @@ pub async fn run<F, E>(
     mut handler: F,
 ) -> Result<(), LoopError<E>>
 where
-    F: FnMut(&mut GameLink, LoopEvent) -> Result<Flow, E>,
+    F: AsyncFnMut(&mut GameLink, LoopEvent) -> Result<Flow, E>,
     E: std::error::Error + 'static,
 {
     // Zero-interval tickers are dropped here (never fire), so the catch-up
@@ -325,7 +349,9 @@ where
             Wake::Closed => return Ok(()),
             Wake::Failed(err) => return Err(LoopError::Link(err)),
             Wake::Frame(frame) => {
-                let flow = handler(link, LoopEvent::Frame(frame)).map_err(LoopError::Handler)?;
+                let flow = handler(link, LoopEvent::Frame(frame))
+                    .await
+                    .map_err(LoopError::Handler)?;
                 if flow == Flow::Break {
                     return Ok(());
                 }
@@ -351,6 +377,7 @@ where
                                 fired: state.fired,
                             },
                         )
+                        .await
                         .map_err(LoopError::Handler)?;
                         if flow == Flow::Break {
                             return Ok(());

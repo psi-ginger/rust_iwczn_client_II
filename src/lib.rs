@@ -14,8 +14,9 @@
 //! `game::char_info` (Step 4.4) the character roster and the 592-byte
 //! `MakeCharInfo` detail record, `client::event_loop` (Step 5.1) the
 //! non-blocking `select!` receive loop with its strict 100 ms read budget and
-//! background tickers; the rest of `game::*` and `client::*` arrive with their
-//! own steps and are intentionally absent.
+//! background tickers, `client::heartbeat` (Step 5.2) the in-game keepalive
+//! ticker and its header-only opcode 100 frame; the rest of `game::*` and
+//! `client::*` arrive with their own steps and are intentionally absent.
 
 pub mod auth;
 pub mod client;

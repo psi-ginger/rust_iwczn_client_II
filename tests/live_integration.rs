@@ -149,7 +149,7 @@ async fn live_event_loop_idles_cleanly_and_ticks() {
     let result = run(
         &mut link,
         &tickers,
-        |_link, ev| -> Result<Flow, std::convert::Infallible> {
+        async |_link, ev| -> Result<Flow, std::convert::Infallible> {
             match ev {
                 LoopEvent::Ticked { name, fired } => {
                     ticks += 1;

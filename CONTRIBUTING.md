@@ -25,6 +25,26 @@ Every step, and every QC follow-up, must pass **all five** gates before it can b
 > introduce a `rustfmt.toml` to reformat history, and never let `cargo fmt` alter logic (it is
 > whitespace/collapse only; review `git diff` after every `cargo fmt`).
 
+### Live integration (opt-in, not part of the hermetic gate)
+
+`tests/live_integration.rs` runs the real handshakes against a **reachable** server. It exists
+because the 131 loopback tests are circular for one assumption: they encode with this crate's own
+`Cipher`, so they cannot detect a mismatch between the client's hardcoded link key
+(`0x12, 0x34`) and the game service's *configured* link key (`cfg.link_key`, SEC-014,
+`services/game/src/main.rs:680`). Only a live handshake proves that pairing.
+
+The three tests are `#[ignore]`d so `cargo test` stays network-free. Run them when a server is
+reachable:
+
+```
+GOONZU_LIVE_FRONT=host:frontport GOONZU_LIVE_GAME=host:gameport \
+    cargo test --test live_integration -- --ignored --nocapture
+```
+
+Endpoints come from the environment (tunnel addresses are per-session — never hardcode them).
+A live pass is **evidence**, not a gate: it is never required for a step to be `PASSED`, and a
+step must not be blocked on a server being up.
+
 ---
 
 ## The WBS Micro-Milestone Roadmap

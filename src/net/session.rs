@@ -73,7 +73,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use thiserror::Error;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
@@ -259,6 +259,25 @@ impl Session {
     #[must_use]
     pub fn stream(&mut self) -> &mut TcpStream {
         &mut self.stream
+    }
+
+    /// Closes the connection with a write-side shutdown, so the peer
+    /// observes a clean EOF (FIN) instead of a reset.
+    ///
+    /// The transport half of the legacy `ITZSession::CloseSocket`
+    /// (`ITZSession.cpp:194-203`, `_closesocket()` under the session's
+    /// critical section), which runs from the destructor
+    /// (`ITZSession.cpp:33`) and which the front link closes explicitly on
+    /// exit (`Client-Winsock.cpp:788`). Step 5.3's
+    /// [`crate::client::teardown::terminate`] is the only caller on the
+    /// game link; nothing else ever closes a live session — a read timeout
+    /// still never does (F-02, module docs above).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::Io`] if the shutdown fails.
+    pub async fn close(&mut self) -> Result<(), SessionError> {
+        self.stream.shutdown().await.map_err(SessionError::Io)
     }
 }
 

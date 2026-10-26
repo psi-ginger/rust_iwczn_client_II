@@ -15,8 +15,10 @@
 //! `MakeCharInfo` detail record, `client::event_loop` (Step 5.1) the
 //! non-blocking `select!` receive loop with its strict 100 ms read budget and
 //! background tickers, `client::heartbeat` (Step 5.2) the in-game keepalive
-//! ticker and its header-only opcode 100 frame; the rest of `game::*` and
-//! `client::*` arrive with their own steps and are intentionally absent.
+//! ticker and its header-only opcode 100 frame, `client::teardown` (Step
+//! 5.3) the graceful exit path — first-wins shutdown flag, tracked tasks,
+//! bounded drain; the rest of `game::*` and `client::*` arrive with their
+//! own steps and are intentionally absent.
 
 pub mod auth;
 pub mod client;

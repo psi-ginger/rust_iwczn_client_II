@@ -502,6 +502,24 @@ impl GameLink {
         Ok(self.encoder.send(&mut self.session, cmd, payload).await?)
     }
 
+    /// Closes the link — the game-socket exit path of Step 5.3's teardown.
+    ///
+    /// Delegates to [`Session::close`]: a write-side shutdown, so the server
+    /// sees a clean EOF. This is the port's counterpart to the legacy's
+    /// explicit socket teardown on exit — `ITZSession::CloseSocket`
+    /// (`ITZSession.cpp:194-203`, called from its destructor `:33` and for
+    /// the front link at `Client-Winsock.cpp:788`). The legacy's *server*
+    /// disconnect path does the reverse (it notices the dead session and
+    /// raises the exit dialog, `Client-Winsock.cpp:834-844`); here both
+    /// directions run through this one close.
+    ///
+    /// # Errors
+    ///
+    /// [`GameError::Session`] if the shutdown fails.
+    pub async fn close(&mut self) -> Result<(), GameError> {
+        Ok(self.session.close().await?)
+    }
+
     /// The negotiated handshake state — `char_unique`, the session seeds,
     /// and the advertised `version` — once [`GameLink::handshake`] has run;
     /// `None` while the send gate is closed.

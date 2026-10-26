@@ -6,12 +6,15 @@ description = "Native Rust port of the GoonZu World client (1-1 OOP parity with 
 
 # Step 1.1 scope: minimal, high-performance dependencies only.
 # - tokio: async runtime (rt/net/macros/time) for TCP sessions and tickers;
-#   io-util added by Step 2.1 for AsyncReadExt/AsyncWriteExt (bounded reads).
+#   io-util added by Step 2.1 for AsyncReadExt/AsyncWriteExt (bounded reads);
+#   signal added by Step 5.3 for tokio::signal::ctrl_c (graceful Ctrl+C
+#   teardown) - still tokio-only as a direct dependency: no new crates of
+#   our own, only the signal feature's transitive deps under tokio.
 # - bytes: zero-copy wire buffers for framed packet codec
 # - tracing / tracing-subscriber: structured protocol logging
 # - thiserror: typed protocol/IO error definitions
 [dependencies]
-tokio = { version = "1", features = ["rt", "net", "macros", "time", "io-util"] }
+tokio = { version = "1", features = ["rt", "net", "macros", "time", "io-util", "signal"] }
 bytes = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"

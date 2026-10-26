@@ -158,6 +158,7 @@
 //! frame the peer writes is a handwritten `(cmd, payload)` and the assertions
 //! compare against those literals.
 
+use super::teardown::{Cause, Shutdown};
 use crate::game::entry::{GameError, GameLink};
 use crate::net::codec::Frame;
 use std::ops::AsyncFnMut;
@@ -279,6 +280,12 @@ async fn ticker_wait(deadline: Option<Instant>) {
 /// Runs the non-blocking receive loop over `link` until it closes, fails, or
 /// the handler breaks.
 ///
+/// Equivalent to [`run_with_shutdown`] with a **fresh, unobserved**
+/// [`Shutdown`] — i.e. no external stop request can reach it; only EOF,
+/// failure, or the handler's [`Flow::Break`] end it. Kept as the Step 5.1
+/// entry point so every existing caller and test keeps its exact contract;
+/// Step 5.3 callers pass a shared flag to [`run_with_shutdown`] instead.
+///
 /// Each iteration `select!`s between a frame read bounded by
 /// [`READ_POLL_BUDGET`] and the earliest [`Ticker`] deadline, then dispatches
 /// the resulting [`LoopEvent`] to `handler`. The handler receives `&mut link`
@@ -302,6 +309,44 @@ async fn ticker_wait(deadline: Option<Instant>) {
 pub async fn run<F, E>(
     link: &mut GameLink,
     tickers: &[Ticker],
+    handler: F,
+) -> Result<(), LoopError<E>>
+where
+    F: AsyncFnMut(&mut GameLink, LoopEvent) -> Result<Flow, E>,
+    E: std::error::Error + 'static,
+{
+    run_with_shutdown(link, tickers, &Shutdown::new(), handler).await
+}
+
+/// [`run`] with a [`Shutdown`] flag polled every iteration — Step 5.3
+/// (`CONTRIBUTING.md:152-155`).
+///
+/// Identical to [`run`] except for two additions:
+///
+/// - **Stop request.** The flag is checked at the top of each iteration, so
+///   a trigger observed mid-wait ends the loop after at most one
+///   [`READ_POLL_BUDGET`] (100 ms) of waiting on the socket — bounded
+///   shutdown latency (pinned by
+///   `tests::triggered_shutdown_stops_the_loop_within_one_read_budget`).
+///   Returns `Ok(())`, exactly like a clean EOF.
+/// - **Detected disconnect.** On `Wake::Closed` (peer EOF) or `Wake::Failed`
+///   the loop claims [`Cause::ServerDisconnect`] before
+///   returning — the port's counterpart of the legacy noticing a dead game
+///   session and raising the exit path (`Client-Winsock.cpp:834-844`).
+///
+/// [`Flow::Break`] deliberately does **not** claim a cause: a handler that
+/// ends the loop on purpose may be doing a routine state change, and
+/// [`crate::client::teardown::terminate`] supplies
+/// [`Cause::ServerDisconnect`] for any shutdown still unclaimed at teardown
+/// time.
+///
+/// # Errors
+///
+/// As [`run`].
+pub async fn run_with_shutdown<F, E>(
+    link: &mut GameLink,
+    tickers: &[Ticker],
+    shutdown: &Shutdown,
     mut handler: F,
 ) -> Result<(), LoopError<E>>
 where
@@ -322,6 +367,13 @@ where
         .collect();
 
     loop {
+        // Step 5.3: a shutdown claimed while this iteration waited (or
+        // before the loop even started) ends the loop here — bounded by one
+        // read budget above (module docs).
+        if shutdown.is_triggered() {
+            return Ok(());
+        }
+
         // Only the earliest deadline is awaited (module docs).
         let earliest = states.iter().map(|s| s.deadline).min();
 
@@ -346,8 +398,16 @@ where
 
         match wake {
             Wake::Idle => {}
-            Wake::Closed => return Ok(()),
-            Wake::Failed(err) => return Err(LoopError::Link(err)),
+            // Detected disconnect (Step 5.3): claim the cause so teardown
+            // reports *why* the loop ended, then finish as before.
+            Wake::Closed => {
+                shutdown.trigger(Cause::ServerDisconnect);
+                return Ok(());
+            }
+            Wake::Failed(err) => {
+                shutdown.trigger(Cause::ServerDisconnect);
+                return Err(LoopError::Link(err));
+            }
             Wake::Frame(frame) => {
                 let flow = handler(link, LoopEvent::Frame(frame))
                     .await

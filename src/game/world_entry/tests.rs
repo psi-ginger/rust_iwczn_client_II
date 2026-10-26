@@ -138,7 +138,7 @@ fn village_struct_payload(village_unique: i16) -> [u8; VILLAGE_STRUCT_PAYLOAD_LE
 
 /// A 592-byte opcode-5 `cltMakeCharInfo` body for `unique`, hand-placed from
 /// the field table (`CommonHeader.h:1969-1977`, binary offsets per
-/// `game.rs:986-1003`): the bitfields low-bits-first, the tail fields at
+/// `game.rs:1023-1041`): the bitfields low-bits-first, the tail fields at
 /// their measured offsets. Only the fields `CharClient` models need real
 /// values; the rest carry junk a shifted read would trip over.
 fn make_char_body(unique: u16) -> [u8; MAKE_CHAR_INFO_PAYLOAD_LEN] {
@@ -243,12 +243,12 @@ fn constants_match_the_wire_truth() {
     assert_eq!(
         MAX_EVENT_NUMBER, 8,
         "CommonHeader.h:765 (the port encodes event_switch: [bool; 8], \
-         game.rs:1005)"
+         game.rs:1003-1005)"
     );
     assert_eq!(
         EVENT_TOGGLE_SWITCH_MAX, 2,
         "CommonHeader.h:868 (the port encodes event_toggle_switch: [bool; 2], \
-         game.rs:1013)"
+         game.rs:1011-1013)"
     );
     assert_eq!(
         SELECT_CHAR_SLOT_MAX, 3,
@@ -353,7 +353,7 @@ fn village_struct_request_is_a_little_endian_ref() {
 fn a_ref_no_server_would_honour_is_refused() {
     // The server accepts 1 <= ref < MAX_VILLAGE_NUMBER (game.rs:53-56);
     // ref 0 is the legacy's "not a village" sentinel that is never requested
-    // at all (Client-Login.cpp:277).
+    // at all (Client-Login.cpp:279).
     for village_ref in [0, -1, 100, 1_000, i32::MIN, i32::MAX] {
         let err = village_struct_request_payload(village_ref).unwrap_err();
         assert!(
@@ -569,7 +569,7 @@ fn village_struct_rejects_foreign_opcodes_and_wrong_lengths() {
 
 #[test]
 fn a_negative_village_answer_is_refused_rather_than_applied() {
-    // Client-SystemNPC.cpp:880/897 — the legacy raises a message box for a
+    // Client-SystemNPC.cpp:880,898-900 — the legacy raises a message box for a
     // negative VillageUnique; this port refuses before touching the wait.
     let mut state = WorldEntryState::new(MY_CHAR_UNIQUE);
     state.mark_village_struct_requested();
@@ -679,7 +679,7 @@ fn entry_completes_only_when_banner_record_and_village_agree() {
     assert!(!state.is_in_world(), "banner alone is not entry");
 
     // 3. Character populated, no village requested (a non-village map never
-    //    sets the wait, Client-Login.cpp:277): in world.
+    //    sets the wait, Client-Login.cpp:279): in world.
     state
         .apply_login(RESPONSE_LOGIN, &make_char_body(MY_CHAR_UNIQUE as u16))
         .expect("record");

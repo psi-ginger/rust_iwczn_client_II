@@ -30,7 +30,7 @@
 //! precede LOGIN because it sets the switch the avatar-creation path checks
 //! (below). The client's village request is *not* part of that burst: it is
 //! issued only once the local map is loaded and only when that map is a
-//! village (`Client-Login.cpp:277-288`).
+//! village (`Client-Login.cpp:279-288`).
 //!
 //! # Which source owns which fact
 //!
@@ -52,7 +52,7 @@
 //! |---|---|---|---|
 //! | `bReceiveServerInfoSwitch` | SERVERINFO handler (`Client-System.cpp:1720`) | session reset (`Client.cpp:1003`) | `SetCharReservedChar` (`Client-SetChar.cpp:110`) |
 //! | `bWaitVillageStructureInfoSwitch` | the LOGIN handler when it requests a village (`Client-Login.cpp:288`) | the VILLAGESTRUCT handler (`Client-SystemNPC.cpp:896`) | `PopChar` (`Client-SetChar.cpp:66`) |
-//! | the populated `cltCharClient` | `SetChar` from the opcode-5 record whose `uiMakeCharUnique == MyCharUnique` (`Client-Login.cpp:116`) | `DeleteChar` on re-login (`Client-Login.cpp:159`) | every per-frame path |
+//! | the populated `cltCharClient` | `SetChar` from the opcode-5 record whose `uiMakeCharUnique == MyCharUnique` (`Client-Login.cpp:116`) | `DeleteChar` on re-login (`Client-Login.cpp:219`) | every per-frame path |
 //!
 //! [`WorldEntryState`] models exactly those three. [`WorldEntryState::is_in_world`]
 //! is therefore derived, not stored: a character is in the world when the
@@ -154,7 +154,7 @@ pub const VILLAGE_STRUCT_REQUEST_PAYLOAD_LEN: usize = 4;
 /// `sizeof(cltGameMsgResponse_ServerInfo)` under MSVC default packing: the
 /// server port measures 48 (`SERVER_INFO_PAYLOAD_LEN`, `game.rs:35`) and its
 /// `ServerInfo::encode` documents each field's offset to that length
-/// (`game.rs:990-1015`, "Encodes the 48-byte body. `Server.cpp:6470-6487`").
+/// (`game.rs:987-1015`, "Encodes the 48-byte body. `Server.cpp:6470-6487`").
 pub const SERVER_INFO_PAYLOAD_LEN: usize = 48;
 
 /// `sizeof(cltGameMsgResponse_VillageStruct)`: `SI16 VillageUnique` +
@@ -171,12 +171,12 @@ pub const MAX_CONSTRUCTION_NUM: usize = 10;
 
 /// `MAX_EVENT_NUMBER` = 8, the width of SERVERINFO's `bEventSwitch`
 /// (`CommonHeader.h:765`; the server port encodes `event_switch: [bool; 8]`,
-/// `game.rs:1005`).
+/// `game.rs:1003-1005`).
 pub const MAX_EVENT_NUMBER: usize = 8;
 
 /// `EVENT_TOGGLE_SWITCH_MAX` = 2, the width of SERVERINFO's
 /// `bEventToggleSwitch` (`CommonHeader.h:868`; the server port encodes
-/// `event_toggle_switch: [bool; 2]`, `game.rs:1013`).
+/// `event_toggle_switch: [bool; 2]`, `game.rs:1011-1013`).
 pub const EVENT_TOGGLE_SWITCH_MAX: usize = 2;
 
 /// `MAX_CHAR_PER_USER` = 3 — the select dialog refuses any
@@ -262,7 +262,7 @@ pub enum WorldEntryError {
     /// A `REQUEST_VILLAGESTRUCT` ref outside `1..`[`MAX_VILLAGE_NUMBER`] —
     /// the server port's own range check (`game.rs:53-56`). Ref 0 is the
     /// legacy's "this map is not a village, ask for nothing" sentinel
-    /// (`Client-Login.cpp:277`), which is why it is refused here rather than
+    /// (`Client-Login.cpp:279`), which is why it is refused here rather than
     /// sent.
     #[error("village-struct ref {village_ref} is outside 1..{max}")]
     VillageRefOutOfRange {
@@ -273,7 +273,7 @@ pub enum WorldEntryError {
     },
     /// A VILLAGESTRUCT answer naming a negative village — the legacy's error
     /// branch, which raises a message box rather than applying the blueprint
-    /// (`Client-SystemNPC.cpp:897`). Refused here instead of displayed.
+    /// (`Client-SystemNPC.cpp:898-900`). Refused here instead of displayed.
     #[error("VILLAGESTRUCT answer names village {village_unique}, which is negative")]
     NegativeVillageUnique {
         /// The `VillageUnique` from the answer.
@@ -328,7 +328,7 @@ pub fn select_char_payload(slot: i32) -> Result<[u8; SELECT_CHAR_PAYLOAD_LEN], W
 ///
 /// [`WorldEntryError::VillageRefOutOfRange`] for a ref outside
 /// `1..`[`MAX_VILLAGE_NUMBER`] — including 0, which the legacy uses as the
-/// "not a village, request nothing" sentinel (`Client-Login.cpp:277`) and
+/// "not a village, request nothing" sentinel (`Client-Login.cpp:279`) and
 /// which therefore must never be sent.
 pub fn village_struct_request_payload(
     village_ref: i32,
@@ -483,7 +483,7 @@ pub struct ServerInfo {
     /// `siBestVillageLevel` at 10.
     pub best_village_level: i8,
     /// `siNPCPriceRate` at 12..16 — copied into the item statistics the
-    /// quest-reward path reads (`Client-System.cpp:1711`).
+    /// quest-reward path reads (`Client-System.cpp:1702`).
     pub npc_price_rate: i32,
     /// `siItemPriceIndex` at 16..24 — `GMONEY`, an `SI64`.
     pub item_price_index: i64,
@@ -491,9 +491,10 @@ pub struct ServerInfo {
     pub event_switch: [bool; MAX_EVENT_NUMBER],
     /// `siMinimumTeacherLevel` at 32..36.
     pub minimum_teacher_level: i32,
-    /// `siServiceAge` at 36..38 — the handler records it but the shipped
-    /// branch is commented out (`Client-System.cpp:1716-1717`), so this port
-    /// parses the value without acting on it.
+    /// `siServiceAge` at 36..38 — the SERVERINFO handler's write to it is
+    /// commented out in the shipped client (`Client-System.cpp:1713`); the
+    /// value arrives from another message instead (`Client-Winsock.cpp:359`),
+    /// so this port parses it without acting on it either.
     pub service_age: i16,
     /// `siEnablePVP` at 38.
     pub enable_pvp: i8,
@@ -559,11 +560,11 @@ pub fn parse_server_info(cmd: u16, payload: &[u8]) -> Result<ServerInfo, WorldEn
 pub struct VillageStruct {
     /// `VillageUnique` at 0..2 — the village this blueprint belongs to. The
     /// handler branches on its sign: negative is an error box
-    /// (`Client-SystemNPC.cpp:880,897`).
+    /// (`Client-SystemNPC.cpp:880,898-900`).
     pub village_unique: i16,
     /// `siVillageStructureInfo` at 2..22 — the building slots, wiped and
     /// refilled one per index by the handler
-    /// (`Client-SystemNPC.cpp:887-893`).
+    /// (`Client-SystemNPC.cpp:884-889`).
     pub structure_info: [i16; MAX_CONSTRUCTION_NUM],
 }
 
@@ -600,9 +601,10 @@ pub fn parse_village_struct(cmd: u16, payload: &[u8]) -> Result<VillageStruct, W
 /// `uiMakeCharUnique` equals the connection's `MyCharUnique`
 /// (`Client-Login.cpp:116`), which is the only record the legacy turns into
 /// the *local* avatar: `SetChar` builds the `cltCharClient` from it
-/// (`Client-SetChar.cpp:137`), and the README Step 4 gate — "player stats
-/// (Level, HP, coordinates) match wire payload exactly" — is a comparison
-/// against exactly these values.
+/// (`Client-SetChar.cpp:138`), and the README Step 4 gate — "player stats
+/// (Level, HP, MP, coordinates) match wire payload exactly" (`README.md:97`) — is a comparison
+/// against exactly these values for every field `MakeCharInfo` carries; `MP`
+/// is the one it does not, as the paragraph below explains.
 ///
 /// **What is deliberately not here:** `MakeCharInfo` carries no mana field, so
 /// neither does this struct — MP arrives on later state-sync frames (the
@@ -623,7 +625,7 @@ pub struct CharClient {
     /// `uiLife` — current hit points (README gate: "HP").
     pub life: u32,
     /// `uiX` — the map tile x (README gate: "coordinates"), copied into
-    /// `clPos.siX` by the legacy (`Client-Login.cpp:192`).
+    /// `clPos.siX` by the legacy (`Client-Login.cpp:193`).
     pub x: u16,
     /// `uiY` — the map tile y (README gate: "coordinates").
     pub y: u16,
@@ -644,7 +646,7 @@ pub struct CharClient {
 impl CharClient {
     /// Builds the local character from the opcode-5 record the service sent
     /// for this connection — the port's `SetChar(1, &clinfo)`
-    /// (`Client-SetChar.cpp:137`), field for field.
+    /// (`Client-SetChar.cpp:138`), field for field.
     #[must_use]
     pub fn from_make_char_info(info: &MakeCharInfo) -> Self {
         Self {
@@ -684,10 +686,10 @@ pub struct WorldEntryState {
     /// `bWaitVillageStructureInfoSwitch` (`Client-Login.cpp:288`) — set when a
     /// blueprint is requested, cleared by the answer
     /// (`Client-SystemNPC.cpp:896`). Starts clear: a map that is not a village
-    /// never sets it (`Client-Login.cpp:277`).
+    /// never sets it (`Client-Login.cpp:279`).
     village_struct_pending: bool,
     /// The populated `cltCharClient` for `MyCharUnique`
-    /// (`Client-SetChar.cpp:137`).
+    /// (`Client-SetChar.cpp:138`).
     char_client: Option<CharClient>,
 }
 
@@ -759,14 +761,14 @@ impl WorldEntryState {
     ///
     /// Call this after [`request_village_struct`] succeeds. Ref 0 (a map that
     /// is not a village) is never requested and therefore never recorded, so
-    /// it cannot stall entry (`Client-Login.cpp:277`).
+    /// it cannot stall entry (`Client-Login.cpp:279`).
     pub fn mark_village_struct_requested(&mut self) {
         self.village_struct_pending = true;
     }
 
     /// Applies a `RESPONSE_VILLAGESTRUCT` frame: parses it, refuses a negative
     /// village (the legacy's message-box branch,
-    /// `Client-SystemNPC.cpp:880,897`), and on success clears the outstanding
+    /// `Client-SystemNPC.cpp:880,898-900`), and on success clears the outstanding
     /// wait (`:896`).
     ///
     /// # Errors

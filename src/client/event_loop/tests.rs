@@ -175,9 +175,9 @@ async fn missed_intervals_coalesce_into_one_fire() {
     assert_eq!(
         fires,
         vec![
-            (1u64, INTERVAL),           // 25 ms: on time
-            (2, INTERVAL * 7),          // 175 ms: ONE wake for the whole gap
-            (3, INTERVAL * 8),          // 200 ms: back on schedule
+            (1u64, INTERVAL),  // 25 ms: on time
+            (2, INTERVAL * 7), // 175 ms: ONE wake for the whole gap
+            (3, INTERVAL * 8), // 200 ms: back on schedule
         ],
         "a five-interval gap must coalesce into a single fire (fired=2), \
          not burst once per missed interval"
@@ -409,17 +409,13 @@ async fn a_handler_error_on_the_tick_path_propagates_and_stops_the_loop() {
     let mut link = GameLink::connect(addr).await.expect("connect");
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut events = 0u32;
-    let result = run(
-        &mut link,
-        &tickers,
-        |_link, ev| -> Result<Flow, Boom> {
-            events += 1;
-            if matches!(ev, LoopEvent::Ticked { .. }) {
-                return Err(Boom);
-            }
-            Ok(Flow::Continue)
-        },
-    )
+    let result = run(&mut link, &tickers, |_link, ev| -> Result<Flow, Boom> {
+        events += 1;
+        if matches!(ev, LoopEvent::Ticked { .. }) {
+            return Err(Boom);
+        }
+        Ok(Flow::Continue)
+    })
     .await;
 
     assert_eq!(
@@ -451,17 +447,13 @@ async fn a_handler_error_on_the_frame_path_propagates_and_stops_the_loop() {
     let mut link = GameLink::connect(addr).await.expect("connect");
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut frames = 0u32;
-    let result = run(
-        &mut link,
-        &tickers,
-        |_link, ev| -> Result<Flow, Boom> {
-            if matches!(ev, LoopEvent::Frame(_)) {
-                frames += 1;
-                return Err(Boom);
-            }
-            Ok(Flow::Continue)
-        },
-    )
+    let result = run(&mut link, &tickers, |_link, ev| -> Result<Flow, Boom> {
+        if matches!(ev, LoopEvent::Frame(_)) {
+            frames += 1;
+            return Err(Boom);
+        }
+        Ok(Flow::Continue)
+    })
     .await;
 
     assert_eq!(

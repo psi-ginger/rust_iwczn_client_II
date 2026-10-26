@@ -6,6 +6,27 @@ Each step has an isolated scope, strict acceptance criteria, and zero tolerance 
 
 ---
 
+## Mandatory Gate Set (applies to every step)
+
+Every step, and every QC follow-up, must pass **all five** gates before it can be marked `PASSED`. A gate that is not run, or that cannot run, is **not** a pass — record it as unverified instead.
+
+| Gate | Command | Requirement |
+| :--- | :--- | :--- |
+| Compile | `cargo check --all-targets` | 0 errors, 0 warnings (`RUSTFLAGS=-D warnings`) |
+| Lint | `cargo clippy --all-targets -- -D warnings` | 0 warnings |
+| Format | `cargo fmt --check` | 0 diffs (rustfmt 1.x, default style — no `rustfmt.toml` in this repo) |
+| Tests | `cargo test` | 100% pass; baseline count recorded in `TASK_MATRIX.md` |
+| Docs | `cargo doc --no-deps` | 0 warnings, 0 errors |
+
+> **rustfmt (added 2026-10-26, QC):** the format gate was previously absent — `rustfmt` was not
+> installed and no `rustfmt.toml` existed, so no formatting result has ever been recorded for this
+> repo. It is now a required gate. Install with `rustup component add rustfmt`; apply with
+> `cargo fmt`; verify with `cargo fmt --check`. Style is stock rustfmt defaults — do **not**
+> introduce a `rustfmt.toml` to reformat history, and never let `cargo fmt` alter logic (it is
+> whitespace/collapse only; review `git diff` after every `cargo fmt`).
+
+---
+
 ## The WBS Micro-Milestone Roadmap
 
 ### [MOD-01: Foundation & Binary Primitives]

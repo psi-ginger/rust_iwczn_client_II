@@ -148,7 +148,8 @@ step must not be blocked on a server being up.
 * **Step 5.2: In-Game Heartbeat / Keepalive**
   - Path: `src/client/heartbeat.rs`
   - Scope: 10-second recurring ticker firing keepalive pings over the active game session.
-  - Acceptance: Server logs continuously record heartbeat/ping packets over 60 seconds without dropping connection.
+  - Acceptance: A live game connection stays up for 60s+ under the heartbeat without the server dropping it; the frame is header-only opcode 100 (`usSize` 5, no payload), session-ciphered, uncompressed, byte-exact to the legacy `cltMsg(GAMEMSG_REQUEST_HEARTBEAT, 0, NULL)`. Proven by the live soak in `tests/live_integration.rs` (7 ticks / 70s, connection never dropped) plus the byte-exact wire test.
+    > *Rewritten 2026-10-27 (QC, as in F-43-02): the original acceptance asked that "server logs continuously record heartbeat/ping packets." That clause cannot hold — the game service **deliberately mutes** opcode 100's recv log (`services/game/src/main.rs:1106-1112`: "muted, they dominated the recv log for no signal"). The connection-survival observable is the real criterion; the muted log is a server-side signal-to-noise decision, not a client defect.*
 * **Step 5.3: Graceful Teardown & Signal Handling**
   - Path: `src/client/teardown.rs`
   - Scope: Clean disconnection handling on `Ctrl+C` or server disconnect signal. Closes sockets cleanly without leaking tasks.

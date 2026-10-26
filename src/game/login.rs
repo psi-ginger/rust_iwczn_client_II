@@ -50,7 +50,7 @@
 //!
 //! The server port derives the identical number from the same header:
 //! `GAME_LOGIN_PAYLOAD_LEN` = 48, "including its 3 trailing pad bytes"
-//! (`gz-proto/src/game.rs:29-30`, citing `CommonHeader.h:1442-1452`), and its
+//! (`gz-proto/src/game.rs:18-20`, citing `CommonHeader.h:1442-1452`), and its
 //! `GameLogin::decode` reads `i32` at 0, `fixed_str(20)` at 4 and 24, `u8`
 //! at 44, refusing a body shorter than 45 - exactly this layout. The three
 //! pad bytes travel as zeros here; the legacy sends whatever sat in that
@@ -131,7 +131,7 @@ pub const REQUEST_LOGIN: u16 = 2;
 /// `sizeof(cltLogInInfo)` under MSVC default packing: 45 meaningful bytes
 /// plus 3 tail pad (`CommonHeader.h:1442-1452` + `MAX_PLAYER_NAME` 20 at
 /// `:575`); the server port's `GAME_LOGIN_PAYLOAD_LEN`
-/// (`gz-proto/src/game.rs:29-30`) is the same 48. The frame's `usSize` is
+/// (`gz-proto/src/game.rs:18-20`) is the same 48. The frame's `usSize` is
 /// therefore 53 (`MsgType.h:2967`).
 pub const GAME_LOGIN_PAYLOAD_LEN: usize = 48;
 

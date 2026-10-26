@@ -32,11 +32,11 @@
 //! | 0..2 | `usSize` | 10 (`sizeof(sResponse_SecretKey)`, `FrontMsg.h:132-141`) |
 //! | 2 | `ucChk` | written uninitialized by the legacy server; `0` by the server port |
 //! | 3..5 | `usCmd` | 30000 (`FRONTMSG_RESPONSE_SECRETKEY`, `FrontMsg.h:114`) |
-//! | payload[0] | `ucTemp1` | indeterminate — never read by the client |
-//! | payload[1] | `ucTemp2` | indeterminate — never read by the client |
-//! | **payload[2]** | **`ucKey1`** | first session-cipher seed |
-//! | payload[3] | `ucTemp3` | indeterminate — never read by the client |
-//! | **payload[4]** | **`ucKey2`** | second session-cipher seed |
+//! | payload\[0\] | `ucTemp1` | indeterminate — never read by the client |
+//! | payload\[1\] | `ucTemp2` | indeterminate — never read by the client |
+//! | **payload\[2\]** | **`ucKey1`** | first session-cipher seed |
+//! | payload\[3\] | `ucTemp3` | indeterminate — never read by the client |
+//! | **payload\[4\]** | **`ucKey2`** | second session-cipher seed |
 //!
 //! The client handler does `GetEncrypt()->SetKey(ucKey1, ucKey2)` on the
 //! **front session's session cipher** (`Client-Winsock.cpp:226-228`) — the

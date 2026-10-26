@@ -137,7 +137,7 @@ fn constants_match_the_wire_truth() {
         GAME_LOGIN_PAYLOAD_LEN, 48,
         "CommonHeader.h:1442-1452 + MAX_PLAYER_NAME 20 at :575 — 4 + 20 + 20 \
          + 1 = 45 meaningful bytes under /Zp8 rounded to 48 (the server \
-         port's GAME_LOGIN_PAYLOAD_LEN = 48, game.rs:29-30, 'including its 3 \
+         port's GAME_LOGIN_PAYLOAD_LEN = 48, game.rs:18-20, 'including its 3 \
          trailing pad bytes')"
     );
     assert_eq!(

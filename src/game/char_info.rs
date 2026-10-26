@@ -527,7 +527,7 @@ pub struct MakeCharInfo {
     pub jim_char_unique: i16,
     /// `clEnemyType.siEnemyType` at 0x38..0x3A - the hostility mask; the
     /// one body field the port always sets for a player
-    /// ([`ENEMYTYPE_PC`]-style, `game.rs:62-71`).
+    /// (`ENEMYTYPE_PC`-style as the port names it, `game.rs:62-71`).
     pub enemy_type: u16,
     /// `siCurrentShowHorse` at 0x50 - which summoned horse is displayed.
     pub current_show_horse: u8,

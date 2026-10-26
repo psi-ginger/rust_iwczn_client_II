@@ -80,10 +80,18 @@ Each step has an isolated scope, strict acceptance criteria, and zero tolerance 
   - Path: `src/game/entry.rs`
   - Scope: Receive Opcode 1 (`ResponseClientcharunique`). Parse unique ID and session seeds `payload[4], payload[5]`. Initialize outbound session cipher.
   - Acceptance: Client logs displaying correct session seeds matching Game Server console logs.
+  - Seed log (QC P-08): every successful `GameLink::handshake` (`src/game/entry.rs`, the real
+    success path — not startup code) emits at INFO via `tracing`:
+    `client handshake succeeded: session_seed = (0xRR, 0xRR), char_unique = <id>` (once per
+    connection; idempotent re-entry does not re-log). Purpose: connection verification and
+    troubleshooting — `(0xRR, 0xRR)` is the `key1, key2` pair printed exactly as the server
+    console prints it (`game: <peer>: charunique=<id> -> (0xRR, 0xRR)`, timestamp-prefixed by
+    `logln!`, `services/game/src/main.rs`), so any session can be traced back to its server-side
+    keying line in later QC runs.
 * **Step 4.3: Game Login Submission (Opcode 2)**
   - Path: `src/game/login.rs`
   - Scope: Send Opcode 2 (`RequestLogin`, 48 bytes) enciphered with session cipher, carrying account name and 4-byte `auth_key` from Step 3.3.
-  - Acceptance: Server logs confirm: `game: 127.0.0.1:xxxx: game login for account "..."` without "unknown account" rejection.
+  - Acceptance: Server logs confirm `game: login ok for "<user>" (account <id>, auth_key <key>): <n> character(s)` (timestamp-prefixed by `logln!`, `services/game/src/auth.rs`) with no `game login for unknown account "<user>"` rejection. This is the actual success line; the client tracks the same literal in `src/game/login.rs` module docs (`game: login ok for ... (account ..., auth_key ...)`).
 * **Step 4.4: Character List & Detail Parsing (592-byte MakeCharInfo)**
   - Path: `src/game/char_info.rs`
   - Scope: Parse character list frames and full `MakeCharInfo` binary layout. Every single field (name, level, job, hp, mp, coordinates) mapped to exact byte offsets. No stub comments allowed.

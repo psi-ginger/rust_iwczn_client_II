@@ -100,6 +100,26 @@
 //! exactly: inbound stays on the link cipher for the connection's life,
 //! outbound starts at this handshake.
 //!
+//! ## Pre-handshake dispatch — intentional protocol decision (QC P-11)
+//!
+//! The server is being rewritten in Rust as a new implementation, so this
+//! behavior is defined directly by the port rather than inherited from the
+//! old C++ code. The decision, deliberately:
+//!
+//! - [`GameLink::handshake`] accepts **only** the expected handshake frame
+//!   (opcode 1) — nothing else is a valid first frame;
+//! - an unexpected pre-handshake frame is rejected with
+//!   [`GameError::UnexpectedOpcode`], checked *before* its payload is even
+//!   measured (`parse_client_char_unique`); the frame is consumed, never
+//!   dispatched or acted on;
+//! - the connection is terminated immediately: the error returns to the
+//!   caller with the outbound gate still closed ([`GameError::NotHandshaken`]
+//!   keeps [`GameLink::send`] shut and the negotiation slot empty), so no
+//!   further state can change on this link and the caller closes it;
+//! - this strictness is an **intentional protocol decision for the new Rust
+//!   server/client pair** and is explicitly *not* required to imitate the old
+//!   C++ implementation (QC direction, P-11).
+//!
 //! # Read timeouts are not teardowns (F-02)
 //!
 //! QC decision F-02 on the game link: a [`SessionError::ReadTimeout`] bounds
@@ -366,6 +386,12 @@ impl GameLink {
     /// the link cipher throughout, because the server keeps encoding that
     /// way for the connection's life (`main.rs:680`).
     ///
+    /// A successful completion (the first call only — not idempotent
+    /// re-entry) emits the session-seed log line `client handshake
+    /// succeeded: session_seed = (0xRR, 0xRR), char_unique = <id>` for
+    /// connection verification (QC P-08; purpose and format in
+    /// `CONTRIBUTING.md`, Step 4.2).
+    ///
     /// # Errors
     ///
     /// [`GameError::UnexpectedOpcode`] for any first frame that is not
@@ -394,6 +420,19 @@ impl GameLink {
         // frame on (Client-SystemNPC.cpp:701-703).
         self.encoder = Encoder::with_cipher(Cipher::session_cipher(state.key1, state.key2));
         self.negotiated = Some(state);
+        // QC P-08: the real handshake-success path emits the session seed this
+        // connection actually received, for connection verification and later
+        // QC tracing. The pair prints exactly as the server console prints it
+        // (`game: <peer>: charunique=<id> -> (0xRR, 0xRR)`), so the two lines
+        // correlate directly. Purpose and format: `CONTRIBUTING.md`, Step 4.2
+        // "Seed log". Emitted once per connection — the idempotent early
+        // return above is not a completion.
+        tracing::info!(
+            "client handshake succeeded: session_seed = ({:#04x}, {:#04x}), char_unique = {}",
+            state.key1,
+            state.key2,
+            state.char_unique
+        );
         Ok(state)
     }
 

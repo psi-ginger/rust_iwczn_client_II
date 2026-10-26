@@ -16,3 +16,11 @@ bytes = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 thiserror = "2"
+
+[dev-dependencies]
+# Step 5.1 / P-05 (QC directive): `tokio::time::pause` and
+# `#[tokio::test(start_paused = true)]` need the `test-util` feature. Declared
+# as a dev-dependency-only feature so resolver v2 keeps it out of release
+# builds; the event-loop timing tests then run on tokio's virtual clock
+# (deterministic, zero wall-clock flake surface).
+tokio = { version = "1", features = ["test-util"] }

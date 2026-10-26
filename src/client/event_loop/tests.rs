@@ -1,4 +1,12 @@
-// Step 5.1 tests — falsifiable, byte-exact, loopback.
+// Step 5.1 tests — falsifiable, byte-exact, loopback, virtual-time.
+//
+// P-05 (QC directive): the tests whose contract involves the 100 ms budget
+// run with `#[tokio::test(start_paused = true)]` — tokio's virtual clock
+// (`test-util`, a dev-dependency-only feature) auto-advances to each pending
+// deadline while every loopback socket is quiet, so budget drops, ticker
+// fires and peer holds land at exact virtual instants: no wall-clock window
+// remains to flake under CPU load. Every peer task still ends (EOF) even on a
+// regression, so a broken loop fails an assertion instead of hanging.
 //
 // F-01/F-02 (QC decisions on CAR-2026-10-24-RETRO01): the live `goonzu-rs`
 // server is unavailable, so every peer here is a loopback socket that writes
@@ -7,8 +15,10 @@
 // windows are pinned small so the 100 ms behaviour is observable in
 // milliseconds, not seconds. What these prove is the *loop's* contract: an
 // idle socket does not block, tickers keep firing alongside frames, a frame
-// split across budget windows reassembles (cancellation safety), a clean
-// close ends the loop, and a decode refusal stops it.
+// split across budget windows reassembles (cancellation safety), frames
+// buffered ahead of a close are delivered before EOF ends the loop, a
+// handler error on either dispatch path propagates and stops the loop, and a
+// decode refusal stops it.
 //
 // F-07: the loop is never its own expectation source — every frame the peer
 // writes is a handwritten `(cmd, payload)`, the handler records events into a
@@ -57,8 +67,9 @@ fn read_poll_budget_matches_the_legacy_cadence() {
         READ_POLL_BUDGET,
         Duration::from_millis(100),
         "main.cpp:1549-1581 — the legacy pumps 10 x Sleep(10) = 100 ms per \
-         NetworkOperation() iteration (:1625-1630); this is that cadence as a \
-         strict per-read budget"
+         NetworkOperation() iteration (:1625-1630), sleep gated \
+         if(gamemode == 1) at :1579; this is that in-game cadence as a strict \
+         per-read budget"
     );
     assert!(
         READ_POLL_BUDGET < crate::net::session::DEFAULT_READ_TIMEOUT,
@@ -67,7 +78,7 @@ fn read_poll_budget_matches_the_legacy_cadence() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_idle_socket_does_not_block_the_loop_and_tickers_keep_firing() {
     let (listener, addr) = local_listener().await;
     // The peer accepts and then stays silent for the whole test: the link is
@@ -102,7 +113,7 @@ async fn an_idle_socket_does_not_block_the_loop_and_tickers_keep_firing() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn frames_are_delivered_while_tickers_keep_firing() {
     let (listener, addr) = local_listener().await;
     tokio::spawn(async move {
@@ -143,7 +154,7 @@ async fn frames_are_delivered_while_tickers_keep_firing() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_frame_sent_to_an_idle_link_is_delivered_within_the_read_budget() {
     let (listener, addr) = local_listener().await;
     tokio::spawn(async move {
@@ -157,7 +168,10 @@ async fn a_frame_sent_to_an_idle_link_is_delivered_within_the_read_budget() {
 
     let mut link = GameLink::connect(addr).await.expect("connect");
     let tickers: [Ticker; 0] = [];
-    let started = std::time::Instant::now();
+    // Tokio's *virtual* clock (start_paused): `elapsed` below is measured on
+    // the same paused clock the peer's 150 ms hold and the loop's budget run
+    // on, so the assertion compares exact virtual instants, not wall time.
+    let started = tokio::time::Instant::now();
     let mut got: Option<Frame> = None;
     run(
         &mut link,
@@ -177,15 +191,16 @@ async fn a_frame_sent_to_an_idle_link_is_delivered_within_the_read_budget() {
     let elapsed = started.elapsed();
     assert_eq!(frame.cmd_id(), TRAFFIC_CMD, "opcode delivered intact");
     assert_eq!(frame.payload(), &[0xAA, 0xBB], "payload delivered intact");
-    // The frame was written at ~150 ms; the strict budget means the loop
-    // notices within one budget of arrival, well before a full extra stall.
+    // The frame was written at exactly virtual t=150 ms (the peer's first
+    // hold); the loop's next poll notice is bounded by one budget after that,
+    // so on the paused clock the delivery instant is exact, not a window.
     assert!(
         elapsed < Duration::from_millis(400),
         "frame delivery lagged behind the read budget: {elapsed:?}"
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_frame_split_across_two_read_windows_still_reassembles() {
     // The cancellation-safety proof: the loop drops `next_frame` every 100 ms,
     // so a frame whose bytes straddle a budget boundary must still reassemble.
@@ -287,4 +302,155 @@ async fn a_plaintext_frame_is_refused_and_stops_the_loop() {
              got {other:?}"
         ),
     }
+}
+
+// ---------------------------------------------------------------------------
+// P-04 (QC directive): the two documented behaviours that had no falsifying
+// test — handler-error propagation ([`LoopError::Handler`], exercised with a
+// custom error type, not `Infallible`) and buffered frames being delivered
+// before a clean close ends the loop.
+// ---------------------------------------------------------------------------
+
+/// A handler's own error type: proves `LoopError::Handler` propagates a
+/// *custom* error, not only the internal ones.
+#[derive(Debug, PartialEq, Eq)]
+struct Boom;
+
+impl std::fmt::Display for Boom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("handler boom")
+    }
+}
+
+impl std::error::Error for Boom {}
+
+#[tokio::test(start_paused = true)]
+async fn a_handler_error_on_the_tick_path_propagates_and_stops_the_loop() {
+    // Silent peer: the first and only wake source is the 25 ms ticker, so the
+    // handler's error happens on the tick dispatch path at a deterministic
+    // virtual instant.
+    let (listener, addr) = local_listener().await;
+    let _silent = tokio::spawn(async move {
+        let (_stream, _addr) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    });
+
+    let mut link = GameLink::connect(addr).await.expect("connect");
+    let tickers = [Ticker::new("hb", Duration::from_millis(25))];
+    let mut events = 0u32;
+    let result = run(
+        &mut link,
+        &tickers,
+        |_link, ev| -> Result<Flow, Boom> {
+            events += 1;
+            if matches!(ev, LoopEvent::Ticked { .. }) {
+                return Err(Boom);
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await;
+
+    assert_eq!(
+        events, 1,
+        "the loop must stop at the first tick error — no further events"
+    );
+    match result {
+        Err(LoopError::Handler(Boom)) => {}
+        other => panic!(
+            "a handler Err on the tick path must surface as \
+             LoopError::Handler with the original error, got {other:?}"
+        ),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_handler_error_on_the_frame_path_propagates_and_stops_the_loop() {
+    // One real frame, then a hold: the handler errors on the first Frame. Any
+    // ticker fires that land before the frame just continue, so the assertion
+    // holds regardless of wake ordering.
+    let (listener, addr) = local_listener().await;
+    tokio::spawn(async move {
+        let (mut stream, _addr) = listener.accept().await.unwrap();
+        let wire = encode_link(&frame(TRAFFIC_CMD, TRAFFIC_PAYLOAD));
+        stream.write_all(&wire).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    });
+
+    let mut link = GameLink::connect(addr).await.expect("connect");
+    let tickers = [Ticker::new("hb", Duration::from_millis(25))];
+    let mut frames = 0u32;
+    let result = run(
+        &mut link,
+        &tickers,
+        |_link, ev| -> Result<Flow, Boom> {
+            if matches!(ev, LoopEvent::Frame(_)) {
+                frames += 1;
+                return Err(Boom);
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await;
+
+    assert_eq!(
+        frames, 1,
+        "exactly the one frame the peer sent reaches the handler before the error"
+    );
+    match result {
+        Err(LoopError::Handler(Boom)) => {}
+        other => panic!(
+            "a handler Err on the frame path must surface as \
+             LoopError::Handler with the original error, got {other:?}"
+        ),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn frames_buffered_before_a_clean_close_are_delivered_before_eof() {
+    // Three whole frames written in one call, then the peer drops the stream
+    // (FIN). All three bytes-are-already-buffered frames must be handed to
+    // the handler before EOF returns Ok(()); a loop that treated the pending
+    // close as "no more work" would deliver fewer than three.
+    let (listener, addr) = local_listener().await;
+    tokio::spawn(async move {
+        let (mut stream, _addr) = listener.accept().await.unwrap();
+        // ONE cipher instance for the whole stream, exactly as the link
+        // decodes it: the ITZ rolling counter advances per encode, so fresh
+        // per-frame ciphers would misalign frame 2 onward.
+        let mut cipher = Cipher::link_cipher();
+        let mut wire = Vec::new();
+        for payload in [&[0x01][..], &[0x02, 0x02][..], &[0x03, 0x03, 0x03][..]] {
+            wire.extend_from_slice(&cipher.encode(&frame(TRAFFIC_CMD, payload)).expect("encode"));
+        }
+        stream.write_all(&wire).await.unwrap();
+        // Dropping `stream` right after the write sends FIN with all three
+        // frames already in the client's receive buffer.
+    });
+
+    let mut link = GameLink::connect(addr).await.expect("connect");
+    let tickers: [Ticker; 0] = [];
+    let mut got: Vec<Frame> = Vec::new();
+    let result = run(
+        &mut link,
+        &tickers,
+        |_link, ev| -> Result<Flow, Infallible> {
+            if let LoopEvent::Frame(f) = ev {
+                got.push(f);
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "the close after buffered frames is still a clean Ok(()): {result:?}"
+    );
+    let payloads: Vec<&[u8]> = got.iter().map(Frame::payload).collect();
+    assert_eq!(
+        payloads,
+        vec![&[0x01][..], &[0x02, 0x02][..], &[0x03, 0x03, 0x03][..]],
+        "all three buffered frames, in order and byte-exact, before EOF ends the loop"
+    );
 }

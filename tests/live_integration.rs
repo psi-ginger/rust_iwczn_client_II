@@ -124,6 +124,116 @@ async fn live_game_handshake_decodes_the_link_cipher() {
     );
 }
 
+/// Step 5.2 live: the real 10 s heartbeat ticker against a live server.
+///
+/// The half of the 5.2 acceptance ("...over 60 seconds without dropping
+/// connection") that loopback structurally cannot prove: whether a *real*
+/// game service tolerates our opcode-100 frames for the full window, or
+/// drops/refuses the connection. This drives the production path —
+/// [`heartbeat_ticker`] at its real 10 s cadence, [`is_heartbeat`] routing,
+/// and [`send_heartbeat`] awaited from the async handler — for `TICKS`
+/// intervals (70 s, comfortably over the 60 s acceptance window).
+///
+/// The server **mutes** opcode 100's recv log line (`main.rs:1106-1112`), so
+/// "server logs record it" cannot be asserted from here either; what is
+/// asserted is the connection staying up and every send succeeding, which is
+/// the observable that actually matters. Ignored by default and slow by
+/// design — run it explicitly when a server is reachable.
+#[tokio::test]
+#[ignore = "live soak: 70s against a reachable game service (GOONZU_LIVE_GAME)"]
+async fn live_heartbeat_keeps_the_connection_up_over_60s() {
+    use goonzu_client::client::heartbeat::{heartbeat_ticker, is_heartbeat, send_heartbeat};
+
+    let addr = resolve("GOONZU_LIVE_GAME", "127.0.0.1", 4010).await;
+
+    let mut link = GameLink::connect(addr).await.expect("game connect");
+    let state = link
+        .handshake()
+        .await
+        .expect("handshake before the heartbeat soak");
+
+    // Establish the session before the soak. The server arms a 10 s handshake
+    // deadline at accept (`main.rs:671`; `config.rs:430` asserts
+    // `Duration::from_millis(10_000)`) and holds it as the read bound until it
+    // receives its first inbound frame. The opcode-1 handshake is
+    // server→client only, so the server has heard *nothing* from us yet and
+    // its state is still `Connected`, not `Established` (`session.rs:280`,
+    // `main.rs:809`). That first inbound frame is what calls `establish()`
+    // (`main.rs:1064`) and disarms the deadline.
+    //
+    // Our first *ticker* fire is also at 10 s — the same 10 s — and because
+    // the ticker starts after connect+handshake it lands just *past* the
+    // deadline, so the server reclaims the connection first (an earlier
+    // version of this test lost exactly that race: 1 of 7 heartbeats, then a
+    // clean EOF at ~10 s). A real client sends login (opcode 2) within
+    // milliseconds of the handshake and never races; we hold no credentials,
+    // so we establish the session with one immediate heartbeat instead — any
+    // well-formed inbound frame establishes, and opcode 100's arm is a no-op
+    // (`main.rs:1863-1868`).
+    send_heartbeat(&mut link)
+        .await
+        .expect("establishing heartbeat before the soak");
+    eprintln!("[live] session established via an early heartbeat; entering the soak");
+    // Anchor the 60 s assertion on the *connection*, not the first tick: the
+    // acceptance is that the link is never dropped across the window, and the
+    // link came up before the ticker's first fire. (Anchoring on tick 1 would
+    // measure 10s..70s = exactly 60 s with no margin.)
+    let established = std::time::Instant::now();
+
+    // The production ticker: 10 s, unshortened. 7 ticks = 70 s > the 60 s
+    // acceptance window. A ticker interval of 0 is rejected by the loop, and
+    // shortening it here would stop testing what the acceptance specifies.
+    const TICKS: u32 = 7;
+    let tickers = [heartbeat_ticker()];
+    let mut sent = 0u32;
+    let mut start = None;
+
+    let result = run(
+        &mut link,
+        &tickers,
+        async |link, ev| -> Result<Flow, std::convert::Infallible> {
+            if is_heartbeat(&ev) {
+                let now = tokio::time::Instant::now();
+                start.get_or_insert(now);
+                // The real 5.2 path: await the send from inside the handler.
+                // A write failure surfaces here and stops the loop, which the
+                // assertion below catches as a non-Ok result.
+                if let Err(e) = send_heartbeat(link).await {
+                    panic!("heartbeat send failed on tick {sent}: {e}");
+                }
+                sent += 1;
+                eprintln!(
+                    "[live] heartbeat {sent}/{TICKS} sent at +{:?}",
+                    now.duration_since(start.unwrap())
+                );
+                if sent >= TICKS {
+                    return Ok(Flow::Break);
+                }
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await;
+
+    // A link failure (server refused the heartbeat, dropped us, or a cipher
+    // desync) is the regression this soak exists to catch.
+    result.unwrap_or_else(|e| panic!("connection did not survive the soak: {e}"));
+    assert_eq!(
+        sent, TICKS,
+        "every scheduled heartbeat must fire and send over an open link"
+    );
+    let elapsed = established.elapsed();
+    assert!(
+        elapsed >= Duration::from_secs(60),
+        "the connection must survive the 60 s acceptance window, dropped after only {elapsed:?}"
+    );
+    eprintln!(
+        "[live] heartbeat soak OK: {TICKS} heartbeats over {elapsed:?} of open connection, \
+         never dropped, char_unique={}",
+        state.char_unique
+    );
+}
+
 /// Step 5.1 live: the event loop over a real WAN path (through the tunnel).
 ///
 /// Proves what loopback cannot: an *idle* remote socket does not block the

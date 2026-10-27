@@ -43,6 +43,7 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 use crate::auth::front::FrontLink;
@@ -52,7 +53,7 @@ use crate::auth::world_list::{
 };
 use crate::client::event_loop::{run_with_shutdown, Flow, LoopError, LoopEvent};
 use crate::client::heartbeat::{heartbeat_ticker, is_heartbeat, send_heartbeat};
-use crate::client::teardown::{terminate, Shutdown, TaskTracker};
+use crate::client::teardown::{spawn_ctrl_c_watcher, terminate, Cause, Shutdown, TaskTracker};
 use crate::game::char_info::{
     parse_char_list_entry, CharListEntry, CHAR_SLOTS, RESPONSE_CHARLIST, RESPONSE_LOGIN,
 };
@@ -440,6 +441,11 @@ pub struct DriverOutcome {
 
 /// Runs one complete session: front handshake through in-world, then teardown.
 ///
+/// The production Ctrl+C watcher ([`spawn_ctrl_c_watcher`]) is armed for the
+/// whole session: a console event at *any* stage claims the shutdown flag the
+/// flow polls, so WO-6.1 §6.3's Ctrl+C path reaches [`terminate`] exactly like
+/// a server-side close does.
+///
 /// Teardown is not conditional on success — whichever way the flow ends, an open
 /// game link is closed and drained before this function returns or propagates.
 ///
@@ -450,13 +456,36 @@ pub struct DriverOutcome {
 /// failing stage and the owning step's error, and [`DriverError::Refused`] when a
 /// protocol or state condition stops the flow without an underlying error.
 pub async fn run(cfg: &DriverConfig, shutdown: &Shutdown) -> Result<DriverOutcome, DriverError> {
+    run_with_watcher(cfg, shutdown, spawn_ctrl_c_watcher).await
+}
+
+/// [`run`] with the watcher factory injected.
+///
+/// The seam exists because §6.3 demands a test for the Ctrl+C path and a real
+/// console event would signal cargo's console group along with ours: the test
+/// installs 5.3's [`watch_signal`](crate::client::teardown::watch_signal) over
+/// a signal it fires itself, and the production path installs exactly the
+/// watcher 5.3 delivered.
+async fn run_with_watcher(
+    cfg: &DriverConfig,
+    shutdown: &Shutdown,
+    spawn_watcher: impl FnOnce(Shutdown, &TaskTracker) -> JoinHandle<Option<Cause>>,
+) -> Result<DriverOutcome, DriverError> {
     cfg.validate()?;
+
+    let tracker = TaskTracker::new();
+    let watcher = spawn_watcher(shutdown.clone(), &tracker);
 
     let mut game: Option<GameLink> = None;
     let outcome = flow(cfg, shutdown, &mut game).await;
 
+    // Released before teardown: the watcher waits for a signal that may never
+    // come, and a drain must never be held open by it. `terminate` then sees an
+    // empty tracker and leaves zero orphaned tasks behind (§6.3).
+    watcher.abort();
+    let _ = watcher.await;
+
     if let Some(mut link) = game.take() {
-        let tracker = TaskTracker::new();
         match terminate(&mut link, shutdown, &tracker, cfg.drain_bound).await {
             Ok(()) => {}
             Err(error) if outcome.is_err() => {
@@ -468,17 +497,26 @@ pub async fn run(cfg: &DriverConfig, shutdown: &Shutdown) -> Result<DriverOutcom
 
     outcome.map(|mut outcome| {
         outcome.stage = Stage::TornDown;
-        info!(
-            stage = %outcome.stage,
-            worlds = outcome.worlds,
-            char_unique = outcome.char_unique,
-            char_slot = outcome.char_slot,
-            village = ?outcome.village,
-            cause = ?shutdown.cause(),
-            "session ended"
-        );
+        log_session_end(&outcome, shutdown.cause());
         outcome
     })
+}
+
+/// Emits the session's terminal `INFO` record.
+///
+/// Factored out so §6.4's credential test can render *this exact record* — a
+/// password must never reach a log record at `INFO`, and a record nobody
+/// rendered proves nothing.
+fn log_session_end(outcome: &DriverOutcome, cause: Option<Cause>) {
+    info!(
+        stage = %outcome.stage,
+        worlds = outcome.worlds,
+        char_unique = outcome.char_unique,
+        char_slot = outcome.char_slot,
+        village = ?outcome.village,
+        ?cause,
+        "session ended"
+    );
 }
 
 /// The stages themselves. `game` is filled in as soon as the game link exists so

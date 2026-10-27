@@ -189,6 +189,63 @@ Findings raised: none as F-61-NN (the write-guard incident is resolved in
   outstanding main.rs gap is recorded under Deviations above)
 ```
 
+### Delivery note addendum — Implementer (second pass: dual-source resolution)
+
+```
+Commits: c59a3fe (code) . a0c3ddf (adjudication) . 2aa4d24 (merge of origin/main)
+Branch: step/6.1-driver, merged origin/main @ 1d78ef4 (895518e + the 5.1 flake fix)
+Files: src/client/driver.rs (Ctrl+C seam armed, terminal INFO record factored) .
+  src/client/driver/tests.rs (12 -> 15 tests) . src/main.rs (written against
+  section 4) . docs/audit/2026-10-27-step-6.1-dual-source-driver-adjudication.md .
+  taken from origin/main: src/lib.rs docs + 1d78ef4 (event_loop/tests.rs,
+  game/entry.rs, net/session.rs, TASK_MATRIX.md)
+Why a second pass: origin/main committed a second, independent Step 6.1 driver
+  (895518e) - written from CONTRIBUTING_PHASE2.md scope, never having seen this
+  WO - and it collided with this branch on driver.rs / driver/tests.rs /
+  client/mod.rs. Both sides were gate-green (209/209 here, 198/198 there), so
+  conformance to this WO decided the row. The defect list on BOTH sides, every
+  entry cited file:line, is docs/audit/2026-10-27-step-6.1-dual-source-
+  driver-adjudication.md; this branch's driver is retained, origin/main's
+  driver.rs + tests are discarded with that rationale, origin/main's main.rs
+  exit-code mapping, its lib.rs documentation and 1d78ef4 are salvaged.
+Defects closed in this pass (both were listed as open in the note above):
+  - A1 (section 1 item 11 / section 6.3): spawn_ctrl_c_watcher was defined at
+    teardown.rs:329 and never called by the driver; the tracker was built inside
+    the Some(link) branch only, so it was always empty. run() now arms the
+    production watcher through run_with_watcher() and aborts + awaits it before
+    terminate(), so the bounded drain never parks on a task waiting for a
+    signal. Test a_console_event_stops_the_flow_at_the_next_stage_gate drives
+    5.3's watch_signal factory seam hermetically (no real console event) and
+    asserts the flow stops at the next gate with Cause::CtrlC claimed - 12/12
+    repeat runs without a flake.
+  - A2 (section 6.4): a_driver_error_never_renders_the_password renders Display,
+    Debug and the full source chain for a real run error plus all four
+    DriverError variants; a_rendered_info_record_never_carries_the_password
+    reads back a thread-scoped tracing_subscriber::fmt sink after a real session
+    attempt and after the driver's own terminal record (log_session_end).
+  - DoD item 3: src/main.rs is now env -> DriverConfig -> run -> exit codes
+    0 clean / 1 runtime / 2 configuration (origin/main's mapping, rewritten
+    against this API; DriverError::Config from inside run() also maps to 2).
+Section 6 item 6 (test count): baseline 194 -> 209 (+15), strictly greater.
+Local gates (implementer-run, NOT evidence) on the merged tree at 2aa4d24:
+  check ok . clippy ok . fmt ok (0 diffs) . test 209/209 . doc 0 warnings
+  (0 warning/error lines).
+Deviations:
+  - TASK_MATRIX.md untouched (section 2). Its row-6.1 blocker note still says
+    src/main.rs is the Step 1.1 scaffold: that half is now stale (the other
+    half, the S1/S2 authorship bar, still holds). The matrix is the QC role's
+    file - this actor flags the staleness here instead of editing it.
+  - Section 8 evidence bundle still not produced (S4: clean clone at the
+    delivery SHA). The numbers above are working-tree runs and are explicitly
+    NOT evidence; row 6.1 stays IN_PROGRESS and the merge to main stays the
+    Custodian's act after a verdict.
+  - One divergence is deliberately not adjudicated in this WO: origin/main
+    dispatches the five in-world opcodes during the entry waits, this driver
+    refuses a foreign opcode at the roster gate (driver.rs read_roster). Neither
+    section 1 nor section 7 rules it either way - section 2 assigns that proof to
+    the 6.2 harness.
+```
+
 ### Adversarial findings — Adversary (optional for 6.1, mandatory on request)
 
 ```

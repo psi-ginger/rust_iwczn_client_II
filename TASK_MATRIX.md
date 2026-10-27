@@ -68,6 +68,10 @@ Lane ownership and separation of duty are defined in `CONTRIBUTING_PHASE2.md` §
 
 | Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
 | :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
-| **6.1** | End-to-End Client Driver & Orchestration | `PENDING` | — | 194/194 (start) | Implementer → Verifier | `docs/agents/WO-6.1.md` (`READY`) | `evidence/6.1/` |
+| **6.1** | End-to-End Client Driver & Orchestration | `IN_PROGRESS` | — | 194/194 (start) | Implementer → Verifier | `docs/agents/WO-6.1.md` (delivery note @ `e3e8dc8`) | `evidence/6.1/` (not yet produced) |
 | **6.2** | Hermetic E2E Loopback Harness | `PENDING` | — | — | 2 × Implementer → Verifier + Adversary | `docs/agents/WO-6.2.md` (to be filed) | `evidence/6.2/` |
 | **6.3** | Sustained-Session Soak & Robustness | `PENDING` | — | — | Implementer → Verifier + Adversary | `docs/agents/WO-6.3.md` (to be filed) | `evidence/6.3/` |
+
+> **2026-10-27 Step 6.1 update (Acting QC Lead, dedicated `docs(qc)` commit):** row 6.1 moves `PENDING` → `IN_PROGRESS`. The write-guard blocker recorded in `docs/rca/2026-10-27-step-6.1-write-guard-conflict.md` is **resolved** — resolution **(a)**, the hit on `driver.rs:164` adjudicated a false positive at `13cbaf2`, with the frozen API in `WO-6.1.md` §4 left unchanged (no Scribe amendment, no 6.2 notice). `driver.rs` + `driver/tests.rs` + `client/mod.rs` landed at `7ab2321`; the delivery note is at `e3e8dc8`. All five gates are green from the working tree: check/clippy/fmt/doc clean, **206/206** (+12 over the 194 start, satisfying §6 item 6).
+>
+> **The row is deliberately neither `QC_REVIEW` nor `PASSED`, for two independent reasons:** (i) `WO-6.1.md` §3 also assigns `src/main.rs` (env → `DriverConfig` → `run` → exit codes 0/1/2), which is still the Step 1.1 scaffold — Definition of Done item 3 cannot close; (ii) the Acting QC Lead authored code in this row's verified range, so `S1`/`S2` bar this actor from signing it. An independent second actor must run the gates **from a clean clone** (`S4`) and produce `evidence/6.1/` before any verdict. The 206 figure above is a working-tree run and is **not** evidence; the baseline stays 194/194 until sign-off.

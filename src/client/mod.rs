@@ -10,7 +10,10 @@
 //!   shutdown flag (Ctrl+C or server disconnect), tracked background tasks,
 //!   and a bounded drain, plus the loop's [`event_loop::run_with_shutdown`]
 //!   flavour that honours the flag.
+//! - Step 6.1: [`driver`], the end-to-end orchestrator that runs the whole
+//!   session in one process — front handshake through in-world and teardown.
 
+pub mod driver;
 pub mod event_loop;
 pub mod heartbeat;
 pub mod teardown;

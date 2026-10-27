@@ -64,8 +64,10 @@
 
 Scope and acceptance criteria for these rows live in `CONTRIBUTING_PHASE2.md` ("Step 6" section). No row may be implemented before its definition exists there.
 
-| Step | Target Milestone | Status | Verified Commit | Tests Baseline | Audited By / Notes |
-| :---: | :--- | :---: | :---: | :---: | :--- |
-| **6.1** | End-to-End Client Driver & Orchestration | `PENDING` | — | — | — |
-| **6.2** | Hermetic E2E Loopback Harness | `PENDING` | — | — | — |
-| **6.3** | Sustained-Session Soak & Robustness | `PENDING` | — | — | — |
+Lane ownership and separation of duty are defined in `CONTRIBUTING_PHASE2.md` § "Multi-agent execution model". An implementer never writes this table: `Status` stays `PENDING` until the Verifier records a verdict, and every `Tests Baseline` number must be copyable from a log in that row's `evidence/` directory (no handwritten numbers).
+
+| Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
+| :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **6.1** | End-to-End Client Driver & Orchestration | `PENDING` | — | 194/194 (start) | Implementer → Verifier | `docs/agents/WO-6.1.md` (`READY`) | `evidence/6.1/` |
+| **6.2** | Hermetic E2E Loopback Harness | `PENDING` | — | — | 2 × Implementer → Verifier + Adversary | `docs/agents/WO-6.2.md` (to be filed) | `evidence/6.2/` |
+| **6.3** | Sustained-Session Soak & Robustness | `PENDING` | — | — | Implementer → Verifier + Adversary | `docs/agents/WO-6.3.md` (to be filed) | `evidence/6.3/` |

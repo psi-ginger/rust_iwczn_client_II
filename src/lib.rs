@@ -16,13 +16,17 @@
 //! the select-character request, the SERVERINFO banner with its region gate,
 //! the opcode-5 record that populates the local `CharClient`, the village
 //! blueprint exchange and the derived in-world condition,
+//! `game::dispatcher` (README Step 5 items 2-3) the in-world router for
+//! opcodes 6/11/118/200/215 and its delta reflection into the `CR[]`-modelled
+//! [`DispatcherState`](crate::game::dispatcher::DispatcherState),
 //! `client::event_loop` (Step 5.1) the
 //! non-blocking `select!` receive loop with its strict 100 ms read budget and
 //! background tickers, `client::heartbeat` (Step 5.2) the in-game keepalive
 //! ticker and its header-only opcode 100 frame, `client::teardown` (Step
 //! 5.3) the graceful exit path — first-wins shutdown flag, tracked tasks,
-//! bounded drain; the rest of `game::*` and `client::*` arrive with their
-//! own steps and are intentionally absent.
+//! bounded drain; `client::driver` (Step 6.1, `CONTRIBUTING_PHASE2.md`) the
+//! end-to-end orchestrator that runs the whole session above as one
+//! conversation.
 
 pub mod auth;
 pub mod client;

@@ -8,6 +8,18 @@
 // remains to flake under CPU load. Every peer task still ends (EOF) even on a
 // regression, so a broken loop fails an assertion instead of hanging.
 //
+// QC follow-up (2026-10-27, row 5.1): the loopback *dial* is the one step a
+// paused clock cannot time fairly — `GameLink::connect`'s 5 s connect window
+// races tokio's virtual-time auto-advance against the kernel handshake: a
+// load-sensitive `ConnectTimeout` on 127.0.0.1 that hit a varying
+// event-loop test per run. All eight paused-clock dials therefore run through
+// `dial()`, which connects with a bare timerless `TcpStream::connect` (a park
+// with no deadline can only end on real I/O — the virtual clock cannot move)
+// and wraps the stream with `GameLink::from_stream`; the two real-clock tests
+// dial through `GameLink::connect` directly, where there is no paused clock
+// to race. Both root causes — the original race, and why the obvious
+// resume-the-clock fix was itself wrong — are written up in `dial`'s docs.
+//
 // F-01/F-02 (QC decisions on CAR-2026-10-24-RETRO01): the live `goonzu-rs`
 // server is unavailable, so every peer here is a loopback socket that writes
 // **real link-ciphered frames** with a fresh `Cipher::link_cipher()` — the
@@ -29,6 +41,7 @@
 use super::*;
 use crate::game::entry::GameError;
 use crate::net::cipher::Cipher;
+use crate::net::session::SessionTimeouts;
 use std::convert::Infallible;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -38,6 +51,48 @@ async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     (listener, addr)
+}
+
+/// Dials `addr` and returns the link — **without moving the virtual clock**.
+///
+/// # Root cause of the flake this replaces (QC follow-up, 2026-10-27)
+///
+/// Two defects, one fix:
+///
+/// 1. *The original* — [`GameLink::connect`] bounds its dial with a 5 s
+///    `tokio::time::timeout`. Under `start_paused = true` that park carries
+///    a duration, so tokio's auto-advance calls `advance(duration)` whenever
+///    the kernel handshake misses its zero-timeout `did_wake()` probe
+///    (`tokio` `runtime/time/mod.rs`, `park_thread_timeout`): a
+///    load-sensitive `ConnectTimeout` on `127.0.0.1` that hit a *varying*
+///    event-loop test per run and only while cargo rebuild churn loaded the
+///    machine (0/10 quiet runs after `cargo clean`, 2/~11 under churn).
+/// 2. *Why the obvious resume/pause fix was wrong* — resuming the real clock
+///    for the dial and pausing afterwards leaves the virtual clock at
+///    `start + Δ` with a sub-millisecond fraction; tokio rounds timer
+///    deadlines **up** (`deadline_to_tick`, `+999_999ns`) but reads *now*
+///    **down** (`instant_to_tick`, truncating), so a nonzero fraction inflates
+///    the park duration by exactly one tick: every exact virtual instant
+///    shifted by `+1 ms` — `missed_intervals_coalesce_into_one_fire` failed
+///    30/30 at `(1, 26ms)` instead of `(1, 25ms)` — and that test's
+///    holder-sleep margin eroded by the whole resumed window.
+///
+/// So the dial here is a bare `TcpStream::connect`: with no timer registered
+/// the park has `next_wake = None`, tokio parks on I/O alone (the
+/// auto-advance path is unreachable), and the connection completes in real
+/// time while the virtual clock stays exactly where it was.
+/// [`GameLink::from_stream`] then installs the same link-cipher-first decoder
+/// and timeouts [`GameLink::connect_with_timeouts`] would have. The two
+/// real-clock tests keep dialling through [`GameLink::connect`] directly —
+/// no paused clock means no race and no virtual instant to perturb, and the
+/// production connect-with-timeout path stays covered.
+///
+/// # Panics
+///
+/// On a failed connect — every peer here accepts on loopback.
+async fn dial(addr: std::net::SocketAddr) -> GameLink {
+    let stream = tokio::net::TcpStream::connect(addr).await.expect("connect");
+    GameLink::from_stream(stream, addr, SessionTimeouts::default())
 }
 
 /// A complete plaintext frame: `[usSize LE][ucChk][usCmd LE][payload]` — the
@@ -89,7 +144,7 @@ async fn an_idle_socket_does_not_block_the_loop_and_tickers_keep_firing() {
         tokio::time::sleep(Duration::from_millis(600)).await;
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut last_fired = 0u64;
     run(
@@ -148,7 +203,7 @@ async fn missed_intervals_coalesce_into_one_fire() {
 
     const INTERVAL: Duration = Duration::from_millis(25);
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers = [Ticker::new("coalesce", INTERVAL)];
     let baseline = Instant::now();
     let mut fires: Vec<(u64, Duration)> = Vec::new();
@@ -196,7 +251,7 @@ async fn frames_are_delivered_while_tickers_keep_firing() {
         tokio::time::sleep(Duration::from_millis(400)).await;
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut frames = 0u32;
     let mut ticks = 0u32;
@@ -237,7 +292,7 @@ async fn a_frame_sent_to_an_idle_link_is_delivered_within_the_read_budget() {
         tokio::time::sleep(Duration::from_millis(300)).await;
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers: [Ticker; 0] = [];
     // Tokio's *virtual* clock (start_paused): `elapsed` below is measured on
     // the same paused clock the peer's 150 ms hold and the loop's budget run
@@ -288,7 +343,7 @@ async fn a_frame_split_across_two_read_windows_still_reassembles() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers: [Ticker; 0] = [];
     let mut got: Option<Frame> = None;
     run(
@@ -406,7 +461,7 @@ async fn a_handler_error_on_the_tick_path_propagates_and_stops_the_loop() {
         tokio::time::sleep(Duration::from_millis(600)).await;
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut events = 0u32;
     let result = run(
@@ -448,7 +503,7 @@ async fn a_handler_error_on_the_frame_path_propagates_and_stops_the_loop() {
         tokio::time::sleep(Duration::from_millis(600)).await;
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers = [Ticker::new("hb", Duration::from_millis(25))];
     let mut frames = 0u32;
     let result = run(
@@ -499,7 +554,7 @@ async fn frames_buffered_before_a_clean_close_are_delivered_before_eof() {
         // frames already in the client's receive buffer.
     });
 
-    let mut link = GameLink::connect(addr).await.expect("connect");
+    let mut link = dial(addr).await;
     let tickers: [Ticker; 0] = [];
     let mut got: Vec<Frame> = Vec::new();
     let result = run(

@@ -28,7 +28,7 @@ Every step, and every QC follow-up, must pass **all five** gates before it can b
 ### Live integration (opt-in, not part of the hermetic gate)
 
 `tests/live_integration.rs` runs the real handshakes against a **reachable** server. It exists
-because the 131 loopback tests are circular for one assumption: they encode with this crate's own
+because the loopback tests are circular for one assumption: they encode with this crate's own
 `Cipher`, so they cannot detect a mismatch between the client's hardcoded link key
 (`0x12, 0x34`) and the game service's *configured* link key (`cfg.link_key`, SEC-014,
 `services/game/src/main.rs:680`). Only a live handshake proves that pairing.
@@ -137,10 +137,27 @@ step must not be blocked on a server being up.
   - Path: `src/game/char_info.rs`
   - Scope: Parse character list frames and full `MakeCharInfo` binary layout. Every single field (name, level, job, hp, mp, coordinates) mapped to exact byte offsets. No stub comments allowed.
   - Acceptance: Exact wire struct validation with byte-offset unit test.
+* **Step 4.5: World Entry I — Select Character Request (Opcode 4)**
+  > *Retroactive definition (2026-10-27, Acting QC Lead): delivered under the Dynamic Sub-steps
+  > Policy (`README.md:13-15`) before being written into this spec — commit `cdace13`, citation
+  > remediation `1bd8395`. Full citation set lives in the `src/game/world_entry.rs` module docs.*
+  - Path: `src/game/world_entry.rs`
+  - Scope: Send `GAMEMSG_REQUEST_SELECTCHAR` (opcode 4) carrying a bare `SI32` slot — the exact body the server port decodes (`decode_select_char`, `gz-proto/src/game.rs:941`). The slot is range-validated against the received roster before it reaches the socket, so a slot no server would honour is refused, not sent.
+  - Acceptance: Byte-exact loopback frame test (5-byte header + 4-byte LE slot, session-ciphered) proving size, opcode and payload; out-of-range slots refused with nothing written (F-01 synthetic-address discipline).
+* **Step 4.6: World Entry II — Server Banner & Character Load (Opcodes 106 + 5)**
+  > *Retroactive definition (2026-10-27, Acting QC Lead) — same delivery as 4.5.*
+  - Path: `src/game/world_entry.rs`
+  - Scope: Consume the server's two-frame answer to the select: `GAMEMSG_RESPONSE_SERVERINFO` (opcode 106, exactly 48 bytes; layout cross-checked against the port's `ServerInfo::encode`, `game.rs:990-1015`) followed by `GAMEMSG_RESPONSE_LOGIN` (opcode 5, exactly the 592-byte `MakeCharInfo` from Step 4.4). SERVERINFO is gated by the legacy's service-area check — a banner whose `siServiceArea` differs from the client's is **dropped as an expected non-event**, no switch set (`Client-System.cpp:1682`) — and LOGIN populates the local `CharClient` only when `uiMakeCharUnique` is the local id (`Client-Login.cpp:116`). In-world state is **derived** from the three legacy switches (`bReceiveServerInfoSwitch` set at `Client-System.cpp:1720`, `bWaitVillageStructureInfoSwitch` set at `Client-Login.cpp:288`, the populated `CharClient` checked via `Client-SetChar.cpp:66,110`); the port models the observable and fabricates no `USERSTATE_GAME_PLAYING` write the the legacy never performs (`StateBox.h:17`, `LogIn.cpp:992`).
+  - Acceptance: Strict length gates on both frames — truncated and trailing bytes refused, never truncation-parsed; a service-area-mismatch banner proven to leave state untouched (`Ok(false)`); char-unique match populates, mismatch does not; `is_in_world` falsifiable at each leg of the derivation.
+* **Step 4.7: World Entry III — Village Blueprint (Opcodes 1101/1102)**
+  > *Retroactive definition (2026-10-27, Acting QC Lead) — same delivery as 4.5.*
+  - Path: `src/game/world_entry.rs`
+  - Scope: Send `GAMEMSG_REQUEST_VILLAGESTRUCT` (opcode 1101, bare `SI32` ref — `Client-Login.cpp:281`, port `decode_village_struct_request`, `game.rs:1365`) once the local map is loaded and is a village (`Client-Login.cpp:279-288`), and consume `GAMEMSG_RESPONSE_VILLAGESTRUCT` (opcode 1102, exactly 22 bytes — `Client-SystemNPC.cpp:875`, port `VillageStruct`, `game.rs:48`), which clears the outstanding-wait switch (`Client-SystemNPC.cpp:896`). The map-data lookup that supplies `siVillageUnique` is a separate concern with its own wire truth: `request_village_struct` takes the ref from the caller — the boundary is stated, not stubbed.
+  - Acceptance: Byte-exact send/receive tests; strict 22-byte gate (refuse, not truncate); the outstanding-wait is recorded and cleared exactly across request/answer; `is_in_world` becomes true only after banner + character + blueprint are all settled.
 
 ---
 
-### [MOD-05: Non-Blocking Event Loop & Heartbeat]
+### [MOD-05: Non-Blocking Event Loop, Heartbeat & Message Dispatcher]
 * **Step 5.1: Non-Blocking Async Event Loop**
   - Path: `src/client/event_loop.rs`
   - Scope: Event loop using `tokio::select!` with a strict 100ms read timeout (`tokio::time::timeout`). Prevents blocking on idle sockets.
@@ -154,6 +171,13 @@ step must not be blocked on a server being up.
   - Path: `src/client/teardown.rs`
   - Scope: Clean disconnection handling on `Ctrl+C` or server disconnect signal. Closes sockets cleanly without leaking tasks.
   - Acceptance: Client terminates cleanly with zero orphaned tokio background tasks.
+* **Step 5.4: In-World Message Dispatcher (README Step 5, items 2–3)**
+  > *Retroactive definition (2026-10-27, Acting QC Lead): delivered under the Dynamic Sub-steps
+  > Policy before being written into this spec — commit `9adc9be`. Full citation set lives in
+  > the `src/game/dispatcher.rs` module docs.*
+  - Path: `src/game/dispatcher.rs`
+  - Scope: The inbound router for the five in-world opcodes — 6 `LOGINMANY`, 11 `LOGOUT`, 118 `CHAT`, 200 `CHARUPDATE`, 215 `PERSON_IP` (`README.md:104-108`) — each length-gated exactly and parsed at its literal offsets on dual-sourced authorities, and the delta reflection into a `DispatcherState` that models the legacy `CR[]` avatar table (`README.md:109`): the Step 4.5–4.7 `CharClient`, a `LocalDelta` overlay for the fields the opcode-5 record does not carry, and a `char_unique`-keyed table for everybody else. A pure state machine — no sockets, no timers; it is fed by Step 5.1's event loop.
+  - Acceptance: Every parser refuses both length ends (shorter = truncated, longer = trailing) rather than truncating; refuse paths pinned (a non-`MAKECHARTYPE_PC` record in opcode 6 never mis-strides; chat outside the constructor's 21..=140 range refused; the opcode-200 24-byte gate fails loudly — its `/Zp8`-arithmetic caveat stated, not buried); legacy behaviour anchors tested (logout self-id early-return vs delete, `Client-Login.cpp:402-411`; negative mana clamps to 0 exactly as `Char-Common.cpp:1295-1298` → `parametabox.h:194-198`, life does not); delta reflection invariants, with the documented `clIP` aliasing between opcode 200's `SetLife`/`SetMana` and opcode 215's `clIP.Set` stated honestly and never cross-written by the port.
 
 ---
 
@@ -161,3 +185,20 @@ step must not be blocked on a server being up.
 1. **Never jump steps:** Do not implement Step 1.3 until Step 1.2 is committed and verified.
 2. **Never hide failures:** If a wire offset does not match, log the raw hex diff. Do not fabricate dummy values or mask errors.
 3. **Never stub wire parsers:** Every packet parser must validate full payload lengths.
+
+---
+
+## Phase 2 Governance (Step 6 onward)
+
+Steps beyond 5.4 are governed by **`CONTRIBUTING_PHASE2.md`**: it inherits this document's
+core philosophy, the five mandatory gates, the live-integration-is-evidence policy and the
+three execution invariants **verbatim**, and adds the Phase-2-specific rules — the mode
+policy (Local Mode is the gate environment, Ngrok is evidence only), the hermetic wire-double
+policy for F-07 at the end-to-end layer, and the rule that a step's scope and acceptance must
+be defined there *before* it is implemented.
+
+The retroactive step definitions above (4.5–4.7 and 5.4, added 2026-10-27 by the Acting QC
+Lead) record work that was already delivered and QC-verified under the Dynamic Sub-steps
+Policy before it was written into this spec. They are a one-time governance reconciliation,
+**not precedent**: from Step 6.1 onward, the definition lands in `CONTRIBUTING_PHASE2.md`
+first, then the code.

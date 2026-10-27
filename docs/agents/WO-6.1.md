@@ -159,13 +159,34 @@ Nothing handwritten: every number in the matrix row must be copyable from a log 
 ### Delivery note — Implementer
 
 ```
-Commit: <sha>
+Commit: 7ab2321 (governance prerequisite: 13cbaf2 - RCA policy decision, resolution (a))
 Branch: step/6.1-driver
-Files: <list>
-Local gates (implementer-run, NOT evidence): check <ok/err> · clippy <ok/err> ·
-  fmt <ok/err> · test <n>/<n> · doc <warn count>
-Deviations from this WO: <none | list + why>
-Findings raised: <none | ids>
+Files: src/client/driver.rs (new, 747 lines) · src/client/driver/tests.rs (new,
+  231 lines, 12 tests) · src/client/mod.rs (+3: module docs + `pub mod driver;`)
+Local gates (implementer-run, NOT evidence): check ok · clippy ok ·
+  fmt ok (0 diffs) · test 206/206 · doc 0 warnings (0 warning lines)
+Deviations from this WO:
+  - Section 3 `src/main.rs` NOT implemented — still the Step 1.1 scaffold, so
+    Definition of Done item 3 ("main.rs reduced to config + logging + runtime +
+    exit codes") cannot close. Reason: out of the blocker's scope. The RCA
+    recorded "the only pending edit is the from_env binding fix", and this
+    takeover was scoped to that fix plus resuming the gates. Left for the next
+    implementer; flagged here so it is not discovered at verdict time.
+  - Two mechanical gate fixes beyond the named `from_env` fix, both required to
+    resume the gates and neither touching protocol or logic:
+    `clippy::needless_lifetimes` on `game_link_mut` (explicit `'a` elided) and
+    two rustfmt diffs in `src/client/driver/tests.rs` (formatted via the Phase 2
+    leaf-file rule — `driver.rs` / `driver/tests.rs` named directly, never
+    `mod.rs`; `git status` confirms no unrelated file changed).
+  - Authorship: this delivery was written by the Acting QC Lead, who is also the
+    signing role. S1/S2 therefore bar a `PASSED` verdict from this actor; row
+    6.1 moves to IN_PROGRESS pending an independent second actor.
+  - Evidence bundle (section 8) NOT produced — S4 requires a clean clone at the
+    delivery SHA. The numbers above are working-tree runs and are explicitly
+    NOT evidence.
+Findings raised: none as F-61-NN (the write-guard incident is resolved in
+  docs/rca/2026-10-27-step-6.1-write-guard-conflict.md at 13cbaf2; the
+  outstanding main.rs gap is recorded under Deviations above)
 ```
 
 ### Adversarial findings — Adversary (optional for 6.1, mandatory on request)

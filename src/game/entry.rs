@@ -163,6 +163,7 @@ use crate::net::codec::{CodecError, Decoder, Encoder, Frame, SendError};
 use crate::net::session::{Session, SessionError, SessionTimeouts};
 use std::io;
 use std::net::SocketAddr;
+use tokio::net::TcpStream;
 
 /// The Game Server's port (`CONTRIBUTING.md` Step 4.1; the server port's
 /// default listen `0.0.0.0:4010`, `services/game/src/config.rs:56`). The
@@ -365,12 +366,40 @@ impl GameLink {
         addr: SocketAddr,
         timeouts: SessionTimeouts,
     ) -> Result<Self, GameError> {
-        Ok(Self {
-            session: Session::connect_with_timeouts(addr, timeouts).await?,
+        Ok(Self::from_session(
+            Session::connect_with_timeouts(addr, timeouts).await?,
+        ))
+    }
+
+    /// Wraps an **already-connected** stream with everything
+    /// [`GameLink::connect_with_timeouts`] installs after its dial: the
+    /// inbound decoder keyed with [`Cipher::link_cipher()`] **before any read
+    /// can happen** (the decoder key precedes the byte — module docs), an
+    /// unkeyed outbound encoder and a closed send gate that Step 4.2's
+    /// [`GameLink::handshake`] opens.
+    ///
+    /// The caller owns the dial, so no connect window applies. This is the
+    /// seam hermetic paused-clock tests dial through with a bare
+    /// `TcpStream::connect` — both root causes (the auto-advance race, and
+    /// why resuming the clock was no better) are written up in
+    /// `src/client/event_loop/tests.rs`, `dial`; [`GameLink::connect`] and
+    /// [`GameLink::connect_with_timeouts`] remain the timeout-bounded
+    /// production path.
+    #[must_use]
+    pub fn from_stream(stream: TcpStream, peer: SocketAddr, timeouts: SessionTimeouts) -> Self {
+        Self::from_session(Session::from_stream(stream, peer, timeouts))
+    }
+
+    /// The single construction site for the codec half of the link: both
+    /// constructors above end here, so the decoder key and the encoder's
+    /// unkeyed start are identical no matter who performed the dial.
+    fn from_session(session: Session) -> Self {
+        Self {
+            session,
             decoder: Decoder::with_cipher(Cipher::link_cipher()),
             encoder: Encoder::new(),
             negotiated: None,
-        })
+        }
     }
 
     /// Consumes frames until [`RESPONSE_CLIENTCHARUNIQUE`] arrives, parses

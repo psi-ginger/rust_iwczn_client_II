@@ -200,11 +200,30 @@ impl Session {
                 addr,
                 timeout: timeouts.connect,
             })??;
-        Ok(Self {
+        Ok(Self::from_stream(stream, addr, timeouts))
+    }
+
+    /// Wraps an **already-connected** stream — the caller owns the dial, so
+    /// no connect window applies (`timeouts.connect` is stored for
+    /// [`Session::timeouts`] but guards nothing here).
+    ///
+    /// This is the seam hermetic paused-clock tests dial through with a bare
+    /// `TcpStream::connect`: a timeout-wrapped dial hands tokio's
+    /// virtual-time auto-advance a duration it can `advance` before the
+    /// kernel handshake lands (the load-sensitive `ConnectTimeout` race
+    /// root-caused in `src/client/event_loop/tests.rs`, `dial`), while a
+    /// park with **no** deadline can only end on real I/O and leaves the
+    /// virtual clock untouched. `peer` is the address the caller dialled —
+    /// the same "what the caller asked for" meaning as [`Session::peer_addr`].
+    /// [`Session::connect_with_timeouts`] delegates here after its bounded
+    /// dial.
+    #[must_use]
+    pub fn from_stream(stream: TcpStream, peer: SocketAddr, timeouts: SessionTimeouts) -> Self {
+        Self {
             stream,
-            peer: addr,
+            peer,
             timeouts,
-        })
+        }
     }
 
     /// The dialed address (not `stream.peer_addr()`: stable across NAT

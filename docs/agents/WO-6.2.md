@@ -191,7 +191,80 @@ harness observed the corrupted frame on its transcript:
 
 ### Delivery note — Implementer
 
-_(appended after implementation)_
+**Delivered** (four files, single-writer per `CONTRIBUTING_PHASE2.md:203-218`):
+`tests/e2e_loopback.rs` (root: session orchestration + 6 tests), `tests/e2e_loopback/frames.rs`
+(the only byte source: hand-placed literals/builders with per-field citations, the expected
+conversation, the transcript types, plus 3 self-tests pinning the SECRETKEY header arithmetic
+and the link-cipher key constants), `tests/e2e_loopback/front_double.rs` (fake front service),
+`tests/e2e_loopback/game_double.rs` (fake game service). No file outside this set was written;
+`src/**` untouched; `TASK_MATRIX.md` untouched; no lane wrote `PASSED` (row 6.1 remains
+`IN_PROGRESS`).
+
+**Gates** — all five green on the delivery tree; each log in
+`C:\Users\CatsHome\AppData\Local\Temp\opencode\`:
+
+| Gate | Command | Exit | Log |
+|---|---|---|---|
+| F1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | 0 | `f1_62_check.txt` |
+| F2 | `cargo clippy --all-targets -- -D warnings` | 0 | `f2_62_clippy.txt` |
+| F3 | `cargo fmt --check` | 0 | `f3_62_fmt.txt` |
+| F4 | `cargo test` | 0 | `f4_62_test.txt` |
+| F5 | `cargo doc --no-deps` | 0 | `f5_62_doc.txt` |
+
+**Test counts.** Baseline 209/209 held; +9 new in `tests/e2e_loopback.rs` → 218 executed
+(lib 209 · e2e 9 · live_integration 4 ignored as before · doc 0). The 9 = 6 root tests (full
+flow, a 22-assertion wire-length table, four mutations) + 3 byte-source self-tests. The
+full-flow test finishes in 10.0 s wall — exactly one real 10 s heartbeat tick (WO §5.3), not a
+hang; the four mutation tests run in milliseconds.
+
+**Acceptance (`CONTRIBUTING_PHASE2.md:113-124`):**
+
+1. **Full flow green on loopback.** `a_full_session_conversation_is_byte_exact_and_tears_down_cleanly`
+   runs front → game → world entry → in-world → heartbeat → server FIN and ends at
+   `DriverOutcome{stage: TornDown, worlds: 1, char_unique: 4242, char_slot: 2, village: Some(7)}`.
+2. **Byte-exact coverage of every frame.** Both doubles push every frame they send or receive
+   (plaintext image + wire length) into one shared `Transcript`; the test asserts
+   `transcript == expected_conversation() + one entry per observed heartbeat`,
+   entry-for-entry, both directions — a single assertion that fails on any added, dropped,
+   reordered or altered frame on either leg — plus the independent 22-assertion wire-length
+   table (every server→client size from its cited legacy constant).
+3. **Mutation detection, one per stage**, each asserting the refusal stage *and* that the
+   harness observed the corrupted frame on its transcript:
+
+   | Stage | Corruption (one byte) | Observed refusal |
+   |---|---|---|
+   | front | world-list `usCount` 1→2 | `DriverError::Stage{stage: WorldList}` |
+   | game login | occupied roster `szName[0]` → NUL | `DriverError::Refused{stage: CharList}` |
+   | world entry | opcode-5 `uiMakeCharUnique` low byte +1 | `DriverError::Refused{stage: CharClient}` |
+   | in-world | chat body `siDataSize` +1 | `DriverError::Refused{stage: InWorld}` |
+
+4. **F-07 held.** Expectations are hand-placed plaintext literals in `frames.rs`, each field
+   at its cited offset; no client parser or encoder builds an expected byte anywhere; the
+   doubles' `Cipher::link_cipher()`/`session_cipher()` calls are the transport transform both
+   real peers perform (the legacy decodes inbound with `GetEncrypt()->Decode`,
+   `FrontClientProtocol.cpp:85`; the server port keys the same `Cipher`, `main.rs:704`), and
+   no expected ciphertext is derived from the client's encoder. Opcodes are literals, not
+   imports from client tables.
+5. **Five gates green** (table above).
+
+**Deviations / discoveries during implementation:**
+
+1. **The driver future is not `Send`** — `tokio::spawn(driver::run …)` fails the `Send` proof
+   at `cargo check`. Production awaits it inline (`src/main.rs:30`), so the harness does the
+   same: the doubles are spawned tasks, `driver::run` runs inline on the current-thread test
+   runtime (which also keeps the thread-scoped tracing capture hermetic). No `src/**` change
+   was needed or made; this is a harness-side adaptation of WO §5.4's plan, not an API change.
+2. **`#[path]` module declarations.** An integration-test crate root resolves `mod frames;`
+   in `tests/`, not `tests/e2e_loopback/`; the root therefore declares the three modules with
+   `#[path = "e2e_loopback/…"]`. The WO §4 file layout stands unchanged.
+3. **`FrontReport.ended_by_peer`.** On the front mutation the client drops the connection
+   *before* the login response (it refuses at the world-list read), so `closed_cleanly` —
+   which means "closed after the login response" (`driver.rs:574-576`) — is false on that
+   path. A separate flag records "the client left before its next expected step" and is what
+   that mutation test asserts; `closed_cleanly` keeps its documented meaning on the happy path.
+4. **Real clock, as WO §5.3 planned and for the reason it recorded**: the full-flow test
+   waited out one real heartbeat tick; `driver::run`'s production dial path is unseamable
+   without a `src/**` edit.
 
 ### Adversarial findings — Adversary
 
@@ -204,14 +277,14 @@ _(independent; reproduces all five gates and the byte-exactness claims)_
 ## 10. Definition of Done
 
 - [x] WO committed before code, with baseline and deviations.
-- [ ] `tests/e2e_loopback.rs` + `tests/e2e_loopback/{frames,front_double,game_double}.rs` delivered.
-- [ ] Full flow green on loopback: front → game → world entry → in-world → heartbeat →
+- [x] `tests/e2e_loopback.rs` + `tests/e2e_loopback/{frames,front_double,game_double}.rs` delivered.
+- [x] Full flow green on loopback: front → game → world entry → in-world → heartbeat →
       server FIN → `Ok(DriverOutcome{stage: TornDown})` with the `ServerDisconnect` cause
       logged.
-- [ ] Transcript == expected conversation, byte-exact, both directions, every frame.
-- [ ] Four mutation tests, one per stage, each observing a flipped byte.
-- [ ] Five gates green: `RUSTFLAGS=-D warnings cargo check --all-targets` ·
+- [x] Transcript == expected conversation, byte-exact, both directions, every frame.
+- [x] Four mutation tests, one per stage, each observing a flipped byte.
+- [x] Five gates green: `RUSTFLAGS=-D warnings cargo check --all-targets` ·
       `cargo clippy --all-targets -- -D warnings` · `cargo fmt --check` · `cargo test` ·
       `cargo doc --no-deps`.
-- [ ] Delivery note appended to §9 with gate evidence; commit carries the trailer block;
+- [x] Delivery note appended to §9 with gate evidence; commit carries the trailer block;
       pushed to `step/6.2-harness`.

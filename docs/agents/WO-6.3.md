@@ -161,6 +161,61 @@ zero orphaned tasks.
 ## 9. Return blocks (append; do not rewrite the sections above)
 
 ### Delivery note - Implementer
+
+Branch `step/6.3-soak`, delivery SHA **`3285d07`** (parent `fc5ffb1`,
+baseline `main` @ `9ba6226`). Five files, `src/**` untouched
+(`git diff -- src` empty).
+
+**Gates (all exit 0, `CONTRIBUTING_PHASE2.md:238-239` commands):**
+`RUSTFLAGS=-D warnings cargo check --all-targets` · `cargo clippy
+--all-targets -- -D warnings` · `cargo fmt --check` (0 diffs) ·
+`cargo test` · `cargo doc --no-deps` (0 warnings). Test count from the
+run's `test.log` line: `test result: ok. 211 passed; 0 failed; 0
+ignored` (lib) + `test result: ok. 14 passed; 0 failed; 0 ignored;
+finished in 30.15s` (e2e) — **225/225**, e2e 9 → 14 = soak + R1–R4; the
+4 `live_integration` tests remain ignored and untouched.
+
+**(a) Soak** (`tests/e2e_loopback/soak.rs`, 1 test): two concurrent
+full `driver::run` sessions (one current-thread task, `tokio::join!`)
+held in-world while their doubles stream storms of different sizes at a
+fixed 100 ms pace; the 10 s heartbeat ticker is untouched, so the frame
+stream is the scaled dimension. Every 6-frame cycle leads with the
+NPC-led opcode-6 batch (34 × 68-B NPC records, ids 8500..8533, then the
+two PCs — LIVE-01's shape), plus 215/200/11/118 and one foreign opcode.
+Measured storm-size independence (this run, the `soak measurements:`
+line): small target=1000 **sent=1208**, large target=4000
+**sent=4228**; both sessions' cadence intervals **(9.9919107 s,
+10.0044285 s)** vs **(9.9918991 s, 10.0043954 s)** — inside the fixed
+10 s window; **max cross-session same-index heartbeat drift 31.1 µs**;
+**dispatches=5446** (client-processed, DEBUG dispatch-log count at
+`driver.rs:684` — not writer counts); **npc_led_batches=907**
+(≥ frames/6 − 2 asserted); teardown FIN→return **1.2573 ms** (small) /
+**1.8432 ms** (large), bound 500 ms. Zero-orphan evidence is
+behavioral: the double observes the client's own close (the close phase
+of `terminate` ran, `teardown.rs:366`), both terminal records present,
+the Err-path drain warning absent, state consistent (TornDown,
+`char_unique`/village intact) — falsifiable assertions, not counts
+alone.
+
+**(b) Robustness** (`tests/e2e_loopback/robustness.rs`, 4 tests, one
+per scenario, each bounded and each asserting a stage-named outcome +
+clean aftermath): **R1** `usSize` 3 and 64993 both refused at
+`InWorld` carrying the header guard's exact variant
+(`SizeBelowHeader{3}` / `SizeTooLarge{64993}`) as the source; **R2**
+tag-flipped frame → `CodecError::Integrity` at `InWorld`; **R3**
+3-byte partial + FIN → **no error**, clean `Cause::ServerDisconnect`
+teardown, the documented behavior pinned (`game/entry.rs:472-476`);
+**R4** Ctrl+C mid-session through the injected `watch_signal` seam
+(fired after the first byte-exact heartbeat) → `Cause::CtrlC` claimed
+by that watcher, `TornDown`. R1–R3 finished in ms (bound 15 s), R4 in
+10.12 s (bound 30 s).
+
+**(c)** The ≥2-min live soak is Verifier-owned per §8
+(`tests/live_integration.rs` untouched, 4 tests still ignored).
+
+Handoff: Adversary lane for §9 adversarial findings; Verifier lane for
+`evidence/6.3/` from a clean clone at `3285d07` and the S4/S1 verdict.
+
 ### Adversarial findings - Adversary
 ### Verdict - Verifier
 

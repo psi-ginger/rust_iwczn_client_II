@@ -1,0 +1,6 @@
+[2m2026-10-28T07:11:12.178482Z[0m [32m INFO[0m [2mgoonzu_client[0m[2m:[0m goonzu client starting [3mversion[0m[2m=[0m"0.1.0"
+[2m2026-10-28T07:11:12.648883Z[0m [32m INFO[0m [2mgoonzu_client::game::entry[0m[2m:[0m client handshake succeeded: session_seed = (0xa2, 0x72), char_unique = 10
+[2m2026-10-28T07:11:13.629767Z[0m [31mERROR[0m [2mgoonzu_client[0m[2m:[0m session failed [3merror[0m[2m=[0mInWorld refused: LOGINMANY record at offset 0 has uiType 0, not MAKECHARTYPE_PC (1) - the NPC stride is not pinned by any verified source
+
+[evidence] driver process exit code = 1 (WO-6.1 S5: 1 = runtime failure, failing stage named in the error line above)
+[evidence] run at 2026-10-28 14:11:13 local, binary target\debug\goonzu_client.exe from step/6.2-harness

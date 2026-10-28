@@ -1,0 +1,31 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests\live_integration.rs (target\debug\deps\live_integration-fc3241403ed798bb.exe)
+
+running 4 tests
+[live] GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:27911 -> 13.213.213.17:27911
+[live] GOONZU_LIVE_FRONT=0.tcp.ap.ngrok.io:14195 -> 13.213.213.17:14195
+[live] GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:27911 -> 13.213.213.17:27911
+[live] GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:27911 -> 13.213.213.17:27911
+client handshake succeeded: session_seed = (0x0a, 0xd6), char_unique = 5 (server version 1)
+test live_game_handshake_decodes_the_link_cipher ... ok
+[live] session established via an early heartbeat; entering the soak
+[live] front OK: session_seed=(0x1b, 0xd6)
+test live_front_handshake_extracts_secret_key ... ok
+[live] tick name=live-hb fired=1
+[live] tick name=live-hb fired=2
+[live] tick name=live-hb fired=3
+[live] event loop OK over WAN: 3 tick(s), 0 frame(s), char_unique=4
+test live_event_loop_idles_cleanly_and_ticks ... ok
+[live] heartbeat 1/7 sent at +0ns
+[live] heartbeat 2/7 sent at +10.0017406s
+[live] heartbeat 3/7 sent at +19.9962981s
+[live] heartbeat 4/7 sent at +29.9990753s
+[live] heartbeat 5/7 sent at +40.0004469s
+test live_heartbeat_keeps_the_connection_up_over_60s has been running for over 60 seconds
+[live] heartbeat 6/7 sent at +49.9901001s
+[live] heartbeat 7/7 sent at +59.9973283s
+[live] heartbeat soak OK: 7 heartbeats over 70.0095877s of open connection, never dropped, char_unique=6
+test live_heartbeat_keeps_the_connection_up_over_60s ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 70.12s
+

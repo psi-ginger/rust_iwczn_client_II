@@ -1,0 +1,39 @@
+   Compiling tokio v1.54.1
+   Compiling goonzu_client v0.1.0 (C:\Data\Client\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.80s
+     Running tests\live_integration.rs (target\debug\deps\live_integration-fc3241403ed798bb.exe)
+
+running 4 tests
+[live] GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:14195 -> 13.213.213.17:14195
+[live] GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:14195 -> 13.213.213.17:14195
+[live] GOONZU_LIVE_FRONT=0.tcp.ap.ngrok.io:27911 -> 13.213.213.17:27911
+[live] GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:14195 -> 13.213.213.17:14195
+
+thread 'live_event_loop_idles_cleanly_and_ticks' (4700) panicked at tests\live_integration.rs:251:10:
+handshake before entering the loop: Codec(Integrity { size: 10, cmd: 30000, key1: 19, key2: 53 })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test live_event_loop_idles_cleanly_and_ticks ... FAILED
+
+thread 'live_front_handshake_extracts_secret_key' (7780) panicked at tests\live_integration.rs:75:10:
+FRONTMSG_RESPONSE_SECRETKEY handshake: UnexpectedOpcode { cmd: 18503 }
+test live_front_handshake_extracts_secret_key ... FAILED
+
+thread 'live_heartbeat_keeps_the_connection_up_over_60s' (1568) panicked at tests\live_integration.rs:153:10:
+handshake before the heartbeat soak: Codec(Integrity { size: 10, cmd: 30000, key1: 19, key2: 53 })
+test live_heartbeat_keeps_the_connection_up_over_60s ... FAILED
+
+thread 'live_game_handshake_decodes_the_link_cipher' (2024) panicked at tests\live_integration.rs:106:10:
+GAMEMSG_RESPONSE_CLIENTCHARUNIQUE handshake: Codec(Integrity { size: 10, cmd: 30000, key1: 19, key2: 53 })
+test live_game_handshake_decodes_the_link_cipher ... FAILED
+
+failures:
+
+failures:
+    live_event_loop_idles_cleanly_and_ticks
+    live_front_handshake_extracts_secret_key
+    live_game_handshake_decodes_the_link_cipher
+    live_heartbeat_keeps_the_connection_up_over_60s
+
+test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+error: test failed, to rerun pass `--test live_integration`

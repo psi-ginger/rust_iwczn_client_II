@@ -1,0 +1,6 @@
+HEAD_SHA: 57bd58fffb6680ea7b7c8596acd2a5859d2dc919
+HEAD_SUBJECT: docs(qc): sign off rows 6.1 and 6.2 - both PASSED (Verifier, independent second actor)
+CODE_SHA: febc38a5b895a0559475b945dac393aeb457113f
+BRANCH: step/6.2-harness
+BINARY: target\debug\goonzu_client.exe built from this working tree (code identical to CODE_SHA; HEAD is docs-only)
+GIT_STATUS_RAW: [] (clean at evidence assembly; the temp decode test was deleted before assembly)

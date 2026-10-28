@@ -1,0 +1,6 @@
+HEAD_SHA: 701963ac51376191adc4f72c78d6e1e308123f7a
+HEAD_SUBJECT: fix(client): LIVE-01 - stride opcode-6 records by uiType (592 PC / 68 NPC)
+BRANCH: fix/live-loginmany-npc (detached at the delivery SHA)
+CLONE_PATH: C:\Users\DK2\AppData\Local\Temp\opencode\evidence\live-fix\clone (fresh clone from origin, fresh target/)
+CLONE_FROM: git@github.com:psi-ginger/rust_iwczn_client_II.git
+GIT_STATUS_RAW: []

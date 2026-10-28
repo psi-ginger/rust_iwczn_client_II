@@ -1,0 +1,2 @@
+[2m2026-10-28T10:14:52.147161Z[0m [32m INFO[0m [2mgoonzu_client[0m[2m:[0m goonzu client starting [3mversion[0m[2m=[0m"0.1.0"
+[2m2026-10-28T10:14:52.743046Z[0m [32m INFO[0m [2mgoonzu_client::game::entry[0m[2m:[0m client handshake succeeded: session_seed = (0xe2, 0x7f), char_unique = 11

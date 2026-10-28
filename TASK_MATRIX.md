@@ -98,3 +98,17 @@ Lane ownership and separation of duty are defined in `CONTRIBUTING_PHASE2.md` §
 >
 > **Rows 6.1/6.2 stay `PASSED`:** the defect predates 6.1 -- it is Step 4.4's documented refusal posture (§7), and 6.1's stage-named refusal + exit-1 mapping behaved exactly as its WO specifies (now live-verified). Not proven, blocked by LIVE-01: the in-world heartbeat (session dies ~1.1s after entry; first tick at +10s -- the standalone soak covers the protocol) and the graceful `Ctrl+C -> Stage::TornDown` teardown. Both become provable in the post-fix green run.
 
+
+> **2026-10-28 LIVE-01 fix verified and live-verified green (Verifier, dedicated `docs(qc)` commit) — the Custodian merge of `fix/live-loginmany-npc` into `main` is AUTHORIZED.** Delivery `701963a` (single commit, author `goonzu-rs`; S1 satisfied — the verifying signer authored none of `af4ab01..701963a`). Evidence: **`evidence/live-fix/`** (SHA256SUMS-bound).
+>
+> **S4 (clean clone straight from origin at `701963a`, fresh `target/`, porcelain empty): all five gates exit 0** — check/clippy/`fmt --check` (0 bytes)/doc (0 warnings)/test **211 lib + 9 e2e = 220/220** (baseline 218 @ `febc38a` -> 220 @ `701963a`).
+>
+> **Adversarial review: no blocking findings.** Walker (min-68 gate, per-record remainder refusals, `uiType` dispatch 592/68, loud `UnknownRecordType`), `decode_head`/`fill_pc_tail` refactor preserving the opcode-5 field set, dispatcher's NPC counted-skip (falsifiable: a zero count would mean the stride dispatch mis-read the batch), F-07-clean fixtures, hermetic 2,312-B/34-record live-shape test. One non-blocking correction owed by the implementer lane: **L-1** — `frames.rs` `make_npc_record` cites rec[00] "y 338"; the capture's `w12=0x00027852` gives uiY = **82** (comment-only, no assertion depends on it). Verifier self-correction recorded in the RCA: the earlier "8492->8533" decimal was mis-divided; the log's hex `0x2134..0x2155` is **8500..8533**.
+>
+> **Live acceptance, clone binary against the live tunnels (wire-verified roles, front `:14195` / game `:27911`):**
+> **(a) PROVEN** — three consecutive green sessions pass `Stage::InWorld`, absorbing the live NPC-led opcode-6 broadcast (`char_unique` 11/12/13; the pre-fix build refused every time);
+> **(b) MEASURED on the wire** — the green run's c2s capture walks as 53-B login + 9-B select + **3 x 5-B heartbeats at +10/+20/+30 s** (4 in the prior run) before the +40 s graceful FIN (`evidence/live-fix/cap/c2s.bin`);
+> **(c) PROVEN via the clean-close teardown** — `session ended stage=TornDown worlds=1`, `session complete stage=TornDown`, **exit code 0** (`drv_green_acceptance.log`). The literal Ctrl+C *console event* is **undeliverable in this verification environment**: a raw kernel32 handler on a confirmed shared console never fires under this harness's pseudoconsole (ConPTY), proven at the API level (`ctrl_c_investigation.md`, `probe_fire.log`), not inferred. The CtrlC wiring stays covered by the hermetic seam tests in the 220; the teardown machinery is now live-proven on real sockets. An optional one-command interactive-console check is recorded in the investigation note and does not block the merge.
+>
+> **Rows 6.1/6.2 remain `PASSED` (unchanged); LIVE-01 is `RESOLVED`** (`docs/rca/2026-10-28-live-opcode6-npc-stride.md`, now carrying the delivery note and the Verifier verification section). **Authorization:** the Custodian may merge `701963a` into `main`, replacing main's discarded driver (`895518e`) with the signed-off lineage.
+

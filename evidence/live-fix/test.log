@@ -1,0 +1,255 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-389dee795ddcb436.exe)
+
+running 211 tests
+test auth::front::tests::constants_match_the_legacy_front_server ... ok
+test auth::front::tests::handshake_over_loopback_extracts_the_seeds_and_ciphers_the_outbound_channel ... ok
+test auth::front::tests::handshake_refuses_an_unexpected_first_opcode ... ok
+test auth::front::tests::handshake_rejects_a_short_secretkey_payload ... ok
+test auth::front::tests::handshake_surfaces_eof_before_the_frame_arrives ... ok
+test auth::front::tests::secret_key_reads_the_two_seed_offsets_only ... ok
+test auth::front::tests::send_before_the_handshake_is_refused_and_writes_nothing ... ok
+test auth::login::tests::a_request_before_the_handshake_is_refused_and_writes_nothing ... ok
+test auth::login::tests::capture_gates_the_auth_key_behind_both_rejection_checks ... ok
+test auth::login::tests::constants_match_the_wire_truth ... ok
+test auth::login::tests::credentials_that_do_not_fit_are_refused_not_truncated ... ok
+test auth::login::tests::login_request_payload_is_byte_exact_at_literal_offsets ... ok
+test auth::login::tests::login_response_parses_every_field_at_its_literal_offset ... ok
+test auth::login::tests::payload_length_boundaries_are_refused_exactly ... ok
+test auth::front::tests::handshake_reassembles_a_frame_split_across_reads ... ok
+test auth::login::tests::the_parser_refuses_foreign_opcodes ... ok
+test auth::world_list::tests::a_count_larger_than_the_frame_is_refused_without_reading_out_of_bounds ... ok
+test auth::world_list::tests::account_id_payload_follows_stringchcopy_semantics ... ok
+test auth::world_list::tests::both_requests_are_ciphered_and_byte_exact_on_the_wire ... ok
+test auth::world_list::tests::constants_match_the_wire_truth ... ok
+test auth::world_list::tests::count_and_length_must_agree_at_every_boundary ... ok
+test auth::world_list::tests::empty_world_list_is_the_literal_seven_byte_frame ... ok
+test auth::world_list::tests::notice_response_is_exactly_sixteen_bytes_to_the_first_nul ... ok
+test auth::world_list::tests::requests_before_the_handshake_are_refused_and_write_nothing ... ok
+test auth::world_list::tests::the_parsers_refuse_foreign_opcodes ... ok
+test auth::world_list::tests::trailing_bytes_are_surfaced_not_dropped ... ok
+test auth::world_list::tests::worldlist_response_parses_every_field_at_its_literal_offset ... ok
+test auth::front::tests::inbound_frames_stay_plaintext_after_the_handshake ... ok
+test auth::login::tests::the_login_flow_round_trips_over_loopback ... ok
+test client::driver::tests::a_claimed_shutdown_stops_before_the_first_stage ... ok
+test client::driver::tests::a_console_event_stops_the_flow_at_the_next_stage_gate ... ok
+test auth::world_list::tests::worldlist_round_trip_over_loopback_is_byte_exact ... ok
+test client::driver::tests::a_missing_credential_is_named_but_never_echoed ... ok
+test client::driver::tests::a_non_numeric_slot_is_refused ... ok
+test auth::front::tests::handshake_is_idempotent_once_keyed ... ok
+test client::driver::tests::a_slot_outside_the_roster_is_refused_with_the_bound ... ok
+test client::driver::tests::a_stage_error_keeps_the_stage_and_the_source ... ok
+test client::driver::tests::an_address_without_a_port_is_refused ... ok
+test client::driver::tests::an_invalid_configuration_never_opens_a_socket ... ok
+test client::driver::tests::debug_redacts_the_password ... ok
+test client::driver::tests::defaults_apply_when_only_credentials_are_set ... ok
+test client::driver::tests::optional_village_and_drain_bound_are_honoured ... ok
+test client::driver::tests::stage_names_are_stable ... ok
+test client::event_loop::tests::a_clean_server_close_ends_the_loop ... ok
+test client::event_loop::tests::a_frame_sent_to_an_idle_link_is_delivered_within_the_read_budget ... ok
+test client::event_loop::tests::a_frame_split_across_two_read_windows_still_reassembles ... ok
+test client::event_loop::tests::a_handler_error_on_the_frame_path_propagates_and_stops_the_loop ... ok
+test client::event_loop::tests::a_handler_error_on_the_tick_path_propagates_and_stops_the_loop ... ok
+test client::event_loop::tests::a_plaintext_frame_is_refused_and_stops_the_loop ... ok
+test client::event_loop::tests::an_idle_socket_does_not_block_the_loop_and_tickers_keep_firing ... ok
+test client::event_loop::tests::frames_are_delivered_while_tickers_keep_firing ... ok
+test client::event_loop::tests::frames_buffered_before_a_clean_close_are_delivered_before_eof ... ok
+test client::event_loop::tests::missed_intervals_coalesce_into_one_fire ... ok
+test client::event_loop::tests::read_poll_budget_matches_the_legacy_cadence ... ok
+test client::heartbeat::tests::constants_match_the_wire_truth ... ok
+test client::heartbeat::tests::is_heartbeat_keys_on_the_ticker_name_not_the_interval ... ok
+test client::heartbeat::tests::send_before_the_handshake_is_refused_and_writes_nothing ... ok
+test client::heartbeat::tests::the_heartbeat_is_a_header_only_frame_session_ciphered_and_uncompressed ... ok
+test client::heartbeat::tests::the_loop_pushes_a_heartbeat_on_every_tick_over_an_open_connection ... ok
+test client::teardown::tests::a_failed_signal_registration_never_falsely_claims_a_cause ... ok
+test client::teardown::tests::a_failing_link_claims_server_disconnect_before_returning_the_error ... ok
+test client::teardown::tests::a_handler_break_leaves_the_cause_unclaimed ... ok
+test client::teardown::tests::close_delivers_a_clean_eof_to_the_peer ... ok
+test client::teardown::tests::drain_reports_orphans_that_never_finish ... ok
+test client::teardown::tests::first_trigger_wins_and_the_later_cause_is_dropped ... ok
+test client::teardown::tests::server_eof_marks_the_server_disconnect_cause_and_stops_the_loop ... ok
+test client::teardown::tests::spawn_ctrl_c_watcher_is_accounted_and_abortable ... ok
+test client::teardown::tests::terminate_closes_the_socket_and_drains_every_tracked_task ... ok
+test client::teardown::tests::terminate_defaults_an_unclaimed_shutdown_to_server_disconnect ... ok
+test client::teardown::tests::triggered_shutdown_stops_the_loop_within_one_read_budget ... ok
+test client::teardown::tests::watch_signal_claims_ctrl_c_through_the_injected_seam ... ok
+test client::teardown::tests::watch_signal_yields_to_a_cause_already_claimed ... ok
+test game::char_info::tests::char_list_fields_read_their_literal_offsets ... ok
+test game::char_info::tests::char_list_length_boundaries_are_refused_exactly ... ok
+test game::char_info::tests::char_list_strings_stop_at_their_terminator ... ok
+test game::char_info::tests::constants_match_the_wire_truth ... ok
+test game::char_info::tests::del_char_time_any_nonzero_byte_means_pending ... ok
+test game::char_info::tests::every_bitfield_mask_stops_at_its_declared_width ... ok
+test game::char_info::tests::login_many_decodes_an_npc_record_at_its_68_byte_stride ... ok
+test game::char_info::tests::login_many_decodes_the_live_broadcast_shape ... ok
+test game::char_info::tests::login_many_refuses_an_empty_body ... ok
+test game::char_info::tests::login_many_refuses_partial_records_of_either_stride ... ok
+test game::char_info::tests::login_many_walks_a_mixed_batch_by_each_records_own_stride ... ok
+test game::char_info::tests::login_many_walks_records_back_to_back_by_stride ... ok
+test game::char_info::tests::make_char_info_fields_read_their_literal_offsets ... ok
+test game::char_info::tests::make_char_info_length_boundaries_are_refused_exactly ... ok
+test game::char_info::tests::opcode_is_checked_before_the_length_is_looked_at ... ok
+test game::char_info::tests::the_compression_flag_must_be_cleared_by_the_caller_before_parsing ... ok
+test game::dispatcher::tests::a_char_update_for_a_nearby_character_writes_move_speed_too ... ok
+test game::dispatcher::tests::a_char_update_for_an_unknown_character_is_dropped_without_touching_state ... ok
+test game::dispatcher::tests::a_char_update_lands_every_field_and_self_skips_move_speed ... ok
+test game::dispatcher::tests::a_char_update_length_boundary_is_refused_exactly ... ok
+test game::dispatcher::tests::a_char_update_mana_is_clamped_to_zero_and_life_is_not ... ok
+test game::dispatcher::tests::a_char_update_reserved_life_ratchets_and_never_regresses ... ok
+test game::dispatcher::tests::a_chat_body_lands_every_field_at_its_declared_offset ... ok
+test game::dispatcher::tests::a_chat_body_that_disagrees_with_its_si_data_size_is_refused ... ok
+test game::dispatcher::tests::a_chat_frame_never_mutates_state ... ok
+test game::dispatcher::tests::a_chat_player_name_length_outside_the_transmitted_region_is_refused ... ok
+test game::dispatcher::tests::a_chat_si_data_size_the_constructor_cannot_produce_is_refused ... ok
+test game::dispatcher::tests::a_foreign_opcode_is_unhandled_not_an_error ... ok
+test game::dispatcher::tests::a_login_many_body_upserts_one_entry_per_record ... ok
+test game::dispatcher::tests::a_login_many_npc_record_is_counted_and_skipped ... ok
+test game::dispatcher::tests::a_logout_length_boundary_is_refused_exactly ... ok
+test game::dispatcher::tests::a_logout_naming_an_unknown_character_is_a_no_op ... ok
+test game::dispatcher::tests::a_logout_naming_the_local_avatar_is_never_applied ... ok
+test game::dispatcher::tests::a_logout_removes_a_nearby_character ... ok
+test game::dispatcher::tests::a_person_ip_lands_on_a_nearby_character_and_an_unknown_one_is_dropped ... ok
+test game::dispatcher::tests::a_person_ip_lands_the_cl_block_at_offset_8_for_self ... ok
+test game::dispatcher::tests::a_person_ip_length_boundary_is_refused_exactly ... ok
+test game::dispatcher::tests::a_re_received_record_refreshes_the_birth_fields_and_keeps_the_deltas ... ok
+test game::dispatcher::tests::an_empty_or_partial_login_many_body_is_refused ... ok
+test game::dispatcher::tests::every_parser_checks_its_opcode_before_any_length ... ok
+test game::dispatcher::tests::the_person_ip_body_is_the_ports_measured_frame_minus_its_header ... ok
+test game::entry::tests::a_clean_server_close_is_none_not_an_error ... ok
+test game::entry::tests::a_foreign_opcode_is_refused_before_its_length_is_looked_at ... ok
+test game::entry::tests::a_plaintext_frame_is_refused_because_byte_zero_is_enciphered ... ok
+test game::entry::tests::a_read_timeout_is_never_a_teardown_on_an_idle_game_link ... ok
+test game::entry::tests::an_immediately_sent_encrypted_frame_decodes_without_corruption ... ok
+test game::entry::tests::client_char_unique_reads_the_wire_offsets ... ok
+test game::entry::tests::constants_match_the_wire_truth ... ok
+test game::entry::tests::handshake_is_idempotent_once_negotiated ... ok
+test game::entry::tests::handshake_keys_the_outbound_channel_and_ciphers_every_frame_after_it ... ok
+test client::driver::tests::a_closed_front_port_is_reported_at_the_front_stage ... ok
+test game::entry::tests::send_before_the_handshake_is_refused_and_writes_nothing ... ok
+test game::entry::tests::the_handshake_body_must_be_exactly_eight_bytes ... ok
+test game::entry::tests::the_link_cipher_is_installed_before_the_first_read ... ok
+test game::login::tests::a_credential_without_room_for_its_terminator_is_refused ... ok
+test game::login::tests::an_over_long_credential_sends_nothing ... ok
+test game::login::tests::constants_match_the_wire_truth ... ok
+test game::login::tests::every_auth_key_shape_travels_little_endian ... ok
+test client::driver::tests::a_driver_error_never_renders_the_password ... ok
+test game::login::tests::strings_stop_at_their_terminator_and_zero_fill_the_rest ... ok
+test game::login::tests::send_before_the_handshake_is_refused_and_writes_nothing ... ok
+test game::login::tests::the_payload_is_byte_exact_at_literal_offsets ... ok
+test game::world_entry::tests::a_malformed_opcode_5_record_is_a_char_info_error ... ok
+test game::login::tests::the_login_frame_is_53_bytes_enciphered_with_the_session_cipher ... ok
+test game::world_entry::tests::a_negative_village_answer_is_refused_rather_than_applied ... ok
+test game::world_entry::tests::a_ref_no_server_would_honour_is_refused ... ok
+test game::world_entry::tests::a_refused_request_after_the_handshake_writes_nothing ... ok
+test game::world_entry::tests::a_refused_request_before_the_handshake_writes_nothing ... ok
+test game::world_entry::tests::a_slot_the_dialog_could_not_choose_is_refused ... ok
+test game::world_entry::tests::an_opcode_5_record_for_another_character_is_not_adopted ... ok
+test game::world_entry::tests::constants_match_the_wire_truth ... ok
+test game::world_entry::tests::entry_completes_only_when_banner_record_and_village_agree ... ok
+test game::world_entry::tests::select_char_payload_is_a_little_endian_slot ... ok
+test game::world_entry::tests::server_info_fields_read_their_literal_offsets ... ok
+test game::world_entry::tests::server_info_rejects_foreign_opcodes_and_wrong_lengths ... ok
+test game::world_entry::tests::the_banner_survives_a_later_dropped_answer ... ok
+test game::world_entry::tests::the_opcode_5_record_populates_the_local_char_client ... ok
+test game::world_entry::tests::the_region_gate_drops_a_mismatched_banner_without_storing_it ... ok
+test game::world_entry::tests::the_village_struct_frame_is_9_bytes_enciphered_with_the_session_cipher ... ok
+test game::world_entry::tests::the_select_char_frame_is_9_bytes_enciphered_with_the_session_cipher ... ok
+test game::world_entry::tests::village_struct_fields_read_their_literal_offsets ... ok
+test game::world_entry::tests::village_struct_rejects_foreign_opcodes_and_wrong_lengths ... ok
+test game::world_entry::tests::village_struct_request_is_a_little_endian_ref ... ok
+test net::cipher::tests::decode_leaves_the_source_untouched ... ok
+test net::cipher::tests::every_vector_matches_the_legacy ... ok
+test net::cipher::tests::link_cipher_and_size_constants_match_the_legacy ... ok
+test net::cipher::tests::link_cipher_roundtrip_on_a_real_frame ... ok
+test net::cipher::tests::lying_length_fields_are_rejected ... ok
+test net::cipher::tests::mismatched_key_pair_fails_the_integrity_check ... ok
+test net::cipher::tests::oversize_frame_is_rejected_without_writing_output ... ok
+test net::codec::tests::a_ciphered_decoder_refuses_a_plaintext_stream ... ok
+test net::cipher::tests::encode_has_no_size_ceiling_but_decode_does ... ok
+test net::codec::tests::a_frame_split_mid_header_and_mid_payload_reassembles ... ok
+test net::codec::tests::a_good_frame_ahead_of_a_bad_header_is_never_delivered ... ok
+test net::codec::tests::a_plaintext_decoder_never_touches_its_bytes_or_keys ... ok
+test net::codec::tests::a_legal_size_with_an_incomplete_body_is_held_not_refused ... ok
+test net::codec::tests::a_tampered_frame_fails_integrity_and_reports_the_legacy_log_fields ... ok
+test net::codec::tests::byte_by_byte_delivery_reassembles ... ok
+test net::codec::tests::cipher_keys_advance_exactly_once_per_pulled_frame ... ok
+test net::codec::tests::ciphered_frames_reassemble_across_irregular_splits_and_bursts ... ok
+test net::codec::tests::clear_discards_bytes_but_keeps_a_refusal ... ok
+test net::codec::tests::compression_flag_and_reserved_byte_pass_through_the_decoder ... ok
+test net::codec::tests::decoder_agrees_with_the_compiled_legacy_on_every_recorded_read ... ok
+test net::codec::tests::an_oversized_payload_is_refused_before_the_cipher_ticks ... ok
+test net::codec::tests::encoded_frames_round_trip_through_the_decoder_in_both_modes ... ok
+test net::codec::tests::encoder_rebuilds_every_recorded_plaintext_packet ... ok
+test net::codec::tests::encoder_reproduces_every_recorded_cxx_capture_byte_for_byte ... ok
+test net::codec::tests::fixture_is_intact_and_divergences_are_pinned ... ok
+test net::codec::tests::multi_frame_bursts_drain_in_order ... ok
+test net::codec::tests::send_flushes_exact_wire_bytes_over_the_session ... ok
+test net::codec::tests::set_cipher_switches_the_outbound_side_mid_connection ... ok
+test net::codec::tests::single_frame_is_emitted_byte_exact ... ok
+test net::codec::tests::the_guard_table_refuses_each_bad_size_at_feed_time_and_sticks ... ok
+test client::driver::tests::a_rendered_info_record_never_carries_the_password ... ok
+test net::codec::tests::decoder_reassembles_a_dribbled_stream_read_off_the_session ... ok
+test game::entry::tests::handshake_refuses_a_foreign_frame_and_leaves_the_link_unkeyed ... ok
+test net::session::tests::connect_to_an_open_local_port_succeeds ... ok
+test net::session::tests::eof_is_zero_not_an_error ... ok
+test net::session::tests::legacy_connect_window_is_selectable ... ok
+test net::session::tests::no_nodelay_is_set_parity_with_the_legacy ... ok
+test net::session::tests::connect_times_out_on_a_black_holed_address ... ok
+test net::session::tests::read_exact_spans_a_fragmented_delivery_under_one_deadline ... ok
+test net::session::tests::a_read_timeout_leaves_the_socket_usable ... ok
+test net::session::tests::resolve_maps_localhost_to_loopback ... ok
+test protocol::header::tests::compression_flag_is_exposed_but_never_masked ... ok
+test protocol::header::tests::declared_error_accessor_covers_every_variant ... ok
+test protocol::header::tests::decode_applies_the_guard_table ... ok
+test protocol::header::tests::decode_reads_cpp_s_packet_header_sample ... ok
+test protocol::header::tests::decode_rejects_short_buffers ... ok
+test protocol::header::tests::encode_decode_round_trip_preserves_every_field ... ok
+test protocol::header::tests::encode_is_bit_exact_little_endian ... ok
+test protocol::header::tests::guard_table_matches_legacy_recv_path ... ok
+test protocol::header::tests::header_is_five_bytes ... ok
+test protocol::header::tests::new_rejects_oversized_payloads ... ok
+test protocol::header::tests::reserved_byte_is_carried_through_untouched ... ok
+test tests::version_constant_is_linked_to_cargo_manifest ... ok
+test net::session::tests::read_returns_the_peers_bytes ... ok
+test net::session::tests::read_times_out_when_the_peer_sends_nothing ... ok
+test net::session::tests::connect_to_a_closed_local_port_fails_fast_and_gracefully ... ok
+
+test result: ok. 211 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.79s
+
+     Running unittests src\main.rs (target\debug\deps\goonzu_client-8c546b607ba90c7b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-3e275d2b184c8fda.exe)
+
+running 9 tests
+test a_flipped_byte_in_the_world_list_response_is_refused_at_the_world_list_stage ... ok
+test a_flipped_byte_in_the_roster_is_refused_at_the_char_list_stage ... ok
+test a_flipped_byte_in_the_opcode_5_record_is_refused_at_the_char_client_stage ... ok
+test frames::tests::the_link_cipher_keys_match_the_harness_constants ... ok
+test a_flipped_byte_in_a_chat_frame_is_refused_at_the_in_world_stage ... ok
+test frames::tests::the_link_encode_preserves_length_and_leaves_us_size_in_the_clear ... ok
+test frames::tests::the_secretkey_fixture_carries_its_cited_header ... ok
+test the_wire_lengths_match_the_legacy_sizes ... ok
+test a_full_session_conversation_is_byte_exact_and_tears_down_cleanly ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.02s
+
+     Running tests\live_integration.rs (target\debug\deps\live_integration-fc3241403ed798bb.exe)
+
+running 4 tests
+test live_event_loop_idles_cleanly_and_ticks ... ignored, live integration: needs a reachable game service (GOONZU_LIVE_GAME)
+test live_front_handshake_extracts_secret_key ... ignored, live integration: needs a reachable front service (GOONZU_LIVE_FRONT)
+test live_game_handshake_decodes_the_link_cipher ... ignored, live integration: needs a reachable game service (GOONZU_LIVE_GAME)
+test live_heartbeat_keeps_the_connection_up_over_60s ... ignored, live soak: 70s against a reachable game service (GOONZU_LIVE_GAME)
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests goonzu_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

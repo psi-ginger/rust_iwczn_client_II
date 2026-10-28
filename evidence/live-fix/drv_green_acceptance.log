@@ -1,0 +1,8 @@
+[2m2026-10-28T10:34:49.481048Z[0m [32m INFO[0m [2mgoonzu_client[0m[2m:[0m goonzu client starting [3mversion[0m[2m=[0m"0.1.0"
+[2m2026-10-28T10:34:49.937950Z[0m [32m INFO[0m [2mgoonzu_client::game::entry[0m[2m:[0m client handshake succeeded: session_seed = (0xb4, 0x53), char_unique = 13
+[2m2026-10-28T10:35:29.873294Z[0m [32m INFO[0m [2mgoonzu_client::client::driver[0m[2m:[0m in-world session ended [3mcause[0m[2m=[0mSome(ServerDisconnect)
+[2m2026-10-28T10:35:29.874016Z[0m [32m INFO[0m [2mgoonzu_client::client::driver[0m[2m:[0m session ended [3mstage[0m[2m=[0mTornDown [3mworlds[0m[2m=[0m1 [3mchar_unique[0m[2m=[0m13 [3mchar_slot[0m[2m=[0m0 [3mvillage[0m[2m=[0mNone [3mcause[0m[2m=[0mSome(ServerDisconnect)
+[2m2026-10-28T10:35:29.874805Z[0m [32m INFO[0m [2mgoonzu_client[0m[2m:[0m session complete [3mstage[0m[2m=[0mTornDown [3mworlds[0m[2m=[0m1 [3mchar_unique[0m[2m=[0m13 [3mchar_slot[0m[2m=[0m0 [3mvillage[0m[2m=[0mNone
+
+[evidence] driver process exit code = 0 after a graceful server-FIN teardown (WO-6.1 S5: 0 = session ended cleanly)
+[evidence] run at 2026-10-28 17:35:34 local; binary from the clean clone of 701963a; game leg via the capture relay

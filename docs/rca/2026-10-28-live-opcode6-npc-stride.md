@@ -5,7 +5,7 @@
 | **Date** | 2026-10-28 |
 | **Finding** | `LIVE-01` (opened by the Verifier's live-integration pass) |
 | **Lane** | Implementer (fix lane `fix/live-loginmany-npc`) |
-| **Status** | `OPEN` - live verification against the real server blocked; merge to `main` held |
+| **Status** | `RESOLVED` 2026-10-28 - fix verified at `701963a` (S4: 5/5 gates, 220/220) and live-verified green (world entry, wire-measured heartbeats, `stage=TornDown` exit 0); the merge authorization is recorded in the matrix note and the Verifier section below |
 | **Branch** | `step/6.2-harness` @ `57bd58f` (code `febc38a`), evidence in `evidence/live/` |
 | **Rows 6.1/6.2** | **unchanged, `PASSED`** - this defect predates 6.1 (Step 4.4's documented refusal posture); the hermetic WO conformance is unaffected and its evidence bundles stand |
 
@@ -79,8 +79,12 @@ cannot falsify a stride both sides share.
 - All 34 record heads read `uiType = 0`.
 - `uiMakeCharUnique` (u16 at `+4`, per the shared header map in
   `decode_record`, `char_info.rs:601-633`) steps **monotonically
-  8492 -> 8533** across all 34 records - 34 consecutive ids can only land
-  if 68 is the true record boundary.
+  8500 -> 8533** across all 34 records - 34 consecutive ids can only land
+  if 68 is the true record boundary. (Correction 2026-10-28, Verifier
+  self-finding: an earlier draft of this section said "8492 -> 8533" - a
+  mis-division of the log's hex `0x2134..0x2155`, which is 8500..8533 as
+  the implementer's delivery states. The log's hex is authoritative; the
+  monotonic-step evidence is unaffected.)
 - Under that stride the header fields decode sensibly under the same map the
   PC record uses: `uiLevel` constant 1, `uiLife` constant 40, `uiX`/`uiY`
   varying per record (`decode2.log`), i.e. `cltMakeCharInfoCommon` is the
@@ -233,3 +237,49 @@ broadcast cleanly (`npcs` = the NPC count in the `Entered` debug line,
 `Stage::InWorld`, survives ≥ 3 heartbeat intervals, and ends at
 `Stage::TornDown` under `Ctrl+C` with exit code 0 — which unblocks the
 merge to `main`.
+
+## Verifier verification - 2026-10-28 (independent second actor)
+
+Delivery `701963a` (single commit, author `goonzu-rs`; S1 satisfied - the
+verifying signer `psi-ginger` authored none of `af4ab01..701963a`).
+
+**S4 gates, clean clone straight from origin at the delivery SHA** (fresh
+`target/`, porcelain empty): `cargo check --all-targets`, `cargo clippy
+--all-targets -- -D warnings`, `cargo fmt --check` (0 bytes), `cargo test`
+(**211 lib + 9 e2e = 220/220**), `cargo doc --no-deps` - all exit 0.
+`evidence/live-fix/{check,clippy,fmt,test,doc}.log`, `head.txt`, `env.txt`.
+
+**Adversarial review: no blocking findings.** The walker's minimum-68 gate,
+per-record remainder refusals (offset/shortfall/demanded stride), type
+dispatch, and the unreachable-but-loud `UnknownRecordType` arm are all
+correct; `decode_record` = `decode_head` + `fill_pc_tail` preserves the
+opcode-5 field set exactly; the dispatcher's NPC counted-skip carries a
+falsifiability argument (zero count would mean the stride dispatch
+mis-read the batch); the fixtures remain F-07 hand-placed literals and the
+suite now carries a hermetic 2,312-B / 34-record live-shape test. One
+non-blocking finding, owed a one-line correction by the implementer lane:
+**L-1** - `frames.rs` `make_npc_record`'s comment cites live rec[00] "y 338",
+but the capture's `w12 = 0x00027852` yields uiY = low 10 bits = **82**
+(`evidence/live-fix/README.md`). No assertion depends on the value.
+
+**Live acceptance (clone binary, live tunnels, wire-verified roles):**
+(a) **PROVEN** - three consecutive green sessions pass `Stage::InWorld`
+absorbing the live NPC-led broadcast (`char_unique` 11/12/13);
+(b) **MEASURED** - the green run's c2s capture walks as 53-B login + 9-B
+select + **3 x 5-B heartbeats on the wire** at +10/+20/+30 s (4 in the
+prior run), before the +40 s graceful FIN;
+(c) **PROVEN via the clean-close teardown** - `session ended
+stage=TornDown worlds=1`, `session complete stage=TornDown`, **exit code
+0** (`evidence/live-fix/drv_green_acceptance.log`). The literal Ctrl+C
+*console event* is **undeliverable in this verification environment**: a
+raw kernel32 handler on a confirmed shared console never fires under this
+harness's pseudoconsole (ConPTY) - proven at the API level
+(`evidence/live-fix/ctrl_c_investigation.md`, `probe_fire.log`), not
+inferred. The CtrlC-specific wiring remains covered by the hermetic seam
+tests; the teardown machinery itself is now live-proven on real sockets.
+
+**Outcome: LIVE-01 RESOLVED. The Verifier authorizes the Custodian to merge
+`fix/live-loginmany-npc` (`701963a`) into `main`,** with the (c) caveat
+recorded above; the optional one-command interactive-console Ctrl+C check
+is listed in the investigation note and does not block the merge.
+

@@ -255,12 +255,33 @@ F-61-01 | <claim> | <how it was falsified> | <repro path>
 ### Verdict — Verifier
 
 ```
-Verdict: PASSED | QC_REVIEW | REJECTED
-Gates (clean clone at <sha>, run <UTC timestamp>): check <ok> · clippy <ok> ·
-  fmt <0 diffs> · test <n>/<n> · doc <0 warnings>
-Citations re-derived: <n> checked, <n> corrected
-Findings: <closed/open>
-Baseline after merge: <n>/<n> @ <sha>
+Verdict: PASSED
+Verifier: independent second actor (psi-ginger); authored none of 7ab2321..f3c256f,
+  so S1 (author != signer) is satisfied — the Acting QC Lead's own S1/S2 bar against
+  itself does not bind this signer.
+Gates (S4 clean clone at f3c256f, run 2026-10-28T04:35:05Z, fresh target/, git status
+  empty): check ok (0) · clippy ok (0) · fmt 0 diffs (fmt.log 0 bytes) ·
+  test 209/209 · doc 0 warnings. Evidence: evidence/6.1/{head,check,clippy,fmt,test,
+  doc}.log + env.txt + SHA256SUMS.
+Citations re-derived: frozen API conformance exact (DriverConfig 8 fields, Stage 13
+  variants ending TornDown, run(&DriverConfig,&Shutdown)->Result<DriverOutcome,
+  DriverError>, every DriverError variant carries a stage); env contract exact (all 8
+  GOONZU_* names, no hardcoded MAC, no defaulted slot, exit 0/1/2); dual-source cites
+  spot-checked. 0 corrected.
+Adjudication a0c3ddf accepted: the branch driver is the WO-conformant deliverable;
+  origin/main's competing driver (895518e) is discarded with its 12 cited findings
+  (M1–M12). Verified f3c256f is an ancestor of febc38a, so this verdict rides the
+  6.2 branch.
+Findings: none open. Teardown-on-every-path structurally fixed (M10: *game=Some(link)
+  right after GameLink::connect; run_with_watcher aborts/awaits the watcher before
+  terminate). M9 fixed (DriverConfig derives only Clone,PartialEq,Eq — no Debug, so a
+  password-leaking {cfg:?} cannot compile). No forbidden shortcuts in driver.rs
+  non-test region (lines 1–783: zero unwrap/expect/todo!/unimplemented!/from_le_bytes/
+  thread::sleep). 18 driver tests incl. stage observability, the Ctrl+C seam, and both
+  credential tests.
+Baseline after sign-off: 209/209 @ f3c256f.
+Note: origin/main still carries the discarded driver (895518e); merging the branches
+  is the Custodian's act after this sign-off.
 ```
 
 ## 10. Definition of Done

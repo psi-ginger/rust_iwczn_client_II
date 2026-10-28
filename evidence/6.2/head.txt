@@ -1,0 +1,4 @@
+HEAD_SHA: febc38a5b895a0559475b945dac393aeb457113f
+CLONE_PATH: C:\Users\DK2\AppData\Local\Temp\opencode\evidence\6.2\clone
+GIT_STATUS_PORCHELOT_EMPTY: True
+GIT_STATUS_RAW: []

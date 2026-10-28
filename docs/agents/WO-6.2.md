@@ -272,7 +272,32 @@ _(optional unless requested)_
 
 ### Verdict — Verifier
 
-_(independent; reproduces all five gates and the byte-exactness claims)_
+```
+Verdict: PASSED
+Verifier: independent second actor (psi-ginger); authored none of f3c256f..febc38a,
+  so S1 (author != signer) is satisfied.
+Gates (S4 clean clone at febc38a, run 2026-10-28T04:35:05Z, fresh target/, git status
+  empty): check ok (0) · clippy ok (0) · fmt 0 diffs (fmt.log 0 bytes) ·
+  test 209 lib + 9 e2e = 218/218 · doc 0 warnings. Evidence: evidence/6.2/{head,check,
+  clippy,fmt,test,doc}.log + env.txt + SHA256SUMS. The 9 e2e reconcile as 6 root
+  (4 mutations + full flow + wire-length #[test]) + 3 frames:: self-tests — matches
+  the delivery note's arithmetic.
+Citations re-derived: dual-source HEARTBEAT_WIRE = [0x05,0x00,0x00,0x64,0x00] matches
+  heartbeat/tests.rs EXPECTED_WIRE; all five in-world opcodes (6/11/118/200/215) are
+  hand-written literals. 0 corrected.
+F-07 holds at the E2E layer: the only non-comment client call in the harness is
+  Cipher::encode (frames.rs:20), the transport transform both real peers perform
+  (GetEncrypt()->Decode, FrontClientProtocol.cpp:85) — never the client's Encoder or
+  any parser to build an expectation. Every expected byte is a hand-placed literal.
+Mutations proven falsifiable, not vacuous: with each of the four corruptions neutered,
+  its test fails (world-list case fails at Stage{LinkKey} on ReadTimeout, not
+  WorldList) — none passes absent the real byte flip. Full flow asserts transcript ==
+  expected_conversation byte-for-byte both directions, Stage::TornDown, worlds==1, and
+  logs carry cause=Some(ServerDisconnect).
+Findings: none open.
+Baseline after sign-off: 218/218 @ febc38a (f3c256f 6.1 sign-off rides this branch as
+  an ancestor).
+```
 
 ## 10. Definition of Done
 

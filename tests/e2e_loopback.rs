@@ -29,6 +29,10 @@ mod frames;
 mod front_double;
 #[path = "e2e_loopback/game_double.rs"]
 mod game_double;
+#[path = "e2e_loopback/robustness.rs"]
+mod robustness;
+#[path = "e2e_loopback/soak.rs"]
+mod soak;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -52,7 +56,7 @@ use frames::{
     PERSON_IP_PAYLOAD_LEN, ROSTER_SLOTS, SECRETKEY_WIRE, VILLAGE_REF, WORLDINFO_LEN,
 };
 use front_double::{run_front_double, FrontReport};
-use game_double::{run_game_double, GameReport};
+use game_double::{run_game_double_with, GameReport};
 
 /// The account id the test types into the front requests (`szAccountID[20]`,
 /// `userid[20]`).
@@ -130,10 +134,36 @@ fn spawn_game(
     mutation: Mutation,
     transcript: Arc<Transcript>,
 ) -> JoinHandle<GameReport> {
+    spawn_game_with(
+        listener,
+        mutation,
+        transcript,
+        game_double::Tail::HeartbeatThenFin,
+        DOUBLE_TIME_BUDGET,
+    )
+}
+
+/// Step 6.3: [`spawn_game`] with the in-world tail and the budget chosen by
+/// the caller — the storm needs a longer budget than the 6.2 conversation
+/// (its third heartbeat lands ~30 s after entry, `heartbeat.rs:169`).
+fn spawn_game_with(
+    listener: TcpListener,
+    mutation: Mutation,
+    transcript: Arc<Transcript>,
+    tail: game_double::Tail,
+    budget: Duration,
+) -> JoinHandle<GameReport> {
     tokio::spawn(async move {
         tokio::time::timeout(
-            DOUBLE_TIME_BUDGET,
-            run_game_double(listener, TEST_USER, TEST_PASSWORD, mutation, &transcript),
+            budget,
+            run_game_double_with(
+                listener,
+                TEST_USER,
+                TEST_PASSWORD,
+                mutation,
+                &transcript,
+                tail,
+            ),
         )
         .await
         .expect("the game double must finish inside its budget")
@@ -176,6 +206,27 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
 fn capture_subscriber(capture: Capture) -> impl tracing::Subscriber + Send + Sync {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
+        .with_ansi(false)
+        .with_writer(capture)
+        .finish()
+}
+
+/// Step 6.3: the same capture subscriber at `DEBUG` — the soak counts the
+/// driver's per-dispatch records (`driver.rs:684`) to prove the client
+/// *processed* every streamed frame, not merely that the doubles wrote
+/// them (WO-6.3 §6(a)).
+///
+/// Safe by construction: `set_default` builds a `Dispatch`, which registers
+/// itself and **rebuilds every callsite's interest**
+/// (`tracing-core-0.1.36/src/dispatcher.rs:472-481`, `callsite.rs:484-488`);
+/// a mixed-subscriber process collapses differing opinions to
+/// `Interest::sometimes` (`tracing-core-0.1.36/src/subscriber.rs:658-664`)
+/// and defers to the current thread's subscriber — this thread's — so a
+/// concurrently running INFO-captured test can never cache this callsite
+/// out from under the soak.
+fn debug_capture_subscriber(capture: Capture) -> impl tracing::Subscriber + Send + Sync {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
         .with_ansi(false)
         .with_writer(capture)
         .finish()

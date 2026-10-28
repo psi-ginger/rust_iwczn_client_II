@@ -15,7 +15,6 @@
 use std::sync::Mutex;
 
 use tokio::io::AsyncReadExt;
-use tokio::net::TcpStream;
 
 use goonzu_client::net::cipher::Cipher;
 
@@ -54,7 +53,14 @@ pub(crate) fn encode_link(cipher: &mut Cipher, plain: &[u8]) -> Vec<u8> {
 /// Reads one ciphered frame the way the services do: `usSize` travels in the
 /// clear and selects the length (`cipher.rs:219-220`), then the session
 /// cipher decodes the whole frame (`FrontClientProtocol.cpp:85-91`).
-pub(crate) async fn read_ciphered(stream: &mut TcpStream, cipher: &mut Cipher) -> ReadOutcome {
+///
+/// Generic over the transport so Step 6.3's storm reader can drive it from
+/// a split `ReadHalf` while the 6.2 call sites keep passing the whole
+/// `TcpStream` unchanged (WO-6.3 §4).
+pub(crate) async fn read_ciphered(
+    stream: &mut (impl tokio::io::AsyncRead + Unpin),
+    cipher: &mut Cipher,
+) -> ReadOutcome {
     let mut head = [0u8; 2];
     if stream.read_exact(&mut head).await.is_err() {
         return ReadOutcome::Eof;
@@ -812,6 +818,55 @@ pub(crate) fn mutated_worldlist_response() -> Vec<u8> {
     payload.extend_from_slice(&worldinfo_entry());
     frame(OP_RESPONSE_WORLDLIST, &payload)
 }
+
+// ---------------------------------------------------------------------------
+// Step 6.3 additions (WO-6.3) — the storm and robustness byte sources. The
+// same F-07 rule as everything above: every byte here is hand-placed at its
+// literal wire offset with the legacy/server authority cited inline, never
+// re-derived from the client's parsers or encoders.
+// ---------------------------------------------------------------------------
+
+/// An opcode the in-world dispatcher does not own: the legacy's
+/// `ClientMessageMap` routes hundreds of opcodes (`Client-Message.cpp`),
+/// this port's dispatcher claims five (`dispatcher.rs:16-28`), and
+/// everything else dispatches as `DispatchOutcome::Unhandled` — **not** an
+/// error (`dispatcher.rs:888-918`). The storm mixes these in so a sustained
+/// stream proves an unowned opcode costs nothing mid-session.
+pub(crate) const OP_UNHANDLED_IN_WORLD: u16 = 9999;
+
+/// The live server's in-world broadcast shape, restaged for the storm:
+/// **34** 68-byte NPC records led by the batch, then the two player records
+/// (LIVE-01: the live first in-world opcode-6 is 34 × 68 = 2312 bytes of
+/// NPC records, ids monotone 8500→8533, `evidence/live/decode2.log`,
+/// `docs/rca/2026-10-28-live-opcode6-npc-stride.md`). The PC-stride walk
+/// that refuses on an NPC-led batch is exactly the regression this body
+/// pins: one mis-strided record ends the session with
+/// `Refused{InWorld}` and the soak fails (`char_info.rs:699-794`).
+pub(crate) fn loginmany_npc_led_body() -> Vec<u8> {
+    let mut body =
+        Vec::with_capacity(34 * MAKE_CHAR_COMMON_PAYLOAD_LEN + 2 * MAKE_CHAR_PAYLOAD_LEN);
+    for id in 8500u16..8534 {
+        // 34 records: 8500..=8533, the live batch's exact id span.
+        body.extend_from_slice(&make_npc_record(id));
+    }
+    body.extend_from_slice(&make_char_record(CHAR_UNIQUE as u16, 12));
+    body.extend_from_slice(&make_char_record(NEARBY_UNIQUE as u16, 9));
+    body
+}
+
+/// R1's undersized header, hand-written at the wire offsets: `usSize` 3 LE
+/// at 0..2 — the `2..=4` band the legacy accepts but this port refuses
+/// (BUG-013, `protocol/header.rs:70-74,110-121`) — the reserved `ucChk` at
+/// 2, `usCmd` 100 LE at 3..5. Raw bytes on purpose: a malformed frame is
+/// exactly what a broken peer puts on the wire, so the double writes it
+/// verbatim — never ciphered, never built by any encoder.
+pub(crate) const MALFORMED_SHORT_WIRE: [u8; 5] = [0x03, 0x00, 0x00, 0x64, 0x00];
+
+/// R1's oversize header: `usSize` 0xFDE1 = 64993 LE — one past
+/// `MAX_FRAME_SIZE` = 64992 (`PACKET_MAX_SIZE - 8`, `protocol/header.rs:52`;
+/// the legacy's `ITZRecvBuffer.cpp:172` receive limit). Hand-written like
+/// [`MALFORMED_SHORT_WIRE`].
+pub(crate) const MALFORMED_OVERSIZE_WIRE: [u8; 5] = [0xE1, 0xFD, 0x00, 0x64, 0x00];
 
 // ---------------------------------------------------------------------------
 // The byte-source's own pin-down: the two assumptions the doubles build on

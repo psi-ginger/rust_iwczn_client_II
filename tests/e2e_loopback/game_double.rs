@@ -10,20 +10,26 @@
 // legacy service does (`Cipher::session_cipher(key1, key2)`, `main.rs:704`)
 // and asserted byte-for-byte against the independent constants in
 // `frames.rs`.
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
+use tokio::sync::Notify;
+use tokio::time::{interval, MissedTickBehavior};
 
 use goonzu_client::net::cipher::Cipher;
 
 use crate::frames::{
     char_update_body, chat_body, encode_link, frame, game_login_payload, handshake_payload,
-    loginmany_body, logout_payload, make_char_record, person_ip_body, read_ciphered, roster_entry,
-    select_char_payload, server_info_payload, village_request_payload, village_struct_payload, Dir,
-    Leg, Mutation, ReadOutcome, Transcript, CHAR_UNIQUE, GAME_KEY1, GAME_KEY2, HEARTBEAT_WIRE,
-    NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT, OP_CLIENTCHARUNIQUE,
-    OP_GAME_LOGIN, OP_HEARTBEAT, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR, OP_PERSON_IP,
-    OP_SELECTCHAR, OP_SERVERINFO, OP_VILLAGESTRUCT_REQ, OP_VILLAGESTRUCT_RES, ROSTER_SLOTS,
-    VILLAGE_REF,
+    loginmany_body, loginmany_npc_led_body, logout_payload, make_char_record, person_ip_body,
+    read_ciphered, roster_entry, select_char_payload, server_info_payload, village_request_payload,
+    village_struct_payload, Dir, Leg, Mutation, ReadOutcome, Transcript, CHAR_UNIQUE, GAME_KEY1,
+    GAME_KEY2, HEARTBEAT_WIRE, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT,
+    OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_HEARTBEAT, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR,
+    OP_PERSON_IP, OP_SELECTCHAR, OP_SERVERINFO, OP_UNHANDLED_IN_WORLD, OP_VILLAGESTRUCT_REQ,
+    OP_VILLAGESTRUCT_RES, ROSTER_SLOTS, VILLAGE_REF,
 };
 
 /// What the game double observed by the time its conversation ended.
@@ -45,20 +51,90 @@ pub(crate) struct GameReport {
     pub(crate) closed_early: bool,
     /// Whether a frame arrived short or with a failed integrity check.
     pub(crate) saw_corruption: bool,
+    /// Step 6.3: how many dispatcher frames the storm tail wrote beyond the
+    /// in-world set (0 for every other tail).
+    pub(crate) storm_frames: usize,
+    /// Step 6.3: when each byte-exact heartbeat was observed — the cadence
+    /// surface the soak asserts (WO-6.3 §6(a)).
+    pub(crate) heartbeat_times: Vec<Instant>,
+    /// Step 6.3: when the tail sent its server-side FIN (`None` unless the
+    /// tail FINs: the storm and the 6.2 default do, the Ctrl+C seam never
+    /// does — the client's own close ends that session).
+    pub(crate) fin_instant: Option<Instant>,
+    /// Step 6.3: whether the client's own close (EOF on the double's read
+    /// half) was observed — the teardown-close proxy every 6.3 path asserts
+    /// (a driver that never tore down never closes, so EOF proves the close
+    /// phase of `terminate` ran, `teardown.rs:366`).
+    pub(crate) client_closed: bool,
 }
 
-/// Runs the game conversation against one accepted connection.
+/// Step 6.3: what the double does after the in-world set (WO-6.3 §4-§6).
+///
+/// The default [`Tail::HeartbeatThenFin`] is the Step 6.2 step-10/11
+/// behavior, unchanged; every other variant replaces only that tail.
+pub(crate) enum Tail {
+    /// Step 6.2, verbatim: read one byte-exact heartbeat, then FIN
+    /// (`event_loop.rs` surfaces the close as `Cause::ServerDisconnect`).
+    HeartbeatThenFin,
+    /// The sustained storm: pace `target_frames` dispatcher frames at a
+    /// fixed 100 ms tick while a concurrent reader counts byte-exact
+    /// heartbeats; once both the frame target and
+    /// [`STORM_MIN_HEARTBEATS`] are met, FIN and drain to the client's
+    /// close (WO-6.3 §6(a)).
+    Storm {
+        /// How many frames the pacing loop must write before it may FIN.
+        target_frames: usize,
+    },
+    /// Write this wire image **verbatim** (no cipher — a malformed frame is
+    /// what a broken peer actually puts on the wire) right after the
+    /// in-world set, then drain to the client's close (R1).
+    RawFault(Vec<u8>),
+    /// Encode one valid frame with the link cipher, flip its **last** wire
+    /// byte — the integrity tag is computed against the last plaintext byte
+    /// (`cipher.rs:279-295`), so only a tag-side flip trips the check —
+    /// write it, then drain to the client's close (R2).
+    CorruptFault,
+    /// Write the first three wire bytes of a valid frame (a valid `usSize`,
+    /// an incomplete body) then FIN: the client must discard the partial at
+    /// EOF and tear down **cleanly** — the documented behavior this pins
+    /// (`game/entry.rs:472-476`, R3).
+    PartialFault,
+    /// Wait out the first byte-exact heartbeat (proof the in-world loop is
+    /// live, so the Ctrl+C claim is deterministic), notify the test's seam,
+    /// then drain to the client's close (R4).
+    CtrlCSeam(Arc<Notify>),
+}
+
+/// How many frames one storm tick writes for a given target: the whole
+/// target spreads over 300 ticks (30 s at [`STORM_PACE`]), so the stream
+/// rate — not the target — is the fixed dimension and storm-size
+/// independence is a falsifiable claim (WO-6.3 §6(a)).
+const STORM_TICKS: usize = 300;
+/// One storm tick: 100 ms — the doubles' outbound rate is freely tunable
+/// (WO-6.3 §3, the scaled-cadence dimension), while the client's own
+/// heartbeat ticker stays at its fixed 10 s (`heartbeat.rs:169`).
+const STORM_PACE: std::time::Duration = std::time::Duration::from_millis(100);
+/// How many byte-exact heartbeats a storm must observe before it may FIN:
+/// three full 10 s ticker periods, enough to assert cadence stability
+/// across both storm sizes (WO-6.3 §6(a)).
+const STORM_MIN_HEARTBEATS: usize = 3;
+
+/// Runs the game conversation against one accepted connection with the
+/// in-world tail chosen by the caller (WO-6.3 §4): everything up to step 9
+/// is the shared byte-exact conversation — the Step 6.2 flow, unchanged —
+/// and only the in-world tail varies ([`Tail`]).
 ///
 /// # Panics
 ///
 /// On any byte-exactness violation (the assertion *is* the test) and on any
 /// socket failure — every peer here is this test's own loopback listener.
-pub(crate) async fn run_game_double(
+pub(crate) async fn run_game_double_with(
     listener: TcpListener,
     account: &str,
     password: &str,
     mutation: Mutation,
     transcript: &Transcript,
+    tail: Tail,
 ) -> GameReport {
     let (mut stream, _peer) = listener.accept().await.expect("game accept");
 
@@ -83,6 +159,10 @@ pub(crate) async fn run_game_double(
         heartbeats: 0,
         closed_early: false,
         saw_corruption: false,
+        storm_frames: 0,
+        heartbeat_times: Vec::new(),
+        fin_instant: None,
+        client_closed: false,
     };
 
     // 2. GAMEMSG_REQUEST_LOGIN — `usSize` 53, the 48-byte cltLogInInfo
@@ -214,39 +294,50 @@ pub(crate) async fn run_game_double(
         report.frames_sent += 1;
     }
 
-    // 10. In-world: the heartbeat is the only frame this driver sends
-    // (`heartbeat.rs`, opcode 100, header-only; the in-world loop has no
-    // other outbound path — `driver.rs:676-687`). One read observes it (or
-    // the peer's departure on a refusal path); anything else is a protocol
-    // violation and the assertions below fail loudly. The double then ends
-    // the session with a server-side FIN.
-    match read_ciphered(&mut stream, &mut session).await {
-        ReadOutcome::Frame { wire, plain } => {
-            assert_eq!(
-                u16::from_le_bytes([plain[3], plain[4]]),
-                OP_HEARTBEAT,
-                "in-world client frames must be heartbeats (opcode 100); \
-                 got opcode {}",
-                u16::from_le_bytes([plain[3], plain[4]])
-            );
-            assert_eq!(
-                plain.as_slice(),
-                &HEARTBEAT_WIRE,
-                "the heartbeat must be the header-only image \
-                 [usSize=5][ucChk=0][usCmd=100] (heartbeat/tests.rs:74)"
-            );
-            transcript.push(Leg::Game, Dir::C2S, plain, wire.len());
-            report.frames_received += 1;
-            report.heartbeats += 1;
+    // 10/11. In-world tail (Step 6.3, WO-6.3 §4): the default tail is the
+    // Step 6.2 behavior — one heartbeat observed, then a server-side FIN —
+    // unchanged; the storm and fault tails take the stream, the ciphers and
+    // the report and finish the conversation themselves.
+    match tail {
+        Tail::HeartbeatThenFin => {
+            // The heartbeat is the only frame this driver sends
+            // (`heartbeat.rs`, opcode 100, header-only; the in-world loop
+            // has no other outbound path — `driver.rs:676-687`). One read
+            // observes it (or the peer's departure on a refusal path);
+            // anything else is a protocol violation and the assertions
+            // fail loudly.
+            match read_ciphered(&mut stream, &mut session).await {
+                ReadOutcome::Frame { wire, plain } => {
+                    assert_heartbeat(&plain);
+                    transcript.push(Leg::Game, Dir::C2S, plain, wire.len());
+                    report.frames_received += 1;
+                    report.heartbeats += 1;
+                }
+                ReadOutcome::Eof => report.closed_early = true,
+                ReadOutcome::Corrupt => report.saw_corruption = true,
+            }
+            // The server-side close: dropping the stream sends FIN, which
+            // the driver's in-world loop must surface as
+            // Cause::ServerDisconnect and a clean teardown
+            // (`event_loop.rs:331-333`, WO-6.2 §5.4).
+            drop(stream);
         }
-        ReadOutcome::Eof => report.closed_early = true,
-        ReadOutcome::Corrupt => report.saw_corruption = true,
+        Tail::Storm { target_frames } => {
+            storm_tail(stream, link, session, target_frames, &mut report).await;
+        }
+        Tail::RawFault(wire) => {
+            raw_fault_tail(stream, session, wire, &mut report).await;
+        }
+        Tail::CorruptFault => {
+            corrupt_fault_tail(stream, link, session, &mut report).await;
+        }
+        Tail::PartialFault => {
+            partial_fault_tail(stream, link, session, &mut report).await;
+        }
+        Tail::CtrlCSeam(seam) => {
+            ctrl_c_seam_tail(stream, session, seam, &mut report).await;
+        }
     }
-
-    // 11. The server-side close: dropping the stream sends FIN, which the
-    // driver's in-world loop must surface as Cause::ServerDisconnect and a
-    // clean teardown (`event_loop.rs:331-333`, WO-6.2 §5.4).
-    drop(stream);
     report
 }
 
@@ -263,4 +354,241 @@ fn early_stop(mut report: GameReport, outcome: ReadOutcome) -> GameReport {
         }
     }
     report
+}
+
+/// The byte-exact image every client in-world frame must carry: opcode 100,
+/// header-only, `[usSize=5][ucChk=0][usCmd=100]` (`heartbeat/tests.rs:
+/// 71-74`). One helper, every tail — the assertion text is the 6.2 one.
+fn assert_heartbeat(plain: &[u8]) {
+    assert_eq!(
+        u16::from_le_bytes([plain[3], plain[4]]),
+        OP_HEARTBEAT,
+        "in-world client frames must be heartbeats (opcode 100); \
+         got opcode {}",
+        u16::from_le_bytes([plain[3], plain[4]])
+    );
+    assert_eq!(
+        plain, &HEARTBEAT_WIRE,
+        "the heartbeat must be the header-only image \
+         [usSize=5][ucChk=0][usCmd=100] (heartbeat/tests.rs:74)"
+    );
+}
+
+/// The storm tail (WO-6.3 §6(a)): pace [`STORM_PACE`] ticks of dispatcher
+/// frames — the NPC-led opcode-6 batch plus every other opcode the
+/// dispatcher owns, and one foreign opcode — until the frame target and
+/// [`STORM_MIN_HEARTBEATS`] are both met; then FIN and drain to the
+/// client's close.
+///
+/// The stream splits so one task reads client heartbeats while the pacing
+/// loop writes: the two directions never block each other and the ciphers
+/// stay in lockstep because each half owns exactly one of them — the link
+/// cipher ticks once per encoded frame, the session cipher once per
+/// decoded frame (`cipher.rs:23-30`).
+async fn storm_tail(
+    stream: tokio::net::TcpStream,
+    mut link: Cipher,
+    mut session: Cipher,
+    target_frames: usize,
+    report: &mut GameReport,
+) {
+    let (mut read_half, mut write_half) = stream.into_split();
+    let heartbeats = Arc::new(AtomicUsize::new(0));
+    let times = Arc::new(Mutex::new(Vec::<Instant>::new()));
+
+    let reader = tokio::spawn({
+        let heartbeats = Arc::clone(&heartbeats);
+        let times = Arc::clone(&times);
+        async move {
+            loop {
+                match read_ciphered(&mut read_half, &mut session).await {
+                    ReadOutcome::Frame { plain, .. } => {
+                        assert_heartbeat(&plain);
+                        times
+                            .lock()
+                            .expect("heartbeat times lock")
+                            .push(Instant::now());
+                        heartbeats.fetch_add(1, Ordering::Relaxed);
+                    }
+                    // The client's own close after our FIN — the drain
+                    // phase every teardown runs (`teardown.rs:366`).
+                    ReadOutcome::Eof => break,
+                    ReadOutcome::Corrupt => panic!(
+                        "a client heartbeat must decode under the session \
+                         cipher the handshake seeded"
+                    ),
+                }
+            }
+        }
+    });
+
+    // The mix (WO-6.3 §6(a)): opcode 6 NPC-led (34 x 68 then the two PCs —
+    // LIVE-01's broadcast shape, the regression a PC-only storm would
+    // miss), 215, 200, 11, 118, then one foreign opcode the dispatcher
+    // routes to `Unhandled` — not an error (`dispatcher.rs:888-918`).
+    // Repeat-safety of every in-frame is pinned in the dispatcher suite:
+    // 6 upserts, 11 on an absent id is a no-op, 118/200/215 are
+    // valid-target-gated, so a legal storm can never end in
+    // `Refused{InWorld}`.
+    let cycle: [(u16, Vec<u8>); 6] = [
+        (OP_LOGINMANY, loginmany_npc_led_body()),
+        (OP_PERSON_IP, person_ip_body(NEARBY_UNIQUE as i16).to_vec()),
+        (OP_CHARUPDATE, char_update_body(CHAR_UNIQUE as i16).to_vec()),
+        (OP_LOGOUT, logout_payload(NEARBY_UNIQUE).to_vec()),
+        (
+            OP_CHAT,
+            chat_body(NEARBY_UNIQUE as i16, "someone", "hi all"),
+        ),
+        (OP_UNHANDLED_IN_WORLD, vec![0xEE; 8]),
+    ];
+    let per_tick = target_frames.div_ceil(STORM_TICKS);
+    let mut tick = interval(STORM_PACE);
+    tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut sent = 0usize;
+    let mut cycle_at = 0usize;
+    loop {
+        tick.tick().await;
+        for _ in 0..per_tick {
+            let (cmd, payload) = &cycle[cycle_at % cycle.len()];
+            let plain = frame(*cmd, payload);
+            let wire = encode_link(&mut link, &plain);
+            write_half.write_all(&wire).await.expect("storm write");
+            sent += 1;
+            cycle_at += 1;
+        }
+        if sent >= target_frames && heartbeats.load(Ordering::Relaxed) >= STORM_MIN_HEARTBEATS {
+            break;
+        }
+    }
+    let fin_instant = Instant::now();
+    write_half.shutdown().await.expect("storm FIN");
+    reader.await.expect("the storm reader task must not panic");
+
+    let observed = heartbeats.load(Ordering::Relaxed);
+    report.frames_sent += sent;
+    report.frames_received += observed;
+    report.heartbeats = observed;
+    report.storm_frames = sent;
+    report.heartbeat_times = times.lock().expect("heartbeat times lock").clone();
+    report.fin_instant = Some(fin_instant);
+    // The reader only ever ends on the client's EOF, so reaching here with
+    // the join behind us *is* the close observation.
+    report.client_closed = true;
+}
+
+/// R1's tail: write the malformed wire image verbatim — no cipher, exactly
+/// what a broken peer puts on the wire — then drain to the client's close.
+/// The client must refuse at `InWorld` with the header guard's own variant
+/// and drop the link (the decoder's refusal is sticky, `net/codec.rs`).
+async fn raw_fault_tail(
+    mut stream: tokio::net::TcpStream,
+    mut session: Cipher,
+    fault: Vec<u8>,
+    report: &mut GameReport,
+) {
+    stream.write_all(&fault).await.expect("raw fault write");
+    drain_to_eof(&mut stream, &mut session, report).await;
+}
+
+/// R2's tail: a valid frame with its **last** wire byte flipped — the
+/// integrity tag is computed against the last plaintext byte
+/// (`cipher.rs:279,295`), so only a tag-side flip trips `Ok(false)`. The
+/// client must refuse at `InWorld` with `CodecError::Integrity`.
+async fn corrupt_fault_tail(
+    mut stream: tokio::net::TcpStream,
+    mut link: Cipher,
+    mut session: Cipher,
+    report: &mut GameReport,
+) {
+    let mut wire = encode_link(
+        &mut link,
+        &frame(
+            OP_CHAT,
+            &chat_body(NEARBY_UNIQUE as i16, "someone", "hi all"),
+        ),
+    );
+    let last = wire.len() - 1;
+    wire[last] ^= 0xFF; // the tag-side flip
+    stream.write_all(&wire).await.expect("corrupt fault write");
+    drain_to_eof(&mut stream, &mut session, report).await;
+}
+
+/// R3's tail: three wire bytes of a valid frame (valid `usSize`, no body)
+/// then a FIN. The documented behavior this pins: `next_frame` observes
+/// EOF, discards the partial and reports the close — **no error**, a clean
+/// `Cause::ServerDisconnect` teardown (`game/entry.rs:472-476`).
+async fn partial_fault_tail(
+    mut stream: tokio::net::TcpStream,
+    mut link: Cipher,
+    mut session: Cipher,
+    report: &mut GameReport,
+) {
+    let wire = encode_link(
+        &mut link,
+        &frame(
+            OP_CHAT,
+            &chat_body(NEARBY_UNIQUE as i16, "someone", "hi all"),
+        ),
+    );
+    stream
+        .write_all(&wire[..3])
+        .await
+        .expect("partial fault write");
+    stream.shutdown().await.expect("partial fault FIN");
+    drain_to_eof(&mut stream, &mut session, report).await;
+}
+
+/// R4's tail: the Ctrl+C seam. Wait out the first byte-exact heartbeat —
+/// the in-world loop is then provably live, so the injected watcher's claim
+/// lands mid-session instead of racing the loop's start-up check
+/// (`driver.rs:666`) — notify the test, then drain to the client's close.
+/// The double never FINs here: the client's own teardown closes.
+async fn ctrl_c_seam_tail(
+    mut stream: tokio::net::TcpStream,
+    mut session: Cipher,
+    seam: Arc<Notify>,
+    report: &mut GameReport,
+) {
+    match read_ciphered(&mut stream, &mut session).await {
+        ReadOutcome::Frame { plain, .. } => {
+            assert_heartbeat(&plain);
+            report.heartbeats += 1;
+            report.frames_received += 1;
+        }
+        outcome => panic!(
+            "the first in-world client frame must be the first heartbeat, \
+             got {outcome:?}"
+        ),
+    }
+    seam.notify_one();
+    drain_to_eof(&mut stream, &mut session, report).await;
+}
+
+/// Reads the client's remaining in-world frames (heartbeats only, asserted
+/// byte-exactly) until its close, and records that close as the
+/// teardown-close proxy: a client that never tore down never closes, so
+/// the EOF is observable evidence the close phase of `terminate` ran
+/// (`teardown.rs:366`, WO-6.3 §6(b)).
+async fn drain_to_eof(
+    stream: &mut tokio::net::TcpStream,
+    session: &mut Cipher,
+    report: &mut GameReport,
+) {
+    loop {
+        match read_ciphered(stream, session).await {
+            ReadOutcome::Frame { plain, .. } => {
+                assert_heartbeat(&plain);
+                report.heartbeats += 1;
+                report.frames_received += 1;
+            }
+            ReadOutcome::Eof => {
+                report.client_closed = true;
+                return;
+            }
+            ReadOutcome::Corrupt => panic!(
+                "a client heartbeat must decode under the session cipher the \
+                 handshake seeded"
+            ),
+        }
+    }
 }

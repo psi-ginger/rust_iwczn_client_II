@@ -1,0 +1,6 @@
+Step 6.3 S4 clean-clone gate evidence (Verifier)
+clone: git@github.com:psi-ginger/rust_iwczn_client_II.git (fresh clone, fresh target/)
+HEAD: a5151ca84f756f04fec31f96d8a54a435b8c68c1 (delivery tip = 3285d07 code + a5151ca doc-only delivery note; trees differ only by docs/agents/WO-6.3.md +55)
+verified range: fc5ffb1..a5151ca (both commits author goonzu-rs; Verifier authored none - S1 satisfied)
+src/** untouched: git diff fc5ffb1..HEAD -- src/ empty (re-checked in this clone)
+gate date: 2026-10-28 15:31:12 UTC

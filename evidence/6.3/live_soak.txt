@@ -1,0 +1,15 @@
+Step 6.3 WO section 8(c): >=2-min live soak - EVIDENCE ONLY (never blocks PASSED)
+run: 2026-10-28, S4 clean-clone binary of a5151ca (code 3285d07) against the wire-verified
+tunnels (front 0.tcp.ap.ngrok.io:14195 / game via capture relay -> 0.tcp.ap.ngrok.io:27911);
+runner run_live_soak.ps1 (credentials from operator env, never stored); FIN watchdog +130s.
+
+RESULT: PASS
+  - in-world hold 129.94 s (handshake 15:35:06.545Z -> teardown 15:37:16.487Z) >= 120 s
+  - 12 wire heartbeats measured on the c2s capture (53-B login + 9-B select + 12 x 5-B
+    = 122 B total, 14 frames; the 10 s ticker held for the full hold)
+  - clean teardown: stage=TornDown worlds=1 char_unique=16 cause=Some(ServerDisconnect),
+    driver exit code 0 (soak63_live.log)
+  - cap/c2s.bin + cap/s2c.bin: raw captures (SHA256SUMS-bound)
+
+Note: char_unique=16 continues the per-connection monotone series from the LIVE-01
+acceptance (11/12/13) - the server reaped the earlier abrupt-kill sessions meanwhile.

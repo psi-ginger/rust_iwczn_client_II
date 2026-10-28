@@ -1,0 +1,17 @@
+Step 6.3 five-gate summary (Verifier S4 clean clone at a5151ca, 2026-10-28)
+
+gate 1  RUSTFLAGS=-D warnings cargo check --all-targets   exit 0   check.log 0 warnings
+gate 2  cargo clippy --all-targets -- -D warnings         exit 0   clippy.log 0 warnings
+gate 3  cargo fmt --check (stock rustfmt 1.x defaults)     exit 0   fmt.log 0 bytes
+gate 4  cargo test                                         exit 0   211 lib + 14 e2e = 225/225, 4 live ignored (test.log)
+gate 5  cargo doc --no-deps                                exit 0   0 warnings (doc.log)
+
+test.log 'test result:' lines (the matrix numbers are copied from here):
+  211 passed lib / 14 passed e2e (30.19s, includes the >=3-heartbeat soak and R4) / 4 ignored live
+
+soak_nocapture.log: the soak test run with -- --nocapture so the 'soak measurements:' line
+is visible (a println! is harness-captured otherwise). Deterministic counts reproduce the
+delivery note exactly: dispatches=5446, npc_led_batches=907, sent=1208/4228, heartbeats=3.
+Timing figures are real-clock and run-variable; this run: cadence (9.9951s,10.0098s) both
+sessions, drift 22.3us, teardown 2.53/2.98ms - all inside the asserted bounds (10s window,
+<=1s drift, <=500ms teardown).

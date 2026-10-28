@@ -219,6 +219,99 @@ Handoff: Adversary lane for §9 adversarial findings; Verifier lane for
 ### Adversarial findings - Adversary
 ### Verdict - Verifier
 
+**2026-10-28: Step 6.3 `PASSED` (Verifier, independent second actor;
+dedicated `docs(qc)` commit).** The Adversary section above was not
+filled by a separate lane; the Verifier performed the mandatory
+adversarial review inline (same practice as rows 6.1/6.2 and the
+LIVE-01 fix) and records it here — no blocking findings.
+
+**S1:** verified range `fc5ffb1..a5151ca` (delivery code `3285d07` +
+doc-only delivery note `a5151ca`; trees differ only by
+`docs/agents/WO-6.3.md` +55) — both commits author `goonzu-rs`; the
+signer authored none of the range.
+
+**S4 (clean clone from origin at `a5151ca`, fresh `target/`, porcelain
+empty): all five gates exit 0** — check/clippy 0 warnings, `fmt.log`
+0 bytes, `doc.log` 0 warnings, **225/225** = 211 lib + 14 e2e (9 → 14 =
+soak + R1–R4) with the 4 live tests still `#[ignore]`d; every number
+copied from `evidence/6.3/test.log`. `git diff fc5ffb1..a5151ca --
+src/` empty in the clone: **`src/**` untouched claim TRUE**.
+
+**Adversarial review — no blocking findings.** `soak.rs`: dispatch
+counts are client-processed (DEBUG dispatch records, not writer
+counts); the NPC-led batch floor is derived from actual sent frames;
+zero-orphan evidence is behavioral (double observes client EOF ⇒ the
+`terminate` close phase ran; no Err-path drain warning); cadence window
+9.5–11.0 s, drift ≤1 s, teardown ≤500 ms; two concurrent sessions 1000
+vs 4000 frames. `game_double.rs`: storm paces at a fixed 100 ms tick
+with split read/write halves keeping both ciphers lockstep;
+`assert_heartbeat` byte-exact on every observed frame; R2 flips the
+last wire byte (tag-side, `cipher.rs:279-295`); R3 writes 3 wire bytes
+then FIN; R4 notifies the seam only after the first heartbeat;
+`drain_to_eof` asserts heartbeats byte-exactly through teardown; the
+6.2 default (`Tail::HeartbeatThenFin`) is unchanged. `robustness.rs`:
+R1 asserts the header guard's exact variants (`SizeBelowHeader{3}` /
+`SizeTooLarge{64993}`) at `InWorld` on both sizes; R2 asserts
+`CodecError::Integrity`; R3 asserts **no error** + `TornDown` +
+`cause=Some(ServerDisconnect)` (the documented clean-teardown discard,
+`game/entry.rs:472-476`); R4 joins its own injected watcher and asserts
+`Some(Cause::CtrlC)`; all four through `assert_clean_aftermath`
+(bounded, front leg complete, client close observed, no drain warning).
+`frames.rs`: both malformed frames are hand-placed raw byte literals
+(“never ciphered, never built by any encoder”); `OP_UNHANDLED_IN_WORLD`
+= 9999; the NPC-led body reuses the hand-placed record helpers with the
+LIVE-01 id span 8500..=8533. F-07 holds — no expectation anywhere is
+derived from the client's parsers or encoders.
+
+**Delivery-note claims vs the Verifier's independent run:**
+deterministic counts reproduce **exactly** — `dispatches=5446`,
+`npc_led_batches=907`, `sent=1208/4228`, `heartbeats=3`
+(`evidence/6.3/soak_nocapture.log`). The timing figures are real-clock
+and run-variable by nature; this run: cadence (9.9951 s, 10.0098 s)
+both sessions, drift 22.3 µs, teardown 2.53/2.98 ms — all inside the
+asserted bounds (10-s window, ≤1 s drift, ≤500 ms teardown). The
+note's own-run decimals (9.9919/10.0044 s, 31.1 µs, 1.26/1.84 ms) are
+consistent with that variance. The `soak measurements:` line is a
+`println!` and is harness-captured under plain `cargo test`; evidence
+requires `--nocapture` (recorded in the bundle) — noted, not a defect.
+
+**(c) live soak — PASS (evidence, per §8 never a gate):** the S4-clone
+binary against the wire-verified tunnels via the capture relay (FIN
+watchdog +130 s): **in-world 129.94 s ≥ 2 min**, **12 wire heartbeats**
+on the c2s capture (53-B login + 9-B select + 12 × 5-B = 122 B),
+`stage=TornDown worlds=1 char_unique=16 cause=Some(ServerDisconnect)`,
+**exit 0** (`evidence/6.3/live_soak.txt`, `soak63_live.log`, `cap/`).
+
+**Carried non-blocking finding L-1** (from the LIVE-01 fix
+verification): `frames.rs` `make_npc_record` cites rec[00] “y 338”; the
+capture's `w12=0x00027852` gives uiY = **82** — comment-only, no
+assertion depends on it; still owed by the implementer lane, may ride
+with any future delivery.
+
+**Evidence:** `evidence/6.3/` (14 files, SHA256SUMS-verified) —
+`head/env/gates/live_soak` + the five gate logs + `soak_nocapture.log`
++ `soak63_live.log` + `run_live_soak.ps1` (sanitized, credentials from
+operator env) + raw `cap/c2s.bin`/`cap/s2c.bin`. Test-count history:
+220 @ `9ba6226` → **225** @ `a5151ca`.
+
+**Verifier self-defect, caught and fixed forward in this commit.** The
+earlier matrix-cleanup commit `fc5ffb1` (WO filing + note archive)
+corrupted **every non-ASCII character in both files it wrote** — it was
+built from PowerShell's OEM-codepage decoding of `git show` output, so
+`→`/`§`/`—`/`×` became mojibake. The Verifier's original “0/49 verbatim,
+31/31 rows byte-identical” check was **false**: it compared identically
+corrupted strings on both sides. Caught here by a byte-level hexdump
+during the 6.3 review; fixed forward by re-splicing `TASK_MATRIX.md`
+and `docs/audit/2026-10-28-matrix-note-archive.md` from a byte-safe
+`cmd /c` redirection of `git show 9ba6226:TASK_MATRIX.md`, with
+byte-level re-verification (0/49 note-line mismatches, 0/26 preserved
+matrix-line mismatches, proper-character census reconciled: 22 arrows /
+7 § / 2 × / 48 —). `fc5ffb1` is cited in this delivery's range, so S7
+bars rewriting it — the fix is forward-only, recorded in the archive
+postscript and this block. No delivered test code was affected: all six
+delivery files scan clean (0 mojibake triples); the `µs` in the soak
+output is Rust's `Duration` `{:?}` formatting, not a source byte.
+
 ## 10. Definition of Done
 
 1. Soak + robustness tests exist; all five gates green; the test count is

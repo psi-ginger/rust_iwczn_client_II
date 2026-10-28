@@ -1,0 +1,8 @@
+[2m2026-10-28T15:35:06.075247Z[0m [32m INFO[0m [2mgoonzu_client[0m[2m:[0m goonzu client starting [3mversion[0m[2m=[0m"0.1.0"
+[2m2026-10-28T15:35:06.545895Z[0m [32m INFO[0m [2mgoonzu_client::game::entry[0m[2m:[0m client handshake succeeded: session_seed = (0xb1, 0x86), char_unique = 16
+[2m2026-10-28T15:37:16.487299Z[0m [32m INFO[0m [2mgoonzu_client::client::driver[0m[2m:[0m in-world session ended [3mcause[0m[2m=[0mSome(ServerDisconnect)
+[2m2026-10-28T15:37:16.487716Z[0m [32m INFO[0m [2mgoonzu_client::client::driver[0m[2m:[0m session ended [3mstage[0m[2m=[0mTornDown [3mworlds[0m[2m=[0m1 [3mchar_unique[0m[2m=[0m16 [3mchar_slot[0m[2m=[0m0 [3mvillage[0m[2m=[0mNone [3mcause[0m[2m=[0mSome(ServerDisconnect)
+[2m2026-10-28T15:37:16.488122Z[0m [32m INFO[0m [2mgoonzu_client[0m[2m:[0m session complete [3mstage[0m[2m=[0mTornDown [3mworlds[0m[2m=[0m1 [3mchar_unique[0m[2m=[0m16 [3mchar_slot[0m[2m=[0m0 [3mvillage[0m[2m=[0mNone
+
+[evidence] driver process exit code = 0; wall clock 130.58 s (FIN watchdog +130 s => in-world hold >= 120 s)
+[evidence] binary from the S4 clean clone of a5151ca (code 3285d07); game leg via the capture relay; run 2026-10-28 22:37:16 local

@@ -405,6 +405,12 @@ pub(crate) const CHAR_LIST_PAYLOAD_LEN: usize = 984;
 /// `sizeof(cltMakeCharInfo)` = 592 (`CommonHeader.h:2166`; binary-measured,
 /// `char_info.rs:31,119`); `usSize` 597.
 pub(crate) const MAKE_CHAR_PAYLOAD_LEN: usize = 592;
+/// `sizeof(cltMakeCharInfoCommon)` = 68 — the opcode-6 NPC stride,
+/// dual-sourced: the MSVC field sum (`CommonHeader.h:1967-1995`: 16 bitfield
+/// words + 4 SI08/SI16 pair + 20 `clOrder` + 12 `clIdentity` + 16
+/// `clInnerStatus`) and the live wire (`evidence/live/decode2.log`,
+/// `payload=2312` = 34 x 68, every head `uiType = 0`).
+pub(crate) const MAKE_CHAR_COMMON_PAYLOAD_LEN: usize = 68;
 /// `sizeof(cltGameMsgResponse_ServerInfo)` = 48 (binary-measured,
 /// `game.rs:35`, `world_entry.rs:154-158`); `usSize` 53.
 pub(crate) const SERVER_INFO_PAYLOAD_LEN: usize = 48;
@@ -431,6 +437,9 @@ pub(crate) const HEARTBEAT_WIRE: [u8; 5] = [0x05, 0x00, 0x00, 0x64, 0x00];
 /// record (`char_info.rs:495-497`; the Step 4.4/5.4 fixtures place
 /// `MAKECHARTYPE_PC | (0x2A << 1)`, `dispatcher/tests.rs:175`).
 pub(crate) const MAKECHARTYPE_PC: u32 = 1;
+/// `MAKECHARTYPE_NPC` = 0 — the same `uiType` bit cleared
+/// (`CommonHeader.h:1892`).
+pub(crate) const MAKECHARTYPE_NPC: u32 = 0;
 
 /// The opcode-1 handshake's 8-byte payload: `SI32` char_unique, `UI08`
 /// key1, `UI08` key2, `UI16` version (`cltGameMsgResponse_ClientCharUnique`,
@@ -513,8 +522,9 @@ pub(crate) fn server_info_payload() -> [u8; SERVER_INFO_PAYLOAD_LEN] {
 
 /// One 592-byte `MAKECHARTYPE_PC` record from the Step 4.4 field table
 /// (`CommonHeader.h:1969-1977`, low bits first; the tail fields the port
-/// reads sit at binary-measured offsets, `char_info.rs:599-635`) — the
-/// same arithmetic the Step 5.4 fixture uses (`dispatcher/tests.rs:165-184`).
+/// reads sit at binary-measured offsets, `char_info.rs` `decode_record`) —
+/// the same arithmetic the Step 5.4 fixture uses (`dispatcher/tests.rs
+/// pc_record`).
 pub(crate) fn make_char_record(unique: u16, level: u8) -> [u8; MAKE_CHAR_PAYLOAD_LEN] {
     let mut record = [0u8; MAKE_CHAR_PAYLOAD_LEN];
     let type_kind = MAKECHARTYPE_PC | (0x2A_u32 << 1); // uiType | uiMakeCharKind
@@ -526,6 +536,41 @@ pub(crate) fn make_char_record(unique: u16, level: u8) -> [u8; MAKE_CHAR_PAYLOAD
     record[8..12].copy_from_slice(&life_x.to_le_bytes());
     record[12..16].copy_from_slice(&y_map_speed.to_le_bytes());
     record
+}
+
+/// One 68-byte `MAKECHARTYPE_NPC` record: the `cltMakeCharInfoCommon` head
+/// from the same field table with `uiType` cleared and the PC-only tail
+/// absent — the record form the live server's world-entry broadcast is made
+/// of (`evidence/live/decode2.log`: rec[00] carries kind 0x23, level 1,
+/// life 40, x 20, y 338, map 158, speed 2 and byte 56 = 0x01 =
+/// `ENEMYTYPE_ALLPC` at `clEnemyType`; stride dual-sourced at
+/// [`MAKE_CHAR_COMMON_PAYLOAD_LEN`]).
+pub(crate) fn make_npc_record(unique: u16) -> [u8; MAKE_CHAR_COMMON_PAYLOAD_LEN] {
+    let mut record = [0u8; MAKE_CHAR_COMMON_PAYLOAD_LEN];
+    let type_kind = MAKECHARTYPE_NPC | (0x23_u32 << 1); // uiType | uiMakeCharKind
+    let unique_level = u32::from(unique) | (1u32 << 16); // uiLevel = 1
+    let life_x = 40u32 | (20u32 << 20); // uiLife | uiX
+    let y_map_speed = 338u32 | (158u32 << 10) | (2u32 << 20); // y|map|speed
+    record[0..4].copy_from_slice(&type_kind.to_le_bytes());
+    record[4..8].copy_from_slice(&unique_level.to_le_bytes());
+    record[8..12].copy_from_slice(&life_x.to_le_bytes());
+    record[12..16].copy_from_slice(&y_map_speed.to_le_bytes());
+    record[0x38..0x3A].copy_from_slice(&0x0001u16.to_le_bytes()); // clEnemyType
+    record
+}
+
+/// The mixed opcode-6 body the in-world set leads with: one NPC record (the
+/// live broadcast's NPC-led shape, LIVE-01), then the local and the nearby
+/// player records — the legacy walk strides each by its own `uiType`
+/// (`Client-Login.cpp:62-75`). Shared by the expected conversation and the
+/// game double so the transcript comparison stays byte-exact by
+/// construction; the per-offset assertions live in the unit suites.
+pub(crate) fn loginmany_body() -> Vec<u8> {
+    let mut body = Vec::with_capacity(MAKE_CHAR_COMMON_PAYLOAD_LEN + 2 * MAKE_CHAR_PAYLOAD_LEN);
+    body.extend_from_slice(&make_npc_record(8500)); // decode2.log's first id
+    body.extend_from_slice(&make_char_record(CHAR_UNIQUE as u16, 12));
+    body.extend_from_slice(&make_char_record(NEARBY_UNIQUE as u16, 9));
+    body
 }
 
 /// The 22-byte `cltGameMsgResponse_VillageStruct`: `SI16 VillageUnique` at
@@ -719,15 +764,11 @@ pub(crate) fn expected_conversation(password: &str, account: &str, mac: &str) ->
             Dir::S2C,
             frame(OP_VILLAGESTRUCT_RES, &village_struct_payload(VILLAGE_REF)),
         ),
-        // The in-world set: 6 (two PC records: the local character and a
-        // nearby one), 11 (the nearby one logs out), 118 (chat), 200 (state
-        // sync), 215 (HP/MP) — `dispatcher.rs:16-28`.
-        {
-            let mut body = Vec::with_capacity(2 * MAKE_CHAR_PAYLOAD_LEN);
-            body.extend_from_slice(&make_char_record(CHAR_UNIQUE as u16, 12));
-            body.extend_from_slice(&make_char_record(NEARBY_UNIQUE as u16, 9));
-            entry(Leg::Game, Dir::S2C, frame(OP_LOGINMANY, &body))
-        },
+        // The in-world set: 6 (a mixed NPC + PC batch — one NPC record, the
+        // live broadcast's shape, then two PC records: the local character
+        // and a nearby one), 11 (the nearby one logs out), 118 (chat), 200
+        // (state sync), 215 (HP/MP) — `dispatcher.rs:16-28`.
+        entry(Leg::Game, Dir::S2C, frame(OP_LOGINMANY, &loginmany_body())),
         entry(
             Leg::Game,
             Dir::S2C,

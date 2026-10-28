@@ -17,13 +17,13 @@ use goonzu_client::net::cipher::Cipher;
 
 use crate::frames::{
     char_update_body, chat_body, encode_link, frame, game_login_payload, handshake_payload,
-    logout_payload, make_char_record, person_ip_body, read_ciphered, roster_entry,
+    loginmany_body, logout_payload, make_char_record, person_ip_body, read_ciphered, roster_entry,
     select_char_payload, server_info_payload, village_request_payload, village_struct_payload, Dir,
     Leg, Mutation, ReadOutcome, Transcript, CHAR_UNIQUE, GAME_KEY1, GAME_KEY2, HEARTBEAT_WIRE,
-    MAKE_CHAR_PAYLOAD_LEN, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT,
-    OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_HEARTBEAT, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR,
-    OP_PERSON_IP, OP_SELECTCHAR, OP_SERVERINFO, OP_VILLAGESTRUCT_REQ, OP_VILLAGESTRUCT_RES,
-    ROSTER_SLOTS, VILLAGE_REF,
+    NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT, OP_CLIENTCHARUNIQUE,
+    OP_GAME_LOGIN, OP_HEARTBEAT, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR, OP_PERSON_IP,
+    OP_SELECTCHAR, OP_SERVERINFO, OP_VILLAGESTRUCT_REQ, OP_VILLAGESTRUCT_RES, ROSTER_SLOTS,
+    VILLAGE_REF,
 };
 
 /// What the game double observed by the time its conversation ended.
@@ -184,13 +184,11 @@ pub(crate) async fn run_game_double(
     transcript.push(Leg::Game, Dir::S2C, village.clone(), wire.len());
     report.frames_sent += 1;
 
-    // 9. The in-world set: 6 (two PC records), 11, 118, 200, 215
+    // 9. The in-world set: 6 (mixed NPC + PC batch — one NPC record, the
+    // live broadcast's shape, then the two PC records), 11, 118, 200, 215
     // (`dispatcher.rs:16-28`). The chat mutation lands on the 118 body.
-    let mut body = Vec::with_capacity(2 * MAKE_CHAR_PAYLOAD_LEN);
-    body.extend_from_slice(&make_char_record(CHAR_UNIQUE as u16, 12));
-    body.extend_from_slice(&make_char_record(NEARBY_UNIQUE as u16, 9));
     for (cmd, payload) in [
-        (OP_LOGINMANY, body),
+        (OP_LOGINMANY, loginmany_body()),
         (OP_LOGOUT, logout_payload(NEARBY_UNIQUE).to_vec()),
         (
             OP_CHAT,

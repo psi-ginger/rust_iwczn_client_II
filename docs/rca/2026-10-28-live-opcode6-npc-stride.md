@@ -139,3 +139,97 @@ reproduces the refusal, and `run_capture_session.ps1` reproduces the capture
 that `decode_tool.rs` reads back. Endpoint roles are wire-verified, not
 label-verified (finding D-1 in the same evidence bundle: the tunnels'
 upstream labels were swapped).
+
+## Delivery Note — Implementer (fix lane `fix/live-loginmany-npc`)
+
+Remediation items 1-4 delivered; item 5 (live re-verify) remains the
+Verifier's act.
+
+### What changed
+
+| Item | Where |
+|---|---|
+| NPC stride pinned, dual-sourced | `char_info.rs` `MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN = 68` |
+| Type dispatch in the opcode-6 walker | `char_info.rs` `parse_make_char_info_many`: PC → 592, NPC → 68, per `Client-Login.cpp:62-75` |
+| NPC decode | new `decode_head` (common fields through 0x3A) + `fill_pc_tail`; `decode_record` = both halves, so opcode 5 is unchanged |
+| Loud refusals kept | `PartialRecord` names the stride demanded at the failing offset (68 below the head minimum, 592 behind a PC head); `NonPlayerRecord` → `UnknownRecordType` |
+| Counted skip (dispatcher's state model) | `apply_login_many` skips `!is_player` records and counts them; `DispatchOutcome::Entered` gains `npcs: usize` |
+| Harness blind spot closed | `e2e_loopback/frames.rs`: `make_npc_record` (hand-placed 68-byte literal builder) + shared `loginmany_body()` = NPC 8500 + PC 4242 + PC 7777, wired into `expected_conversation()` and the game double's in-world set |
+
+### Design decisions
+
+1. **The 68 field sum, restated for the Verifier**: 16 (four `UI32`
+   bitfield words, `CommonHeader.h:1969-1977`) + 4 (`siHomeVillageUnique`
+   `SI08` + pad + `siJimCharUnique` `SI16`, `:1978-1979`) + 20 (`clOrder`,
+   `cltOrderDataInfo:1495-1514`) + 12 (`clIdentity`, `:1846`, `SI08` + pad +
+   8-byte identity union) + 16 (`clInnerStatus`, `cltInnerStatusInfo:
+   1744-1767`, of which `clEnemyType` is 4 = 2×`SI16`) = **68**. The wire
+   agrees on the layout, not just the total: byte 56 of every captured
+   record is `0x01` = `ENEMYTYPE_ALLPC`, which lands at
+   `clInnerStatus.clEnemyType.siEnemyType` (offset 0x38) under that sum.
+2. **`UnknownRecordType` is unreachable by construction — stated
+   honestly.** `uiType` is a 1-bit field (`CommonHeader.h:1969`), so the
+   walker masks bit 0 and only 0 or 1 can occur on the wire; the loud
+   unknown-type arm exists for a widened field meeting a stale stride table
+   (the LIVE-01 failure mode) and its doc says so. It is deliberately not
+   unit-tested: any synthetic trigger would have to bypass the very mask
+   the wire carries, testing the fixture rather than the code. The
+   reachable loud refusals are tested for both strides, plus the empty-body
+   `Truncated`.
+3. **Counted skip, not upsert.** Nothing this dispatcher models (chat,
+   char-update deltas, person-IP, logout) acts on an NPC through its
+   nearby table, so upserting one would fabricate entries no later frame
+   can maintain; the legacy pushes NPCs only into its world-renderer char
+   list. The count keeps the skip observable without adding logging to the
+   pure parsers: the driver's existing `debug!(... ?outcome ...)` line
+   (`driver.rs:684`) carries `npcs`, and on the captured live shape
+   (NPC-led) a zero count would mean the stride dispatch mis-read the batch.
+4. **Empty-body `Truncated.expected` is now 68**: an NPC-only broadcast is
+   legal (the live first in-world frame is exactly that), so the smallest
+   legal record is a common head, not a 592-byte PC record.
+5. **An NPC record decodes with the PC-only tail zeroed** (fields past
+   0x3A at their defaults), mirroring the legacy `clinfo.Set(pclinfo)` copy
+   (`Client-Login.cpp:73`), which copies only the common prefix.
+
+### Tests — 220 passing, +2 net against the 218 baseline
+
+- `char_info/tests.rs`: `login_many_decodes_an_npc_record_at_its_68_byte_
+  stride` (new), `login_many_walks_a_mixed_batch_by_each_records_own_stride`
+  (new: NPC+PC+NPC at offsets 0/68/660, each record's fields pinning its
+  position), `login_many_decodes_the_live_broadcast_shape` (new: 34×68 =
+  2312 rebuilt from `decode2.log` literals — kind 0x23, ids 8500→8533,
+  life 40/x 20, y 338/map 158/speed 2, byte 56 = `ENEMYTYPE_ALLPC`),
+  `login_many_refuses_partial_records_of_either_stride` (rewritten: a
+  592-expecting and a 68-expecting shortfall, each naming offset +
+  shortfall + demanded stride), `login_many_refuses_an_empty_body` (now
+  expects 68), and the 68 constant row in `constants_match_the_wire_truth`.
+  The old "refuse an NPC record" test is removed by design.
+- `dispatcher/tests.rs`: `a_login_many_npc_record_is_counted_and_skipped`
+  (new: NPC 8500 + PC 42 + NPC 8501 → `Entered { char_uniques: [42],
+  npcs: 2 }`, NPC uniques absent from the table), the partial-body refusal
+  now uses a PC-typed tail (`PartialRecord { offset: 592, have: 100,
+  expected: 592 }`), and the all-PC upsert test asserts `npcs: 0`.
+- E2E loopback: the in-world LOGINMANY frame of the full flow *and* all
+  four mutation runs now carries the mixed NPC+PC+PC body from the shared
+  `loginmany_body()`; transcript comparison stays byte-exact by
+  construction, and F-07 is unchanged (every byte hand-placed; the only
+  client call in the harness remains `Cipher::encode`).
+
+### Gates — all five exit 0
+
+`RUSTFLAGS=-D warnings cargo check --all-targets` ·
+`cargo clippy --all-targets -- -D warnings` · `rustfmt --check` on the six
+changed leaf files + whole-tree `cargo fmt --check` (0 diffs) ·
+`cargo test` (211 lib + 9 e2e = 220/220; the 4 `live_integration` tests
+stay opt-in/ignored) · `RUSTDOCFLAGS=-D warnings cargo doc --no-deps`.
+Logs: `%TEMP%\opencode\live01-{check,clippy,fmt,fmt-leaf,test,doc}.log`.
+
+### Handoff — Verifier (remediation item 5)
+
+Run `evidence/live/run_driver_live.ps1` against this build. Expected
+against the captured server shape: the opcode-6 walk consumes the NPC
+broadcast cleanly (`npcs` = the NPC count in the `Entered` debug line,
+34 on the capture behind `decode2.log`), the session passes
+`Stage::InWorld`, survives ≥ 3 heartbeat intervals, and ends at
+`Stage::TornDown` under `Ctrl+C` with exit code 0 — which unblocks the
+merge to `main`.

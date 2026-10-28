@@ -18,7 +18,10 @@
 // rather than by any function under test. The opcode-6 expectations reuse
 // the Step 4.4 field table (`char_info`, QC'd) with a local record builder.
 use super::*;
-use crate::game::char_info::{MAKECHARTYPE_PC, MAKE_CHAR_INFO_PAYLOAD_LEN};
+use crate::game::char_info::{
+    MAKECHARTYPE_NPC, MAKECHARTYPE_PC, MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
+    MAKE_CHAR_INFO_PAYLOAD_LEN,
+};
 use crate::game::login::PLAYER_NAME_LEN;
 use crate::protocol::header::HEADER_SIZE;
 
@@ -183,11 +186,16 @@ fn pc_record(
     record
 }
 
-/// The same record with the `uiType` bit cleared — the non-PC form whose
-/// stride no verified source pins.
-fn non_pc_record() -> Vec<u8> {
-    let mut record = pc_record(9, 1, 10, 1, 1, 1, 1);
-    record[0] &= !1; // uiType -> not MAKECHARTYPE_PC
+/// One 68-byte `MAKECHARTYPE_NPC` common head — the record form the live
+/// server's world-entry broadcast is made of (`evidence/live/decode2.log`:
+/// 34 x 68, every head `uiType = 0`; stride dual-sourced at
+/// `MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN`, `char_info.rs`).
+fn npc_record(unique: u16, level: u8) -> Vec<u8> {
+    let mut record = vec![0u8; MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN];
+    let type_kind = MAKECHARTYPE_NPC | (0x2A_u32 << 1); // uiType | uiMakeCharKind
+    let unique_level = u32::from(unique) | (u32::from(level) << 16);
+    record[0..4].copy_from_slice(&type_kind.to_le_bytes());
+    record[4..8].copy_from_slice(&unique_level.to_le_bytes());
     record
 }
 
@@ -664,7 +672,9 @@ fn a_login_many_body_upserts_one_entry_per_record() {
         outcome,
         DispatchOutcome::Entered {
             char_uniques: vec![42, 43],
-        }
+            npcs: 0,
+        },
+        "an all-PC batch counts no NPCs"
     );
     assert_eq!(state.nearby().len(), 2);
 
@@ -703,23 +713,36 @@ fn a_re_received_record_refreshes_the_birth_fields_and_keeps_the_deltas() {
 }
 
 #[test]
-fn a_login_many_non_player_record_is_refused_and_state_is_untouched() {
+fn a_login_many_npc_record_is_counted_and_skipped() {
+    // LIVE-01: the live world-entry broadcast is NPC-led (34 x 68-byte
+    // records, `evidence/live/decode2.log`), so an NPC record is the normal
+    // case, not an error. The dispatcher's table models the players its
+    // other opcodes act on; an NPC record upserts nothing but is counted
+    // into the outcome, so the skip stays observable (`apply_login_many`
+    // docs) — a mis-strided walk would surface here as a wrong count.
     let mut state = in_world_state();
-    let before = state.clone();
-    let body = [pc_record(42, 12, 777, 11, 22, 3, 4), non_pc_record()].concat();
+    let body = [
+        npc_record(8500, 1),
+        pc_record(42, 12, 777, 11, 22, 3, 4),
+        npc_record(8501, 1),
+    ]
+    .concat();
 
-    let err = state.dispatch(RESPONSE_LOGINMANY, &body).unwrap_err();
-    assert!(
-        matches!(
-            err,
-            DispatchError::CharInfo(CharInfoError::NonPlayerRecord {
-                offset: 592,
-                ui_type: 0
-            })
-        ),
-        "the NPC stride is unpinned (module docs), so the frame is refused: {err:?}"
+    let outcome = state.dispatch(RESPONSE_LOGINMANY, &body).unwrap();
+    assert_eq!(
+        outcome,
+        DispatchOutcome::Entered {
+            char_uniques: vec![42],
+            npcs: 2,
+        },
+        "the PC record upserts; both NPC records are counted, in body order"
     );
-    assert_eq!(state, before, "one bad record poisons nothing");
+    let nearby: Vec<i32> = state.nearby().keys().copied().collect();
+    assert_eq!(
+        nearby,
+        vec![42],
+        "the NPC uniques (8500, 8501) never enter the nearby table"
+    );
 }
 
 #[test]
@@ -733,14 +756,21 @@ fn an_empty_or_partial_login_many_body_is_refused() {
         DispatchError::CharInfo(CharInfoError::Truncated { .. })
     ));
 
+    // A PC head at offset 592 declares a 592-byte record
+    // (`Client-Login.cpp:64-67`); 100 bytes is refused as a partial one,
+    // and the refusal names offset, shortfall and demanded stride.
     let mut partial = pc_record(42, 12, 777, 11, 22, 3, 4);
-    partial.extend_from_slice(&[0u8; 100]);
+    partial.extend_from_slice(&pc_record(43, 9, 100, 1, 1, 1, 1)[..100]);
     let err = state.dispatch(RESPONSE_LOGINMANY, &partial).unwrap_err();
     assert!(matches!(
         err,
-        DispatchError::CharInfo(CharInfoError::PartialRecord { offset: 592, .. })
+        DispatchError::CharInfo(CharInfoError::PartialRecord {
+            offset: 592,
+            have: 100,
+            expected: MAKE_CHAR_INFO_PAYLOAD_LEN
+        })
     ));
-    assert_eq!(state, before);
+    assert_eq!(state, before, "a refused body touches no state");
 }
 
 // ---------------------------------------------------------------------

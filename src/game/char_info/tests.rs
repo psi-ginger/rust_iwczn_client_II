@@ -189,6 +189,52 @@ fn expected_make_char(r: &WireRecord) -> MakeCharInfo {
     }
 }
 
+/// Builds one 68-byte [`MAKECHARTYPE_NPC`] record: the same common-head
+/// field table as [`make_char_payload`] with `uiType` cleared and the
+/// PC-only tail *absent* — the record ends where `cltMakeCharInfoCommon`
+/// does (`CommonHeader.h:1967-1995`, 68 bytes dual-sourced at
+/// [`MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN`]).
+fn make_npc_payload(r: &WireRecord) -> Vec<u8> {
+    let mut p = vec![0u8; MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN];
+
+    // 0x00: uiType:1 (= MAKECHARTYPE_NPC, 0) | uiMakeCharKind:16.
+    let type_kind = u32::from(r.kind) << 1;
+    // 0x04: uiMakeCharUnique:16 | uiLevel:8 | pad:8.
+    let unique_level = u32::from(r.unique) | (u32::from(r.level) << 16);
+    // 0x08: uiLife:20 | uiX:10 | pad:2.
+    let life_x = r.life | (u32::from(r.x) << 20);
+    // 0x0C: uiY:10 | uiMapIndex:10 | uiTotalMoveSpeed:6 | pad:6.
+    let y_map_speed = u32::from(r.y) | (u32::from(r.map_index) << 10) | (u32::from(r.speed) << 20);
+    p[0..4].copy_from_slice(&type_kind.to_le_bytes());
+    p[4..8].copy_from_slice(&unique_level.to_le_bytes());
+    p[8..12].copy_from_slice(&life_x.to_le_bytes());
+    p[12..16].copy_from_slice(&y_map_speed.to_le_bytes());
+
+    p[0x10] = r.home as u8; // siHomeVillageUnique
+    p[0x11] = 0xEE; // pad byte the SI16 alignment inserts
+    p[0x12..0x14].copy_from_slice(&r.jim.to_le_bytes()); // siJimCharUnique
+    p[0x14..0x38].fill(b'O'); // clOrder, clIdentity, siStatus
+                              // The head's last placed field is clEnemyType at 0x38..0x3A; the span
+                              // through 0x44 (siPara1 .. end of clInnerStatus) stays zero, and the
+                              // record ends at 68.
+    p[0x38..0x3A].copy_from_slice(&0x0016u16.to_le_bytes()); // clEnemyType
+    p
+}
+
+/// The expectation a [`make_npc_payload`] record of [`maximal_record`]'s
+/// fields implies: the head fields as decoded, `is_player` false, and the
+/// PC-only tail zeroed (the legacy `clinfo.Set(pclinfo)` copy leaves it at
+/// `Init()` zeros, `Client-Login.cpp:73`).
+fn expected_npc(r: &WireRecord) -> MakeCharInfo {
+    let mut expected = expected_make_char(r);
+    expected.is_player = false;
+    expected.current_show_horse = 0;
+    expected.game_master_level = 0;
+    expected.map_unique = 0;
+    expected.make_ani_type = 0;
+    expected
+}
+
 #[test]
 fn constants_match_the_wire_truth() {
     assert_eq!(
@@ -213,6 +259,13 @@ fn constants_match_the_wire_truth() {
         MAKE_CHAR_INFO_PAYLOAD_LEN, 592,
         "CommonHeader.h:2166 — the port's binary-measured MAKE_CHAR_INFO_PAYLOAD_LEN \
          (game.rs:37-43, PopChar strides 0x250)"
+    );
+    assert_eq!(
+        MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN, 68,
+        "CommonHeader.h:1967-1995 — sizeof(cltMakeCharInfoCommon): 16 (4 UI32 \
+         bitfield words) + 4 (SI08 + pad + SI16) + 20 (clOrder) + 12 (clIdentity) \
+         + 16 (clInnerStatus); wire-confirmed by evidence/live/decode2.log \
+         (payload=2312 = 34 x 68, byte 56 = ENEMYTYPE_ALLPC at clEnemyType)"
     );
     assert_eq!(
         CHAR_SLOTS, 15,
@@ -630,12 +683,16 @@ fn login_many_refuses_an_empty_body() {
     // The client reads uiType before it knows it got bytes
     // (`Client-Login.cpp:62-64`), so an empty body is garbage, not "no
     // records": the port sends nothing at all for an empty cell instead.
+    // The minimum record is a 68-byte NPC head, so that is the shortfall an
+    // empty body is measured against (an NPC-only broadcast is legal — the
+    // live server's first in-world frame is exactly that, 34 x 68,
+    // `evidence/live/decode2.log`).
     let err = parse_make_char_info_many(RESPONSE_LOGINMANY, &[]).unwrap_err();
     assert!(
         matches!(
             err,
             CharInfoError::Truncated {
-                expected: MAKE_CHAR_INFO_PAYLOAD_LEN,
+                expected: MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
                 got: 0,
                 opcode: RESPONSE_LOGINMANY
             }
@@ -645,52 +702,192 @@ fn login_many_refuses_an_empty_body() {
 }
 
 #[test]
-fn login_many_refuses_a_partial_trailing_record() {
+fn login_many_refuses_partial_records_of_either_stride() {
     let record = maximal_record();
-    let mut body = make_char_payload(&record, false);
-    let short_of = 100; // of the next record's 592
-    body.resize(body.len() + short_of, 0);
 
-    let err = parse_make_char_info_many(RESPONSE_LOGINMANY, &body).unwrap_err();
+    // A PC-typed tail: the head at that offset declares a 592-byte record,
+    // so the shortfall is measured against 592 (`Client-Login.cpp:64-67`).
+    let mut pc_led = make_char_payload(&record, false);
+    let pc_offset = pc_led.len();
+    let pc_head = make_char_payload(&record, false);
+    pc_led.extend_from_slice(&pc_head[..100]);
+    let err = parse_make_char_info_many(RESPONSE_LOGINMANY, &pc_led).unwrap_err();
     assert!(
         matches!(
             err,
             CharInfoError::PartialRecord {
-                offset: MAKE_CHAR_INFO_PAYLOAD_LEN,
+                offset,
                 have: 100,
                 expected: MAKE_CHAR_INFO_PAYLOAD_LEN
-            }
+            } if offset == pc_offset
         ),
-        "a partial trailing record must name its offset and shortfall, got {err:?}"
+        "a partial trailing PC record must name its offset and shortfall, got {err:?}"
+    );
+
+    // An NPC-typed tail: only 68 bytes are demanded, and 40 are refused all
+    // the same — the walk never silently truncates a record.
+    let mut npc_led = make_npc_payload(&record);
+    let npc_offset = npc_led.len();
+    npc_led.extend_from_slice(&[0xEE; 40]);
+    let err = parse_make_char_info_many(RESPONSE_LOGINMANY, &npc_led).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CharInfoError::PartialRecord {
+                offset,
+                have: 40,
+                expected: MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN
+            } if offset == npc_offset
+        ),
+        "a partial trailing NPC record must name its offset and shortfall, got {err:?}"
     );
 }
 
 #[test]
-fn login_many_refuses_a_record_it_cannot_stride_past() {
-    // An NPC-typed record's stride is sizeof(cltMakeCharInfoCommon), which no
-    // verified source pins (the snapshot derives 524 for the PC form against
-    // the binary's 592, game.rs:39-42) — so this port refuses rather than
-    // guessing a stride and mis-reading every record after it.
-    let pc = maximal_record();
-    let mut npc = make_char_payload(&pc, false);
-    // Clear uiType bit 0 → MAKECHARTYPE_NPC, keeping the rest of the header.
-    let word = u32::from_le_bytes(npc[0..4].try_into().expect("4 bytes"));
-    npc[0..4].copy_from_slice(&(word & !MAKECHARTYPE_PC).to_le_bytes());
+fn login_many_decodes_an_npc_record_at_its_68_byte_stride() {
+    // The live server's world-entry broadcast is made of exactly this
+    // record: uiType 0, stride sizeof(cltMakeCharInfoCommon) = 68
+    // (`Client-Login.cpp:70-75`, the constant's dual citation).
+    let record = maximal_record();
+    let body = make_npc_payload(&record);
+    assert_eq!(
+        body.len(),
+        MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
+        "the NPC fixture is one common head, nothing more"
+    );
 
-    let mut body = make_char_payload(&pc, false);
-    let npc_offset = body.len();
-    body.extend_from_slice(&npc);
+    let records = parse_make_char_info_many(RESPONSE_LOGINMANY, &body).expect("one NPC record");
+    assert_eq!(
+        records,
+        vec![expected_npc(&record)],
+        "the common head decodes field for field; the PC-only tail is zero"
+    );
+}
 
-    let err = parse_make_char_info_many(RESPONSE_LOGINMANY, &body).unwrap_err();
+#[test]
+fn login_many_walks_a_mixed_batch_by_each_records_own_stride() {
+    // The LIVE-01 shape: NPC, PC, NPC back to back. The legacy strides by
+    // each head's own uiType (`Client-Login.cpp:62-75`), so one wrong
+    // stride anywhere mis-reads every record after it — which is why each
+    // record's own fields pin its position here.
+    let npc_head = WireRecord {
+        kind: 0x23,
+        unique: 8500,
+        level: 1,
+        life: 40,
+        x: 20,
+        y: 338,
+        map_index: 158,
+        speed: 2,
+        home: 1,
+        jim: 0,
+    };
+    let pc_middle = WireRecord {
+        kind: 0x7ABC,
+        unique: 4242,
+        level: 60,
+        life: 999,
+        x: 123,
+        y: 456,
+        map_index: 7,
+        speed: 9,
+        home: -2,
+        jim: -300,
+    };
+    let npc_tail = WireRecord {
+        kind: 0x23,
+        unique: 8501,
+        level: 3,
+        life: 80,
+        x: 21,
+        y: 339,
+        map_index: 158,
+        speed: 2,
+        home: 1,
+        jim: 0,
+    };
+
+    let mut body = make_npc_payload(&npc_head);
+    let pc_offset = body.len(); // 68
+    body.extend_from_slice(&make_char_payload(&pc_middle, false));
+    let tail_offset = body.len(); // 68 + 592 = 660
+    body.extend_from_slice(&make_npc_payload(&npc_tail));
+    assert_eq!(body.len(), 2 * 68 + MAKE_CHAR_INFO_PAYLOAD_LEN);
+
+    let records = parse_make_char_info_many(RESPONSE_LOGINMANY, &body).expect("three records");
+    assert_eq!(records.len(), 3, "one record per typed stride");
+    assert_eq!(
+        records[0],
+        expected_npc(&npc_head),
+        "record 0 is the NPC head at offset 0"
+    );
+    assert_eq!(
+        records[1],
+        expected_make_char(&pc_middle),
+        "record 1 is the PC record at offset {pc_offset}, tail fields and all"
+    );
+    assert_eq!(
+        records[2],
+        expected_npc(&npc_tail),
+        "record 2 is the NPC head at offset {tail_offset}"
+    );
     assert!(
-        matches!(
-        err,
-        CharInfoError::NonPlayerRecord {
-            offset,
-            ui_type: MAKECHARTYPE_NPC
-        } if offset == npc_offset
-        ),
-        "an NPC record at offset {npc_offset} must be refused by name, got {err:?}"
+        records.iter().filter(|r| r.is_player).count() == 1,
+        "exactly the middle record is a player"
+    );
+}
+
+#[test]
+fn login_many_decodes_the_live_broadcast_shape() {
+    // `evidence/live/decode2.log`: `payload=2312 divisible by 68`, 34
+    // records, every head `uiType=0`, ids monotone; rec[00] carries
+    // w0=0x00000046 (kind 0x23), id@4=0x00012134 (u16 8500, level 1),
+    // w8=0x01400028 (life 40, x 20), w12=0x00027852 (y 338, map 158,
+    // speed 2), and byte 56 = 0x01 = ENEMYTYPE_ALLPC at clEnemyType.
+    // Rebuilt from those literals, the whole broadcast must walk clean.
+    let head = WireRecord {
+        kind: 0x23,
+        unique: 8500,
+        level: 1,
+        life: 40,
+        x: 20,
+        y: 338,
+        map_index: 158,
+        speed: 2,
+        home: 0,
+        jim: 0,
+    };
+    let mut body = Vec::with_capacity(34 * MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN);
+    for i in 0..34u16 {
+        let mut record = make_npc_payload(&head);
+        record[4..6].copy_from_slice(&(head.unique + i).to_le_bytes()); // id@4
+        record[0x38..0x3A].copy_from_slice(&0x0001u16.to_le_bytes()); // byte 56
+        body.extend_from_slice(&record);
+    }
+    assert_eq!(body.len(), 2312, "decode2.log: payload=2312");
+
+    let records = parse_make_char_info_many(RESPONSE_LOGINMANY, &body).expect("34 NPC records");
+    assert_eq!(records.len(), 34, "34 x 68 walks the body exactly");
+    assert!(
+        records.iter().all(|r| !r.is_player),
+        "every head carries uiType = 0"
+    );
+    let first = &records[0];
+    assert_eq!(first.make_char_kind, head.kind);
+    assert_eq!(first.make_char_unique, head.unique, "ids start at 8500");
+    assert_eq!(first.level, head.level);
+    assert_eq!(first.life, head.life);
+    assert_eq!(first.x, head.x);
+    assert_eq!(first.y, head.y);
+    assert_eq!(first.map_index, head.map_index);
+    assert_eq!(
+        first.enemy_type, 1,
+        "byte 56 is ENEMYTYPE_ALLPC at clEnemyType"
+    );
+    assert_eq!(
+        records[33].make_char_unique,
+        head.unique + 33,
+        "ids are monotone through 8533"
     );
 }
 

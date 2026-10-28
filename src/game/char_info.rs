@@ -8,7 +8,7 @@
 //! |---|---|---|---|
 //! | [`RESPONSE_CHARLIST`] | 3 | [`CHAR_LIST_PAYLOAD_LEN`] (984) | `cltCharListInfo` (`Char-Common.h:453-471`) |
 //! | [`RESPONSE_LOGIN`] | 5 | [`MAKE_CHAR_INFO_PAYLOAD_LEN`] (592) | one `cltMakeCharInfo` (`CommonHeader.h:2166`) |
-//! | [`RESPONSE_LOGINMANY`] | 6 | N x 592 | the same record, packed back to back |
+//! | [`RESPONSE_LOGINMANY`] | 6 | N x (592 or 68, by `uiType`) | `cltMakeCharInfo` (PC) or its `cltMakeCharInfoCommon` head (NPC), packed back to back |
 //!
 //! The roster arrives first: the game service answers a successful
 //! [`crate::game::login`] submission with [`CHAR_SLOTS`] `cltCharListInfo`
@@ -16,10 +16,16 @@
 //! copies each one into `clCharListInfo[clBI.uiIndex]` unconditionally
 //! (`PutCharList`, `Client.cpp:4591-4599`; the port's `send_char_list`,
 //! `services/game/src/auth.rs:67-117`). Opcode 5 is the "you are in the
-//! world" record for the character the client selected, and opcode 6 is the
-//! same record repeated for every other player already standing in the
-//! caller's cell (`DoMsg_GAMEMSG_RESPONSE_LOGIN` / `_LOGINMANY`,
-//! `Client-Login.cpp:88-93` / `:53-85`).
+//! world" record for the character the client selected; opcode 6 repeats
+//! records for everyone else already standing in the caller's cell and
+//! dispatches on each record's `uiType`: a
+//! [`MAKECHARTYPE_PC`] record is the same 592-byte struct, any other record
+//! is its 68-byte `cltMakeCharInfoCommon` head (`DoMsg_GAMEMSG_RESPONSE_
+//! LOGIN` / `_LOGINMANY`, `Client-Login.cpp:88-93` / `:53-85`). The live
+//! server's first in-world broadcast is NPC-led — 34 x 68-byte
+//! `MAKECHARTYPE_NPC` records (`evidence/live/decode2.log`) — so the NPC
+//! stride is the load-bearing half of the walk (LIVE-01,
+//! `docs/rca/2026-10-28-live-opcode6-npc-stride.md`).
 //!
 //! # Which source owns which fact
 //!
@@ -118,6 +124,32 @@ pub const DEL_CHAR_TIME_LEN: usize = 16;
 /// 524 (`game.rs:37-43`).
 pub const MAKE_CHAR_INFO_PAYLOAD_LEN: usize = 592;
 
+/// `sizeof(cltMakeCharInfoCommon)` — the opcode 6 stride of a
+/// [`MAKECHARTYPE_NPC`] record: 68 (LIVE-01,
+/// `docs/rca/2026-10-28-live-opcode6-npc-stride.md`).
+///
+/// Dual-sourced, because this struct family's snapshot sizes are proven
+/// stale (its `cltMakeCharInfo` derives 524 against the binary's 592,
+/// `game.rs:37-43`):
+///
+/// - **Wire.** The live server's first in-world broadcast
+///   (`evidence/live/decode2.log`) is 34 records of exactly 68 bytes —
+///   `payload=2312 divisible by 68: true` — every head `uiType = 0`
+///   ([`MAKECHARTYPE_NPC`]), ids monotone 8500→8533.
+/// - **Source.** The MSVC field sum of `cltMakeCharInfoCommon`
+///   (`CommonHeader.h:1967-1995`): 4 `UI32` bitfield words = 16
+///   (`:1969-1977`) + `siHomeVillageUnique` `SI08` + pad +
+///   `siJimCharUnique` `SI16` = 4 (`:1978-1979`) + `clOrder` = 20
+///   (`cltOrderDataInfo`, `:1495-1514`) + `clIdentity` = 12 (`:1846`, the
+///   `SI08` + pad + 8-byte identity union)
+///   + `clInnerStatus` = 16 (`cltInnerStatusInfo`, `:1744-1767`) = **68**.
+///
+/// The two sources agree on the layout, not just the total: byte 56 of every
+/// captured record is `0x01` = `ENEMYTYPE_ALLPC`, the
+/// `clInnerStatus.clEnemyType.siEnemyType` word at offset 0x38 under that
+/// sum.
+pub const MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN: usize = 68;
+
 /// `MAKECHARTYPE_PC` (`CommonHeader.h:1893`) - the `uiType` value that marks
 /// a record as a full player character.
 pub const MAKECHARTYPE_PC: u32 = 1;
@@ -161,28 +193,32 @@ pub enum CharInfoError {
         /// The opcode being parsed, for the message.
         opcode: u16,
     },
-    /// An opcode 6 body that is not a whole number of 592-byte records - the
+    /// An opcode 6 body that does not end on a whole record boundary - the
     /// client walks the stream by stride with no length prefix
     /// (`Client-Login.cpp:60-84`), so a partial tail would be read as the
-    /// head of a record.
+    /// head of a record. `expected` is the stride the walk demanded at that
+    /// offset: 592 behind a [`MAKECHARTYPE_PC`] head, [`MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN`]
+    /// below the common-head minimum.
     #[error("LOGINMANY record at offset {offset} is only {have} of {expected} bytes")]
     PartialRecord {
         /// Byte offset of the incomplete record.
         offset: usize,
         /// Bytes available from that offset.
         have: usize,
-        /// Required record length.
+        /// Required record length at that offset.
         expected: usize,
     },
-    /// An opcode 6 record whose `uiType` is not [`MAKECHARTYPE_PC`]. The
-    /// stride of the NPC form is `sizeof(cltMakeCharInfoCommon)`, which the
-    /// source snapshot cannot be trusted for the same way its
-    /// `cltMakeCharInfo` could not (524 derived vs 592 real, `game.rs:39-42`),
-    /// so this port refuses to guess a stride rather than mis-read every
-    /// record after it (`Client-Login.cpp:64-75` walks both forms).
-    #[error("LOGINMANY record at offset {offset} has uiType {ui_type}, not MAKECHARTYPE_PC (1) - the NPC stride is not pinned by any verified source")]
-    NonPlayerRecord {
-        /// Byte offset of the record that cannot be walked.
+    /// An opcode 6 record whose `uiType` is neither [`MAKECHARTYPE_PC`] nor
+    /// [`MAKECHARTYPE_NPC`]. The legacy strides by that field
+    /// (`Client-Login.cpp:62-75`); `uiType` is declared `:1`
+    /// (`CommonHeader.h:1969`), so the walker's mask can only yield 0 or 1
+    /// and this error is unreachable from a well-formed wire. It is kept
+    /// loud as the refusal for the day the field widens and the stride
+    /// table goes stale - a stale stride would mis-read every record after
+    /// the change, which is exactly the LIVE-01 failure mode.
+    #[error("LOGINMANY record at offset {offset} has uiType {ui_type}, neither MAKECHARTYPE_PC (1) nor MAKECHARTYPE_NPC (0)")]
+    UnknownRecordType {
+        /// Byte offset of the record whose type cannot be strided.
         offset: usize,
         /// The `uiType` value found there.
         ui_type: u32,
@@ -596,10 +632,13 @@ pub fn parse_make_char_info(cmd: u16, payload: &[u8]) -> Result<MakeCharInfo, Ch
     Ok(decode_record(payload))
 }
 
-/// Decodes one already-length-checked 592-byte record. Split out so the
-/// opcode 6 walker can reuse it without re-checking the opcode or the length
-/// of every record.
-fn decode_record(payload: &[u8]) -> MakeCharInfo {
+/// Decodes the `cltMakeCharInfoCommon` head every opcode 6 record opens
+/// with - the fields through 0x3A, all inside the 68-byte common prefix
+/// ([`MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN`], dual-sourced there). The PC-only
+/// tail fields stay at zero, which mirrors the legacy's NPC path:
+/// `clinfo.Set(pclinfo)` copies only the common prefix into its record and
+/// leaves the rest at `Init()` zeros (`Client-Login.cpp:73`).
+fn decode_head(payload: &[u8]) -> MakeCharInfo {
     // 0x00: uiType:1 | uiMakeCharKind:16 - declared order, low bits first
     // (CommonHeader.h:1969-1970).
     let type_kind = u32_at(payload, 0);
@@ -627,17 +666,50 @@ fn decode_record(payload: &[u8]) -> MakeCharInfo {
         home_village_unique: payload[0x10] as i8,
         jim_char_unique: i16_at(payload, 0x12),
         enemy_type: u16::from_le_bytes([payload[0x38], payload[0x39]]),
-        current_show_horse: payload[0x50],
-        game_master_level: payload[0x51],
-        map_unique: i16_at(payload, 0x52),
-        make_ani_type: i16_at(payload, 0x92),
+        current_show_horse: 0,
+        game_master_level: 0,
+        map_unique: 0,
+        make_ani_type: 0,
     }
 }
 
-/// Parses an opcode 6 body: [`MAKE_CHAR_INFO_PAYLOAD_LEN`]-byte records
-/// packed back to back with no length prefix
-/// (`DoMsg_GAMEMSG_RESPONSE_LOGINMANY`, `Client-Login.cpp:53-85`, whose
-/// stride comes from the leading `uiType`).
+/// The PC-only tail fields past the common prefix: `siCurrentShowHorse` at
+/// 0x50, `siGameMasterLevel` at 0x51, `siMapUnique` at 0x52 and
+/// `siMakeAniType` at 0x92 - the binary-measured offsets (module docs,
+/// "which source owns which fact"). No field here exists in
+/// `cltMakeCharInfoCommon`, which is what makes 68 the whole of an NPC
+/// record.
+fn fill_pc_tail(record: &mut MakeCharInfo, payload: &[u8]) {
+    record.current_show_horse = payload[0x50];
+    record.game_master_level = payload[0x51];
+    record.map_unique = i16_at(payload, 0x52);
+    record.make_ani_type = i16_at(payload, 0x92);
+}
+
+/// Decodes one already-length-checked 592-byte [`MAKECHARTYPE_PC`] record:
+/// the common head plus the tail [`fill_pc_tail`] adds. Opcode 5's parser
+/// uses it whole; the opcode 6 walker splits the two halves so an NPC
+/// record gets the head alone.
+fn decode_record(payload: &[u8]) -> MakeCharInfo {
+    let mut record = decode_head(payload);
+    fill_pc_tail(&mut record, payload);
+    record
+}
+
+/// Parses an opcode 6 body: records packed back to back with no length
+/// prefix, each strided by its own leading `uiType` exactly as the legacy
+/// walk (`DoMsg_GAMEMSG_RESPONSE_LOGINMANY`, `Client-Login.cpp:53-85`):
+/// [`MAKECHARTYPE_PC`] → [`MAKE_CHAR_INFO_PAYLOAD_LEN`] (592, the binary-
+/// measured `cltMakeCharInfo`), [`MAKECHARTYPE_NPC`] →
+/// [`MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN`] (68, `sizeof(cltMakeCharInfoCommon)`,
+/// dual-sourced at the constant). A mixed batch is the normal case, not an
+/// edge: the live server's first in-world broadcast is 34 NPC records led
+/// (`evidence/live/decode2.log`, LIVE-01).
+///
+/// An NPC record decodes to its common-head fields with the PC-only tail
+/// zeroed, mirroring the legacy `clinfo.Set(pclinfo)` copy
+/// (`Client-Login.cpp:73`); the dispatcher decides what state, if any, such
+/// a record carries.
 ///
 /// Empty bodies are refused rather than parsed as zero records: the client
 /// reads `uiType` before it knows whether it got any bytes, and the port
@@ -649,9 +721,11 @@ fn decode_record(payload: &[u8]) -> MakeCharInfo {
 ///
 /// [`CharInfoError::UnexpectedOpcode`] for a command other than
 /// [`RESPONSE_LOGINMANY`]; [`CharInfoError::Truncated`] for an empty body;
-/// [`CharInfoError::PartialRecord`] for a body that is not a whole number of
-/// records; [`CharInfoError::NonPlayerRecord`] for an `uiType` other than
-/// [`MAKECHARTYPE_PC`], whose stride no verified source pins.
+/// [`CharInfoError::PartialRecord`] for a body that does not end on a whole
+/// record boundary, named by offset, shortfall and the stride that offset
+/// demanded (68 below the head minimum, 592 behind a PC head);
+/// [`CharInfoError::UnknownRecordType`] for an `uiType` that is neither PC
+/// nor NPC - unreachable from a 1-bit field, kept loud.
 pub fn parse_make_char_info_many(
     cmd: u16,
     payload: &[u8],
@@ -664,36 +738,57 @@ pub fn parse_make_char_info_many(
     }
     if payload.is_empty() {
         return Err(CharInfoError::Truncated {
-            expected: MAKE_CHAR_INFO_PAYLOAD_LEN,
+            expected: MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
             got: 0,
             opcode: cmd,
         });
     }
 
-    let records_count = payload.len() / MAKE_CHAR_INFO_PAYLOAD_LEN;
-    let mut records = Vec::with_capacity(records_count);
-    for index in 0..records_count {
-        let offset = index * MAKE_CHAR_INFO_PAYLOAD_LEN;
-        let record = &payload[offset..offset + MAKE_CHAR_INFO_PAYLOAD_LEN];
-        let decoded = decode_record(record);
-        if !decoded.is_player {
-            return Err(CharInfoError::NonPlayerRecord {
+    let mut records = Vec::new();
+    let mut offset = 0;
+    while offset < payload.len() {
+        let remaining = payload.len() - offset;
+        // Every record is at least a `cltMakeCharInfoCommon` head - the
+        // legacy reads `uiType` straight off the wire at this offset with no
+        // bounds check (`Client-Login.cpp:62`), so a short tail is garbage,
+        // not a record.
+        if remaining < MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN {
+            return Err(CharInfoError::PartialRecord {
                 offset,
-                ui_type: u32_at(record, 0) & 0x1,
+                have: remaining,
+                expected: MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
             });
         }
+        // `uiType` is the head's first bit (`CommonHeader.h:1969`); the
+        // legacy switches the stride on it (`Client-Login.cpp:64-75`).
+        let ui_type = u32_at(payload, offset) & 0x1;
+        let stride = match ui_type {
+            MAKECHARTYPE_PC => MAKE_CHAR_INFO_PAYLOAD_LEN,
+            MAKECHARTYPE_NPC => MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
+            // A 1-bit field cannot carry any other value - this arm is
+            // unreachable from the wire and exists only as the loud refusal
+            // for a widened field meeting a stale stride table.
+            other => {
+                return Err(CharInfoError::UnknownRecordType {
+                    offset,
+                    ui_type: other,
+                });
+            }
+        };
+        if remaining < stride {
+            return Err(CharInfoError::PartialRecord {
+                offset,
+                have: remaining,
+                expected: stride,
+            });
+        }
+        let record = &payload[offset..offset + stride];
+        let mut decoded = decode_head(record);
+        if ui_type == MAKECHARTYPE_PC {
+            fill_pc_tail(&mut decoded, record);
+        }
         records.push(decoded);
-    }
-
-    // The index walk above stops at the last whole record; surface any
-    // remainder rather than silently truncating a partial record.
-    let whole = records.len() * MAKE_CHAR_INFO_PAYLOAD_LEN;
-    if whole != payload.len() {
-        return Err(CharInfoError::PartialRecord {
-            offset: whole,
-            have: payload.len() - whole,
-            expected: MAKE_CHAR_INFO_PAYLOAD_LEN,
-        });
+        offset += stride;
     }
 
     Ok(records)

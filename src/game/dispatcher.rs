@@ -15,7 +15,7 @@
 //!
 //! | Opcode | Legacy message | Body | Size authority |
 //! |---|---|---|---|
-//! | 6 | `GAMEMSG_RESPONSE_LOGINMANY` | N x 592-byte `cltMakeCharInfo` | binary-authoritative stride (`char_info`, Step 4.4; port `game.rs:37-43`) |
+//! | 6 | `GAMEMSG_RESPONSE_LOGINMANY` | N x (592 or 68, by `uiType`) | binary-authoritative PC stride + wire- and source-pinned NPC stride (`char_info`, Step 4.4 + LIVE-01; port `game.rs:37-43`, `evidence/live/decode2.log`) |
 //! | 11 | `GAMEMSG_RESPONSE_LOGOUT` | one bare `SI32` | the two-argument `cltMsg` constructor (`MsgType.h:2977-2983`) |
 //! | 118 | `GAMEMSG_RESPONSE_CHAT` | 20 fixed bytes + the transmitted name/text region | the constructor's own `siDataSize` arithmetic (`MsgType-System.h:1139-1158`) |
 //! | 200 | `GAMEMSG_RESPONSE_CHARUPDATE` | 24 | `sizeof(cltBasicCharUpdateInfo)` at the default `/Zp8` (`CommonLogic.h:383-410`, framed at `Server.cpp:1688`) — source-derived, see the caveat below |
@@ -30,16 +30,19 @@
 //!
 //! # What each parser enforces, and on whose authority
 //!
-//! **Opcode 6 — nearby players.** Delegated unchanged to
-//! [`super::char_info::parse_make_char_info_many`] (Step 4.4, QC'd): records are
-//! packed back to back with no length prefix and the stride comes from the
-//! leading `uiType` bit (`Client-Login.cpp:62-75`). A `MAKECHARTYPE_PC`
-//! record is 592 bytes; the legacy strides non-PC records by
-//! `sizeof(cltMakeCharInfoCommon)`, whose size **no binary measurement pins**
-//! — and the source snapshot is provably stale for this struct family (its
-//! `cltMakeCharInfo` derives 524 where the binary's is 592, `game.rs:39-42`),
-//! so a source-derived NPC stride would be a guess. Non-PC records are
-//! therefore refused, loudly, never mis-strided.
+//! **Opcode 6 — nearby characters.** Delegated unchanged to
+//! [`super::char_info::parse_make_char_info_many`] (Step 4.4, QC'd; LIVE-01
+//! widened it): records are packed back to back with no length prefix and
+//! each stride comes from the leading `uiType` bit
+//! (`Client-Login.cpp:62-75`). A `MAKECHARTYPE_PC` record is 592 bytes
+//! (binary-authoritative); any other type is its 68-byte
+//! `cltMakeCharInfoCommon` head — dual-sourced at
+//! [`super::char_info::MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN`] from the live
+//! wire (`evidence/live/decode2.log`, 34 x 68) and the MSVC field sum
+//! (`CommonHeader.h:1967-1995`). This dispatcher upserts only the PC
+//! records; NPC records are counted into
+//! [`DispatchOutcome::Entered::npcs`] and skipped (see
+//! `apply_login_many` below).
 //!
 //! **Opcode 11 — logout.** The only in-scope packet that is not an explicit
 //! struct: the two-argument `cltMsg` constructor sets `usSize` to header +
@@ -672,10 +675,15 @@ pub enum DispatchOutcome {
     /// A parsed chat message — UI-bound, no state change
     /// (`Client-System.cpp:1468-1597`).
     Chat(ChatMessage),
-    /// An opcode-6 body upserted these characters, in body order.
+    /// An opcode-6 body upserted these characters, in body order. NPC
+    /// records ([`super::char_info::MAKECHARTYPE_NPC`], the 68-byte
+    /// common-head form) are not
+    /// upserted; they are counted here instead (LIVE-01).
     Entered {
-        /// The `char_unique` of each record, body order.
+        /// The `char_unique` of each upserted (player) record, body order.
         char_uniques: Vec<i32>,
+        /// How many NPC records the body carried and the walk skipped.
+        npcs: usize,
     },
     /// An opcode-11 body. `applied` is false for the local avatar (the
     /// legacy's `quitid == 1` early return, `Client-Login.cpp:402-405`) and
@@ -890,8 +898,8 @@ impl DispatcherState {
         match cmd {
             RESPONSE_LOGINMANY => {
                 let records = parse_make_char_info_many(cmd, payload)?;
-                let char_uniques = self.apply_login_many(&records);
-                Ok(DispatchOutcome::Entered { char_uniques })
+                let (char_uniques, npcs) = self.apply_login_many(&records);
+                Ok(DispatchOutcome::Entered { char_uniques, npcs })
             }
             RESPONSE_LOGOUT => {
                 let logout = parse_logout(cmd, payload)?;
@@ -910,13 +918,29 @@ impl DispatcherState {
         }
     }
 
-    /// Opcode 6: each record upserts its entry, exactly as the legacy walk
-    /// `PushChar`es every record it reads (`Client-Login.cpp:53-85`, with no
-    /// self-filter — a record naming the local unique is not special-cased
-    /// here either). Returns the uniques in body order.
-    fn apply_login_many(&mut self, records: &[MakeCharInfo]) -> Vec<i32> {
+    /// Opcode 6: each **player** record upserts its entry, exactly as the
+    /// legacy walk `PushChar`es every record it reads (`Client-Login.cpp:
+    /// 53-85`, with no self-filter — a record naming the local unique is not
+    /// special-cased here either). Returns the upserted uniques in body
+    /// order, plus how many NPC records were skipped.
+    ///
+    /// The skip is the minimal-correct handling of an NPC record (LIVE-01,
+    /// `docs/rca/2026-10-28-live-opcode6-npc-stride.md`): the legacy pushes
+    /// one into its char list for the world renderer, but nothing this
+    /// dispatcher models — chat, char-update deltas, person-IP, logout —
+    /// acts on an NPC through this table, so upserting one would fabricate
+    /// entries no later frame can maintain. The count keeps the skip
+    /// observable: the live server's world-entry broadcast is NPC-led
+    /// (34 x 68-byte records, `evidence/live/decode2.log`), so a zero count
+    /// would mean the stride dispatch mis-read the batch.
+    fn apply_login_many(&mut self, records: &[MakeCharInfo]) -> (Vec<i32>, usize) {
         let mut char_uniques = Vec::with_capacity(records.len());
+        let mut npcs = 0;
         for record in records {
+            if !record.is_player {
+                npcs += 1;
+                continue;
+            }
             let key = i32::from(record.make_char_unique);
             match self.nearby.get_mut(&key) {
                 Some(entry) => entry.refresh_from_record(record),
@@ -926,7 +950,7 @@ impl DispatcherState {
             }
             char_uniques.push(key);
         }
-        char_uniques
+        (char_uniques, npcs)
     }
 
     /// Opcode 200: the legacy writer-for-writer, self and others alike.

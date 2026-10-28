@@ -112,3 +112,6 @@ Lane ownership and separation of duty are defined in `CONTRIBUTING_PHASE2.md` §
 >
 > **Rows 6.1/6.2 remain `PASSED` (unchanged); LIVE-01 is `RESOLVED`** (`docs/rca/2026-10-28-live-opcode6-npc-stride.md`, now carrying the delivery note and the Verifier verification section). **Authorization:** the Custodian may merge `701963a` into `main`, replacing main's discarded driver (`895518e`) with the signed-off lineage.
 
+
+> **2026-10-28 LIVE-01 merge EXECUTED (Custodian approval; Verifier performed the ff).** `main` advanced `1d78ef4` -> `8a055be` (fast-forward, no merge commit — `main` was a direct ancestor of the signed-off tip). The five gates re-ran green on merged `main` (220/220) before push; the tree is identical to the signed-off gate bundle `evidence/live-fix/` (SHA256SUMS-bound), whose logs carry the same 5 results. LIVE-01 is closed.
+

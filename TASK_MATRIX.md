@@ -87,7 +87,7 @@ verdict, and every `Tests Baseline` number must be copyable from a log in that r
 
 | Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
 | :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
-| **7.0** | Codebase Lean & Structural Audit (pre-Phase-III) | `PENDING` | — | — | Governance actor (under Custodian directive) → Verifier | `docs/agents/WO-7.0.md` | audit report at `docs/audit/2026-10-30-step-7.0-lean-structural-audit.md` (docs-only step: no code changed, baseline gates remain the Phase II record) |
+| **7.0** | Codebase Lean & Structural Audit (pre-Phase-III) | `PASSED` | `592befc` | 225/225 | Governance actor (under Custodian directive) → Verifier | `docs/agents/WO-7.0.md` (verdict 2026-10-30) | `evidence/7.0/` (clean clone @ `592befc`, 2026-10-30: all 5 gates 0, `fmt.log` 0 bytes, `doc.log` 0 warnings, 211 lib + 14 e2e = 225) + audit report `docs/audit/2026-10-30-step-7.0-lean-structural-audit.md`; Verifier independently reproduced every load-bearing number and finding (see WO-7.0 verdict) |
 | **7.1** | GoonZu Asset File Formats — sprite (SPR/MPR) + map + palette + archive decoders | `PENDING` | — | — | Implementer → Verifier + Adversary (mutation probe) | `docs/agents/WO-7.1.md` | to be produced by the Verifier at `evidence/7.1/` |
 | **7.2** | Windowing & 2D Render Loop — window creation, backbuffer, present path | `PENDING` | — | — | Implementer → Verifier | `docs/agents/WO-7.2.md` (to be authored) | to be produced by the Verifier at `evidence/7.2/` |
 

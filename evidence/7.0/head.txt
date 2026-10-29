@@ -1,0 +1,4 @@
+﻿commit 592befc8bc21fb13c25b10ae7b31a6cb8597384d
+Author: psi-ginger
+Date: Fri Oct 30 00:27:19 2026 +0700
+Subject: docs(qc): Step 7.0 codebase lean & structural audit (pre-Phase-III)

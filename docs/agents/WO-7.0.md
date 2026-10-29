@@ -138,6 +138,46 @@ satisfies every §3 checklist item:
 
 ### Verdict - Verifier
 
+**`PASSED` — 2026-10-30, Verifier session (`psi-ginger`), independent audit at `592befc`.**
+Baseline pulled clean (`ee44877..592befc` fast-forward, in sync with `origin/main`). The five
+mandatory gates re-ran green (**225/225** = 211 lib + 14 e2e; `fmt.log` 0 bytes, `doc.log` 0
+warnings) — logs recorded at `evidence/7.0/`.
+
+**Independently reproduced (S5 — not taken on the report's prose):**
+
+- **Inventory:** 41 files / 18,229 lines = 8,524 production (23 files) + 9,705 test-support
+  (18 files); the five >700-line files (dispatcher 1076, world_entry 832, char_info 798,
+  driver 785, codec 737) — exact match.
+- **Hidden-test bloat:** 18 pointer-style `#[cfg(test)] mod tests;`/`mod fixtures;` + **1
+  inline** (`src/lib.rs` L40, single 10-line test) — exact match; the "clean, keep the `lib.rs`
+  suite" verdict corroborated.
+- **No-stub invariant:** zero `todo!`/`unimplemented!`/`#[allow]` in any production file.
+
+**Findings corroborated against source bytes:**
+
+- **D1 `dispatch_frame` (dispatcher.rs:1068) is genuinely dead** — the symbol occurs exactly
+  once across all `.rs` (its own declaration); its 2-line delegator body calls `state.dispatch`
+  (real entry, dispatcher.rs:897), and every real caller uses `dispatch` directly. Zero callers.
+- **C1 `i16_at`/`i32_at`/`i64_at` triplicated** at exactly char_info.rs:246/255/264,
+  dispatcher.rs:424/429/439, world_entry.rs:379/388/397.
+- **C2 `le_u16`/`le_i16`/`le_i32`/`le_i64`/`cstr` duplicated** across auth/login.rs:400-422 and
+  auth/world_list.rs:351-363. **C3 `copy_credential`** auth/login.rs:251 + game/login.rs:181.
+  **C4 `gate_frame`** dispatcher.rs:462 + world_entry.rs:407 (distinct error enums — C4's
+  "share core, not blind dedup" caveat is correct).
+
+**Zero production code altered (both levels):** `git diff 606da1a..592befc -- src tests
+Cargo.toml Cargo.lock` is empty (the whole Phase III delta is docs-only), and committed `src/`
+at HEAD is byte-identical to the audited `ee44877` baseline (`git diff ee44877..592befc -- src`
+empty). Only the three docs files differ in the range.
+
+**Note (non-blocking):** the `pub`-surface count (report: 264) is a classification-methodology
+figure — a looser scan including `use`/`mod` re-exports yields 289. This touches only the
+**optional** S1 finding and is not load-bearing; not a contradiction.
+
+**Green light:** recommendations **D1 (pre-7.1)** and **C1–C4 (ride-with-7.1)** are approved to
+proceed; **G1** stays queued for 7.2. Step **7.1** may be dispatched (`docs/agents/WO-7.1.md`).
+Row 7.0 recorded `PASSED` @ `592befc`; matrix updated by the Verifier (S3).
+
 ## 9. Definition of done
 
 1. `TASK_MATRIX.md` carries row 7.0 before 7.1 with `PENDING` status and a

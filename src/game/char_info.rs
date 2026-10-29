@@ -72,6 +72,7 @@
 
 use crate::game::login::PLAYER_NAME_LEN;
 use crate::net::codec::Frame;
+use crate::protocol::bytes::{cstr_lossy as fixed_str, i16_at, i32_at, i64_at, u32_at};
 
 /// `GAMEMSG_RESPONSE_CHARLIST` - one `cltCharListInfo`, sent once per slot
 /// (`MsgType.h:24`, the enumerator after `GAMEMSG_REQUEST_LOGIN`; the server
@@ -223,50 +224,6 @@ pub enum CharInfoError {
         /// The `uiType` value found there.
         ui_type: u32,
     },
-}
-
-/// Reads a `MAX_PLAYER_NAME`-byte C-string field: bytes up to the first NUL,
-/// as `StringCchCopy` writes it (`Lib\commonutil.cpp:6-16`) and as the port's
-/// `fixed_str` reads it (`game.rs`, `Reader::fixed_str`).
-fn fixed_str(field: &[u8]) -> String {
-    let end = field.iter().position(|&b| b == 0).unwrap_or(field.len());
-    String::from_utf8_lossy(&field[..end]).into_owned()
-}
-
-/// A `u32` read little-endian at `at`.
-fn u32_at(payload: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(
-        payload[at..at + 4]
-            .try_into()
-            .expect("4 bytes checked by the length gate"),
-    )
-}
-
-/// An `i16` read little-endian at `at`.
-fn i16_at(payload: &[u8], at: usize) -> i16 {
-    i16::from_le_bytes(
-        payload[at..at + 2]
-            .try_into()
-            .expect("2 bytes checked by the length gate"),
-    )
-}
-
-/// An `i32` read little-endian at `at`.
-fn i32_at(payload: &[u8], at: usize) -> i32 {
-    i32::from_le_bytes(
-        payload[at..at + 4]
-            .try_into()
-            .expect("4 bytes checked by the length gate"),
-    )
-}
-
-/// An `i64` read little-endian at `at`.
-fn i64_at(payload: &[u8], at: usize) -> i64 {
-    i64::from_le_bytes(
-        payload[at..at + 8]
-            .try_into()
-            .expect("8 bytes checked by the length gate"),
-    )
 }
 
 /// One roster slot: `cltCharListInfo` (`Char-Common.h:453-471`) as it sits

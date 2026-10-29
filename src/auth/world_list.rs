@@ -130,6 +130,7 @@
 
 use crate::auth::front::{FrontError, FrontLink};
 use crate::net::codec::Frame;
+use crate::protocol::bytes::{cstr_at as cstr, i32_at as le_i32, u16_at as le_u16};
 
 /// `FRONTMSG_REQUEST_NOTICE` (`FrontMsg.h:45`): notice request, opcode 2.
 pub const REQUEST_NOTICE: u16 = 2;
@@ -345,25 +346,6 @@ pub struct WorldInfo {
     /// `gameserverinfo.fixationmoney` (`FrontMsg.h:33`), offset 424 —
     /// signed.
     pub fixation_money: i32,
-}
-
-/// Little-endian `u16` at `off`.
-fn le_u16(entry: &[u8], off: usize) -> u16 {
-    u16::from_le_bytes([entry[off], entry[off + 1]])
-}
-
-/// Little-endian `i32` at `off`.
-fn le_i32(entry: &[u8], off: usize) -> i32 {
-    i32::from_le_bytes([entry[off], entry[off + 1], entry[off + 2], entry[off + 3]])
-}
-
-/// Fixed-width C string: `len` bytes from `off`, cut at the first NUL,
-/// invalid UTF-8 replaced — byte-identical to the server port's reader
-/// (`gz-proto/src/wire.rs:239-243`).
-fn cstr(entry: &[u8], off: usize, len: usize) -> String {
-    let field = &entry[off..off + len];
-    let end = field.iter().position(|&b| b == 0).unwrap_or(field.len());
-    String::from_utf8_lossy(&field[..end]).into_owned()
 }
 
 impl WorldInfo {

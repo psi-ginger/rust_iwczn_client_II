@@ -151,7 +151,7 @@ use super::char_info::{
     parse_make_char_info_many, CharInfoError, MakeCharInfo, RESPONSE_LOGINMANY,
 };
 use super::world_entry::CharClient;
-use crate::net::codec::Frame;
+use crate::protocol::bytes::{cstr_lossy as cstring_lossy, i16_at, i32_at, i64_at};
 use std::collections::BTreeMap;
 
 /// `GAMEMSG_RESPONSE_LOGOUT` (`MsgType.h:36`, `opcodes_game.rs:35`).
@@ -418,43 +418,6 @@ pub struct Logout {
     /// `siData32[0]` — the leaving character's unique
     /// (`Client-Login.cpp:398`).
     pub char_unique: i32,
-}
-
-/// Reads an `SI16` at `offset`, little-endian.
-fn i16_at(payload: &[u8], offset: usize) -> i16 {
-    i16::from_le_bytes([payload[offset], payload[offset + 1]])
-}
-
-/// Reads an `SI32` at `offset`, little-endian.
-fn i32_at(payload: &[u8], offset: usize) -> i32 {
-    i32::from_le_bytes([
-        payload[offset],
-        payload[offset + 1],
-        payload[offset + 2],
-        payload[offset + 3],
-    ])
-}
-
-/// Reads an `SI64` at `offset`, little-endian.
-fn i64_at(payload: &[u8], offset: usize) -> i64 {
-    i64::from_le_bytes([
-        payload[offset],
-        payload[offset + 1],
-        payload[offset + 2],
-        payload[offset + 3],
-        payload[offset + 4],
-        payload[offset + 5],
-        payload[offset + 6],
-        payload[offset + 7],
-    ])
-}
-
-/// Decodes bytes up to the first NUL as a C string, lossily — the MBCS
-/// client stores names and text this way (`StringCchCopy`,
-/// `Lib\commonutil.cpp:6-16`; the same convention as `char_info::fixed_str`).
-fn cstring_lossy(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-    String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
 /// Gate: opcode, then the exact (or declared) length — never a field read
@@ -1057,19 +1020,6 @@ fn ratchet(slot: &mut Option<i32>, incoming: i32) {
     if slot.is_none_or(|current| incoming > current) {
         *slot = Some(incoming);
     }
-}
-
-/// Convenience: dispatch one whole [`Frame`] (its compression flag is already
-/// cleared and its payload decompressed by the link, as in Step 4.4).
-///
-/// # Errors
-///
-/// As [`DispatcherState::dispatch`].
-pub fn dispatch_frame(
-    state: &mut DispatcherState,
-    frame: &Frame,
-) -> Result<DispatchOutcome, DispatchError> {
-    state.dispatch(frame.cmd_id(), frame.payload())
 }
 
 #[cfg(test)]

@@ -116,6 +116,7 @@
 
 use crate::game::char_info::{parse_make_char_info, CharInfoError, MakeCharInfo};
 use crate::game::entry::{GameError, GameLink};
+use crate::protocol::bytes::{i16_at, i32_at, i64_at};
 
 /// `GAMEMSG_REQUEST_SELECTCHAR` — "the message that selects a character"
 /// (`MsgType.h:26`; the server port's `GameMsg::RequestSelectchar = 4`,
@@ -373,33 +374,6 @@ pub async fn request_village_struct(
     let payload = village_struct_request_payload(village_ref)?;
     link.send(REQUEST_VILLAGESTRUCT, &payload).await?;
     Ok(())
-}
-
-/// Reads an `i16` little-endian at `at`.
-fn i16_at(payload: &[u8], at: usize) -> i16 {
-    i16::from_le_bytes(
-        payload[at..at + 2]
-            .try_into()
-            .expect("2 bytes checked by the length gate"),
-    )
-}
-
-/// Reads an `i32` little-endian at `at`.
-fn i32_at(payload: &[u8], at: usize) -> i32 {
-    i32::from_le_bytes(
-        payload[at..at + 4]
-            .try_into()
-            .expect("4 bytes checked by the length gate"),
-    )
-}
-
-/// Reads an `i64` little-endian at `at`.
-fn i64_at(payload: &[u8], at: usize) -> i64 {
-    i64::from_le_bytes(
-        payload[at..at + 8]
-            .try_into()
-            .expect("8 bytes checked by the length gate"),
-    )
 }
 
 /// Enforces the strict (cmd, payload) length contract shared by every parser

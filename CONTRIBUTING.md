@@ -202,3 +202,20 @@ Lead) record work that was already delivered and QC-verified under the Dynamic S
 Policy before it was written into this spec. They are a one-time governance reconciliation,
 **not precedent**: from Step 6.1 onward, the definition lands in `CONTRIBUTING_PHASE2.md`
 first, then the code.
+
+---
+
+## Phase 3 Governance (Step 7 onward)
+
+Steps beyond 6.3 are governed by **`CONTRIBUTING_PHASE3.md`**: it inherits this document's
+core philosophy, the five mandatory gates, the three execution invariants and
+`CONTRIBUTING_PHASE2.md`'s multi-agent execution model and QC discipline **verbatim**, and
+adds the Phase-3-specific rules — asset byte-exactness as the acceptance (P3-1), refuse-never-
+truncate (P3-2), headless determinism (P3-3), synthetic-fixture provenance for the asset
+formats the tree carries no real fixture for (P3-4), the quirk-ledger rule that legacy quirks
+are stated and pinned, never silently "corrected" (P3-5), the Phase III file-ownership
+boundaries (P3-6), and the adapted dual-source rule where the second source is a real fixture
+byte stream rather than the server (P3-7). Phase III was opened 2026-10-29 by the Custodian on
+the signed-off Phase II baseline (`origin/main` @ `606da1a`); its first work order is
+`docs/agents/WO-7.1.md`. As in Phase 2, a step's scope and acceptance are defined in
+`CONTRIBUTING_PHASE3.md` (or a work order citing it) *before* it is implemented.

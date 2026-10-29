@@ -4,7 +4,7 @@
 > **READ BEFORE EXECUTING:**
 > 1. Check the tables below first. Find the **FIRST** step with status `PENDING`.
 > 2. Implement **ONLY THAT STEP**. Do not touch or jump to future steps.
-> 3. Read the exact scope and acceptance criteria in `CONTRIBUTING.md` (Steps 1.1–5.4) or `CONTRIBUTING_PHASE2.md` (Steps 6.1+).
+> 3. Read the exact scope and acceptance criteria in `CONTRIBUTING.md` (Steps 1.1–5.4), `CONTRIBUTING_PHASE2.md` (Steps 6.1–6.3), or `CONTRIBUTING_PHASE3.md` (Step 7.1+).
 > 4. Status updates and verification ticks are strictly audited and managed by the QC Lead.
 
 ---
@@ -71,4 +71,34 @@ Lane ownership and separation of duty are defined in `CONTRIBUTING_PHASE2.md` §
 > **2026-10-28 live verification, LIVE-01, fix sign-off and merge (compact; full notes archived verbatim at `docs/audit/2026-10-28-matrix-note-archive.md`):** live runs through the ngrok tunnels (D-1: the tunnel labels were swapped - wire-verified roles are front `:14195` / game `:27911`) proved the full staged flow, both handshakes (SEC-014 link-cipher deployment assumption confirmed on the wire) and a 7/7 70.01-s heartbeat soak; they also exposed **LIVE-01** - the live opcode-6 broadcast is 34 x 68-B NPC records, which the port's PC-only 592-stride refused (4/4 reproducible), so no live session could complete (`evidence/live/`; RCA `docs/rca/2026-10-28-live-opcode6-npc-stride.md`). The fix `701963a` (author `goonzu-rs`; S1 satisfied) was verified on a clean clone: all five gates 0, **220/220**, adversarial review no blocking findings (L-1: a comment-only citation in `frames.rs`; Verifier self-correction: NPC ids 8500->8533, not 8492). Live acceptance with the clone binary: (a) three consecutive green world entries absorbing the NPC-led broadcast (`char_unique` 11/12/13); (b) heartbeats measured on the wire (3 x 5-B frames at +10/+20/+30 s); (c) teardown to `Stage::TornDown` with **exit 0** via the clean-close path (the literal Ctrl+C console event is undeliverable in this ConPTY environment, probe-proven - `evidence/live-fix/ctrl_c_investigation.md`; the wiring is covered by the hermetic seam tests). **LIVE-01 `RESOLVED`; merge executed on Custodian approval: `main` fast-forwarded `1d78ef4` -> `8a055be`, post-merge gates re-ran green 220/220, completion note `9ba6226`.
 
 > **2026-10-29 Step 6.3 soak & robustness, double-blind sign-off, reconciliation and merge (compact; full notes in `docs/agents/WO-6.3.md` §9, archived verbatim at `docs/audit/2026-10-28-matrix-note-archive.md`):** delivery `3285d07` (soak + R1-R4, `src/**` untouched) verified by **two independent Verifier passes** - primary (`evidence/6.3/`, clone @ `a5151ca`, 225/225, live soak 129.94 s / 12 heartbeats) and second pass (`evidence/6.3/verify2/`, clone @ `3285d07`, 225/225 reproduced, second live soak 134.93 s / 13 heartbeats, s2c 2317-B NPC-led broadcast absorbed); deterministic soak counts 1208/4228 sent / 5446 dispatches / 907 npc-led batches in all three runs. QC close-out reconciliation: **Adversary lane requirement ratified** (the verified mutation probe - NPC loop stripped ⇒ soak fails `soak.rs:223` 0/904 - is substantive adversary equivalence); **L-1 resolved** @ `12f0bf5` (comment citation uiY = 82 per `w12 = 0x00027852`); **L-2 resolved** @ `9445d7a` (all six `SHA256SUMS` verify 82/82 over committed LF bytes); zero residual governance gaps. **Merge executed on Custodian approval: `main` fast-forwarded `fc5ffb1` -> `85fc694`, post-merge gates re-ran green 225/225, completion note on `main`.**
+
+---
+
+## Progress Tracker (Phase III — governed by `CONTRIBUTING_PHASE3.md`)
+
+Scope, acceptance criteria, and the Phase III-specific gates (byte-exact fixture decode, named
+refusal paths, determinism/headlessness, synthetic-fixture provenance, quirk ledger) live in
+`CONTRIBUTING_PHASE3.md`. No row may be implemented before its work order exists
+(definition-before-implementation, inherited). Lane ownership and separation of duty are as in
+`CONTRIBUTING_PHASE2.md` "Multi-agent execution model" plus the Phase III clarifications; an
+implementer never writes this table. Status stays `PENDING` until the Verifier records a
+verdict, and every `Tests Baseline` number must be copyable from a log in that row's
+`evidence/` directory (no handwritten numbers).
+
+| Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
+| :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **7.1** | GoonZu Asset File Formats — sprite (SPR/MPR) + map + palette + archive decoders | `PENDING` | — | — | Implementer → Verifier + Adversary (mutation probe) | `docs/agents/WO-7.1.md` | to be produced by the Verifier at `evidence/7.1/` |
+| **7.2** | Windowing & 2D Render Loop — window creation, backbuffer, present path | `PENDING` | — | — | Implementer → Verifier | `docs/agents/WO-7.2.md` (to be authored) | to be produced by the Verifier at `evidence/7.2/` |
+
+> **2026-10-29 Phase III kickoff (compact):** opened by the Custodian's directive on the
+> signed-off Phase II baseline `origin/main` @ `606da1a` (27/27 rows `PASSED`, zero open
+> findings, five gates re-run green at 225/225 — `docs/audit/2026-10-29-phase-2-final-sign-off-report.md`).
+> `CONTRIBUTING_PHASE3.md` and `docs/agents/WO-7.1.md` authored in the Scribe lane under
+> directive. WO-7.1's format of record is the legacy client tree `GoonZu_Source/`
+> (`NLib/TSpr.h`/`TSpr.cpp` for sprites + palette, `GoonZuWorld/Common/Map/*` for maps,
+> `Lib/Graphic` + `Lib/NGraphics` for the RLE codecs and loader API); real in-tree fixtures are
+> `Mask.Spr` (4896 B, header+SPR stream decode-validated: `3136+1760=4896`, exact row coverage
+> 3200/3200 px) and the twin `monarch.pal` (768 B, identical SHA-256 prefix `574E44B1A8AFC1AE`);
+> all map/archive fixtures are **synthetic by necessity** (no real `.Map`/`.Mpr`/`.sz`/`.mz`
+> exists in the tree) and are governed by `CONTRIBUTING_PHASE3.md` P3-4.
 

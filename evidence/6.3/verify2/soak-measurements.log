@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-4612501860a645ca.exe)
+
+running 1 test
+soak measurements: small storm target=1000 sent=1208 heartbeats=3 interval=(9.9877207s, 10.0102167s); large storm target=4000 sent=4228 heartbeats=3 interval=(9.9877089s, 10.0102275s); dispatches=5446 npc_led_batches=907; max cross-session heartbeat drift =Some(6.6µs); teardown latency small=421.2µs large=461µs
+test soak::two_concurrent_in_world_sessions_hold_their_cadence_through_scaled_storms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 30.13s
+

@@ -1,0 +1,9 @@
+commit:  3285d07e0b90b3f37d400e420d8927823bdd02f3
+subject: test(e2e): add the sustained-session soak and R1-R4 robustness gates (WO-6.3)
+author:  goonzu-rs
+date:    2026-10-28T21:03:18+07:00
+clone:   C:\Users\CatsHome\AppData\Local\Temp\opencode\verify-6.3
+         fresh git clone https://github.com/psi-ginger/rust_iwczn_client_II.git,
+         checkout 3285d07e0b90b3f37d400e420d8927823bdd02f3, target/ absent at start (cold build).
+git status --porcelain: EMPTY - verified after removing this evidence
+         directory and re-checking; evidence/6.3/ is the only addition.

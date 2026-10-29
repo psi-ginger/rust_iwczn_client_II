@@ -1,0 +1,18 @@
+Falsification probe - Verifier, 2026-10-28
+Claim under test (WO-6.3 6.1/DoD-2): the soak gate catches a PC-only storm
+(the 6.2 hermetic blind spot the live server exposed, LIVE-01).
+
+Method: in the clean clone only, the 34-record NPC loop inside
+loginmany_npc_led_body() (frames.rs) was deleted, turning every storm
+opcode-6 batch into a PC-only batch. Call sites, imports and the rest of
+the tree untouched. The suite was then run as delivered.
+
+Result: the soak FAILED at its own assertion, soak.rs:223:
+  "the NPC-led opcode-6 batches (34 x 68, LIVE-01) must be dispatched at
+   scale - expected >= 904 batches, counted 0"
+  test result: FAILED. 0 passed; 1 failed. probe exit=101
+
+Conclusion: the NPC-led-batch count is asserted against the client's own
+dispatch log (driver.rs:684), not the writer's intent - a PC-only storm
+cannot pass. The gate is load-bearing. The clone was then restored:
+git status over tests/ empty, git diff --stat empty.

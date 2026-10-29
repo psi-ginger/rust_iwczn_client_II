@@ -1,0 +1,33 @@
+Verifier live soak - Step 6.3 (>= 120 s), 2026-10-29
+Runner: evidence/6.3/run_live_soak.ps1 (adapted from run_driver_acceptance.ps1,
+FIN watchdog raised 40 s -> 135 s). Credentials read from the operator's
+environment at run time; never stored in the script or in any evidence file.
+Relay: evidence/live-fix/relay (game leg 127.0.0.1:5801 -> 0.tcp.ap.ngrok.io:27911).
+Binary: target/debug/goonzu_client.exe from the clean clone of 3285d07.
+
+ACCEPTANCE RESULTS
+(a) sustained in-world hold:
+    handshake  2026-10-29T02:14:06.600229Z (char_unique=90, slot 0)
+    in-world ended 2026-10-29T02:16:21.527882Z cause=Some(ServerDisconnect)
+    in-world span = 134.928 s  (>= 120 s required)  -> MET
+(b) heartbeats measured on the wire (c2s frame walk, usSize plaintext):
+    bytes=127 frames=15 heartbeats=13 (5-byte header-only frames)
+    frame sizes: 53, 9, then 13 x 5
+    13 >= 12 required; mean interval 134.928/13 = 10.38 s (server cadence 10 s)
+    -> MET (consistent cadence)
+    zero frame drops: every frame in BOTH captures walks cleanly to the end;
+    no truncated/partial frame (partial=False in both directions)
+(c) teardown: stage=TornDown, worlds=1, exit code 0 after the graceful
+    server-FIN at +135 s  -> MET
+
+s2c frame walk (server -> client, 50996 bytes, 69 frames, partial=False):
+    13, 15 x 989 (the 15-record roster, 984+5), 53, 597, 13, 6, 55 x 81,
+    21, 25, 777, 9, 21, 109, 5105, 11, 1541, 29, 10173, 10965, 1541, 2317
+    The trailing 2317 = 34 x 68 + 5: the live NPC-led opcode-6 broadcast
+    (LIVE-01 regression shape) absorbed without refusal - the session held
+    another full second of frames after it and ended only at the watchdog FIN.
+
+Note on cadence measurement: the relay capture is byte-stream only (no
+per-frame timestamps); cadence is therefore evidenced by the 13 heartbeat
+COUNT inside the 134.928 s in-world window (mean 10.38 s vs the server's
+known 10 s cadence) plus the byte-exact 5-byte frames on the wire.

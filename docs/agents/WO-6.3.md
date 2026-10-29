@@ -312,6 +312,79 @@ postscript and this block. No delivered test code was affected: all six
 delivery files scan clean (0 mojibake triples); the `µs` in the soak
 output is Rust's `Duration` `{:?}` formatting, not a source byte.
 
+### Verdict addendum - Verifier (second independent pass, 2026-10-29)
+
+**2026-10-29: Step 6.3 `PASSED` re-affirmed (Verifier, second, fully
+independent pass; the two passes' provenance is disjoint).** The second
+Verifier window cloned origin at the delivery SHA **`3285d07`** (the code
+commit, not the note tip `a5151ca`) and ran its whole audit before
+`2b8761e` appeared on the branch mid-run; the two clones differ only by
+the doc-only note, so the audited code is identical. Evidence:
+**`evidence/6.3/verify2/`** (17 files, SHA256SUMS-verified against the
+committed bytes; the primary bundle was not touched).
+
+**S1:** verified range `fc5ffb1..3285d07` — author `goonzu-rs`; the
+signer authored none. **S4 (fresh clone, no `target/`, porcelain EMPTY
+captured before evidence existed): all five gates exit 0 — 225/225**
+(211 lib + 14 e2e; 4 live ignored), `fmt.log` 0 bytes, `doc.log` 0
+warnings; numbers copied from `verify2/test.log`.
+
+**Deterministic soak counts reproduce exactly a third time**
+(`verify2/soak-measurements.log`): sent 1208/4228, dispatches=5446,
+npc_led_batches=907 — matching both the delivery note and the primary
+Verifier run; drift 6.6 µs, teardown 421/461 µs (run-variable, inside
+every bound).
+
+**Falsification probe (mutation run — the differentiator of this pass):**
+in the clone only, the 34-record NPC loop inside
+`loginmany_npc_led_body()` was deleted (PC-only batch = the 6.2
+hermetic blind spot), call sites and imports kept so the suite still
+compiled. The soak then **FAILED at its own assertion `soak.rs:223`**
+("the NPC-led opcode-6 batches (34 × 68, LIVE-01) must be dispatched at
+scale — expected >= 904 batches, counted 0", exit 101). The headline
+regression gate is load-bearing, not decorative. Clone restored
+byte-identical afterwards (`git diff --stat -- tests/` empty).
+
+**(c) live soak — PASS, second, separate session (2026-10-29):** the
+`3285d07` binary against the wire-verified tunnels via the capture
+relay (FIN watchdog **+135 s**): handshake → in-world span **134.93 s
+≥ 2 min**, **13 wire heartbeats** on the c2s capture (mean interval
+10.38 s vs the server's 10 s cadence), **no partial frame in either
+direction** (zero frame drops), `stage=TornDown worlds=1 exit 0`
+(`verify2/live-soak-driver.log`, `live-soak-wire-walk.txt`,
+`cap/c2s.bin`, `cap/s2c.bin`). The s2c capture additionally shows the
+trailing **2317-B frame = 34 × 68 + 5 header — the live NPC-led
+opcode-6 broadcast absorbed without refusal**, i.e. the LIVE-01
+regression shape observed on the wire, live, at scale.
+
+**Governance notes carried into this verdict:**
+
+1. **Mandatory Adversary pass (CONTRIBUTING_PHASE2.md:169-171): never
+   performed by a dedicated lane.** WO §9's "Adversarial findings -
+   Adversary" block is empty and no `F-6.3-*` finding exists on the
+   branch. Both Verifier windows performed the adversarial review
+   inline, and this pass adds a true mutation run on top, but none of
+   that is a substitute for the lane the matrix names. The row's
+   `PASSED` stands on the Verifier evidence; the lane gap is recorded
+   here for the Custodian, non-blocking.
+2. **Finding L-2 (non-blocking, evidence hygiene): the primary bundle's
+   `SHA256SUMS` does not verify from a fresh clone — 5 of 14 entries.**
+   Byte-level diagnosis: `head.txt`/`env.txt`/`gates.txt`/`live_soak.txt`
+   were hashed over their **CRLF** bytes before git normalized the blobs
+   to LF (re-hashing the CRLF transform reproduces the recorded values
+   exactly); `soak63_live.log` matches no EOL variant (its content
+   diverged from what was hashed). Gate logs, caps and runner verify
+   directly; no gate result is affected. Disposition: Custodian may
+   regenerate the manifest over the committed bytes, forward-only (S7
+   bars rewriting the signed commit). `verify2/SHA256SUMS` is generated
+   over the exact committed bytes and verifies from any fresh clone.
+3. **Merge authorization:** with the S4 audit GREEN (both passes) and
+   the ≥2-min live soak GREEN (both passes, disjoint sessions), the
+   Verifier **authorizes the Custodian merge of `step/6.3-soak` into
+   `main`**, with L-1 (comment citation, implementer-owed) and L-2
+   (manifest regeneration, Custodian-owed) riding as non-blocking
+   follow-ups.
+
 ## 10. Definition of Done
 
 1. Soak + robustness tests exist; all five gates green; the test count is

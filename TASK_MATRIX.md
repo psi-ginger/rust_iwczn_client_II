@@ -87,8 +87,18 @@ verdict, and every `Tests Baseline` number must be copyable from a log in that r
 
 | Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
 | :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **7.0** | Codebase Lean & Structural Audit (pre-Phase-III) | `PENDING` | — | — | Governance actor (under Custodian directive) → Verifier | `docs/agents/WO-7.0.md` | audit report at `docs/audit/2026-10-30-step-7.0-lean-structural-audit.md` (docs-only step: no code changed, baseline gates remain the Phase II record) |
 | **7.1** | GoonZu Asset File Formats — sprite (SPR/MPR) + map + palette + archive decoders | `PENDING` | — | — | Implementer → Verifier + Adversary (mutation probe) | `docs/agents/WO-7.1.md` | to be produced by the Verifier at `evidence/7.1/` |
 | **7.2** | Windowing & 2D Render Loop — window creation, backbuffer, present path | `PENDING` | — | — | Implementer → Verifier | `docs/agents/WO-7.2.md` (to be authored) | to be produced by the Verifier at `evidence/7.2/` |
+
+> **2026-10-30 Step 7.0 inserted (compact):** opened by the Custodian's directive ("dedicated
+> lean-and-clean pass before Step 7.1, definition and tracking before implementation"), on the
+> Phase III baseline `origin/main` @ `ee44877` (docs-only atop the gate-verified `606da1a`;
+> `git diff 606da1a..ee44877 -- src/ tests/` empty — the audited tree is the 225/225-verified
+> one). Docs-only step: `TASK_MATRIX.md` row + `docs/agents/WO-7.0.md` + the commissioned audit
+> report are the only writes; `src/**`/`tests/**` are read-only observation targets. Scope:
+> file-size/monolith check, hidden inline `#[cfg(test)]` bloat, god-function/trait-extraction
+> readiness for Phase III, dead-weight scan — recommendations only, applied by future steps.
 
 > **2026-10-29 Phase III kickoff (compact):** opened by the Custodian's directive on the
 > signed-off Phase II baseline `origin/main` @ `606da1a` (27/27 rows `PASSED`, zero open

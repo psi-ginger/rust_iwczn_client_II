@@ -548,9 +548,12 @@ pub(crate) fn make_char_record(unique: u16, level: u8) -> [u8; MAKE_CHAR_PAYLOAD
 /// from the same field table with `uiType` cleared and the PC-only tail
 /// absent — the record form the live server's world-entry broadcast is made
 /// of (`evidence/live/decode2.log`: rec[00] carries kind 0x23, level 1,
-/// life 40, x 20, y 338, map 158, speed 2 and byte 56 = 0x01 =
-/// `ENEMYTYPE_ALLPC` at `clEnemyType`; stride dual-sourced at
-/// [`MAKE_CHAR_COMMON_PAYLOAD_LEN`]).
+/// life 40, x 20, y 82 (the low 10 bits of `w12 = 0x00027852`; an
+/// earlier draft of this comment misread it as 338 — L-1), map 158,
+/// speed 2 and byte 56 = 0x01 = `ENEMYTYPE_ALLPC` at `clEnemyType`;
+/// stride dual-sourced at [`MAKE_CHAR_COMMON_PAYLOAD_LEN`]). The
+/// fixture's literals below (incl. `y = 338`) are recognizable
+/// synthetic values, not the capture's.
 pub(crate) fn make_npc_record(unique: u16) -> [u8; MAKE_CHAR_COMMON_PAYLOAD_LEN] {
     let mut record = [0u8; MAKE_CHAR_COMMON_PAYLOAD_LEN];
     let type_kind = MAKECHARTYPE_NPC | (0x23_u32 << 1); // uiType | uiMakeCharKind

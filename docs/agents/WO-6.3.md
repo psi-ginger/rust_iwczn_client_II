@@ -385,6 +385,85 @@ regression shape observed on the wire, live, at scale.
    (manifest regeneration, Custodian-owed) riding as non-blocking
    follow-ups.
 
+### Adversary-equivalence ratification & final reconciliation - Verifier (QC close-out, 2026-10-29)
+
+**Adversary lane: requirement closed by ratification (forward-only; the
+empty "Adversarial findings - Adversary" block above is left untouched -
+the section's append-only rule and S7 both apply).**
+`CONTRIBUTING_PHASE2.md:169-171` makes a dedicated Adversary lane
+mandatory for any row claiming "soak"; no separate lane commit exists on
+this branch (second-Verifier governance note 1). Ratifying per the
+reconciliation directive: the Verifier's **verified mutation probe**
+(`evidence/6.3/verify2/falsification-probe.txt`) is **substantive
+adversary equivalence** - it is exactly the artifact class the Adversary
+lane owns ("mutation runs", `CONTRIBUTING_PHASE2.md:165`): in a clean
+clone at the delivery SHA the 34-record NPC loop inside
+`loginmany_npc_led_body()` was stripped, the suite was run as delivered,
+and the headline soak gate **falsified at its own assertion**
+(`soak.rs:223`, "expected >= 904 batches, counted 0", exit 101) before
+the clone was restored byte-identical. A gate that fails when the
+attacked behavior is removed is proven load-bearing, not decorative.
+This mutation run, plus the two independent inline adversarial reviews
+(both Verifier verdicts above - no blocking findings either pass),
+discharge the lane's intent - attack the claim, try to break it, record
+the result - without a second identity on the branch. The lane gap is
+closed by this ratification, recorded under the same acting-governance-
+actor precedent as `fc5ffb1` (Verifier acting, Custodian-directed); no
+`F-6.3-*` finding exists to disposition.
+
+**L-1 resolved - commit `12f0bf5`** (forward-only; the signed
+verification commits stay untouched per S7): `make_npc_record`'s doc
+comment now cites the capture correctly - rec[00] `w12 = 0x00027852`
+yields uiY = low 10 bits = **82** (`evidence/live/decode2.log`,
+`evidence/live-fix/README.md:37-38`) - and the fixture's `y = 338`
+literal is marked as a recognizable synthetic value, not the capture's.
+Comment-only: no fixture byte changed, so every recorded soak count,
+dispatch log and evidence hash remains valid; gates re-ran green after
+the change (check/clippy/doc 0 warnings, fmt 0 diffs, **225/225**).
+
+**L-2 resolved - commit `9445d7a`** (forward-only, as both Verifier
+passes dispositioned it): all five diverged manifests were regenerated
+over the exact committed (`git show HEAD:<path>`) bytes with
+forward-slash paths, LF, no BOM - `evidence/{6.1,6.2,live,live-fix,
+6.3}/SHA256SUMS`. Per-entry byte diagnosis, for the record: 27 entries
+had been hashed over their pre-normalization CRLF copies (incl. the 6.3
+primary bundle's `head/env/gates/live_soak`), 2 log entries
+(`live/drv_live_canonical.log`, `6.3/soak63_live.log`) match no EOL
+variant (hashed over copies whose content diverged from the committed
+bytes), and the 6.3 manifest's two `cap\*.bin` entries used Windows
+path separators (their hashes were already correct). No evidence file
+itself was rewritten. Post-regeneration all six manifests verify 100%
+against the committed blobs: 6.1 7/7, 6.2 7/7, live 17/17, live-fix
+20/20, 6.3 14/14, verify2 17/17 - **82/82**.
+
+**Cross-check of the two verification passes - integrity,
+determinism, non-conflict.** Provenance disjoint (primary clone @
+`a5151ca` = code + doc note; second pass clone @ `3285d07` = code; the
+trees differ only by this WO's delivery note, `git diff` over `src` +
+`tests` empty). Deterministic: both report 225/225 with identical
+`test.log` result lines, and the soak's measured counts reproduce
+exactly a third time in the second pass (`verify2/soak-measurements.
+log`): sent 1208/4228, dispatches 5446, npc_led_batches 907 - matching
+the delivery note and the primary run. Two disjoint live soaks, both
+GREEN: 129.94 s / 12 wire heartbeats and 134.93 s / 13 wire heartbeats,
+each `stage=TornDown worlds=1 exit 0`, the second also capturing the
+live 2,317-B NPC-led opcode-6 broadcast absorbed. Bundles non-
+conflicting: `verify2/` sits beside, never inside, the primary bundle;
+no primary-bundle file was touched by the second pass, and each
+bundle's SHA256SUMS is self-contained (both now verify 100%).
+
+**Final status: Step 6.3 `PASSED` - reconciled, double-blind, zero
+residual governance gaps.** The matrix row is updated to match. The
+Verifier **re-affirms and signals the Custodian** to execute the
+fast-forward merge of `step/6.3-soak` into `main`: `origin/main` @
+`fc5ffb1` is a direct ancestor of this branch (fc5ffb1 -> 3285d07 ->
+a5151ca -> 2b8761e -> 3dde947 -> 12f0bf5 -> 9445d7a -> this close-out
+commit), so the merge is a true fast-forward with no merge commit; the
+local `main` mirror is stale at `1d78ef4` (19 behind `origin/main`) and
+must first be updated to `origin/main` before the ff. With L-1 and L-2
+now resolved on the branch, the two non-blocking follow-ups the verdicts
+carried are discharged - the merge carries no open findings.
+
 ## 10. Definition of Done
 
 1. Soak + robustness tests exist; all five gates green; the test count is

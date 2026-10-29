@@ -253,8 +253,10 @@ Chat is not a channel: the next agent sees only the repository. Therefore:
   Work-order: docs/agents/WO-6.1.md
   ```
 
-- Merge to `main` is the **Custodian's** act, only after a `PASSED` verdict, squashed, with the
-  verdict's evidence path quoted in the merge commit.
+- Merge to `main` is the **Custodian's** act, only after a `PASSED` verdict: a **fast-forward**
+  of `main` to the branch tip (no merge commit, no squash — full lane history preserved), with
+  the verdict's evidence path quoted in a short `docs(qc)` completion note committed on `main`
+  immediately after the advance.
 - After merge the Verifier re-runs `cargo fmt --check` and `cargo test` on `main`
   (merge-skew check) and records the new baseline.
 

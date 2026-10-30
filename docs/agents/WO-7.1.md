@@ -244,8 +244,91 @@ Second source: the two call-sites' control flow (loose fallback is visible in bo
 
 ### Delivery note - Implementer
 
-(to be appended on delivery: branch, delivery SHA, the five gates exit-0 with counts copied
-from `test.log`, per-format test inventory, and the `git diff -- src` confirmation)
+- **Branch:** `step/7.1-assets` (pushed; parent `main` @ `2602e13`).
+- **Delivery SHA:** `2c0964e` (asset decoders), on top of `078ecd0` (directive-ordered
+  prerequisite cleanup D1 + C1/C2). Tree clean at both pushes.
+- **Five mandatory gates — all exit 0** (run on the clean delivery tree at `2c0964e`,
+  zero warnings):
+  | gate | exit | counts |
+  |---|:--:|---|
+  | `cargo check --all-targets` | 0 | — |
+  | `cargo clippy --all-targets -- -D warnings` | 0 | 0 warnings |
+  | `cargo fmt --check` | 0 | 0 diff lines |
+  | `cargo test` | 0 | **289 passing** = 264 lib + 11 `asset_fixtures` + 14 e2e; 4 `live_integration` ignored (baseline 229 → **+60** new tests) |
+  | `cargo doc --no-deps` | 0 | 0 warnings |
+- **Per-format test inventory** (49 colocated in `src/graphics/**/tests.rs` + 11 in
+  `tests/asset_fixtures.rs` = 60):
+  - **Sprite (real `Mask.Spr`):** header byte-exactness (`iVersion=10`,
+    `iEncodeType=0`, `80x40`, `iImageNum=1`, `3136+1760=4896`), stream consumption
+    exactly `1760/1760` and canvas coverage exactly `3200/3200` (1600 literal `0xA3` +
+    1600 transparent in 80 runs), diamond row structure pinned from an independent
+    walk (row 0 `N39 L L N39`, row 19 `N1 L*78 N1`, 0 mirror mismatches over 40 rows);
+    R1 `iSize=224` exposed but never a bound (+ synthetic `iSize=0` case); SPR vs MPR
+    non-interchangeability (3 tests); R5 v400 (`== 400` guard, palette after image,
+    565-first/555-skip tables, truncation refusal — 3 tests); typed refusals
+    (header/stream/exhaustion/`iImageNum`/negative dims/encode type); layout constants;
+    row-overshoot clamp.
+  - **Palette (real `monarch.pal`):** exactly 768 B accepted; 767-B and 769-B refused
+    **by name** (`WrongSize { name, expected, got }`); 565 byte-exact at indices
+    `0x0000/0xDEFB/0xBDF7/0x9CF3` and 555 at `0x0000/0x6F7B/0x5EF7/0x4E73`; green-channel
+    asymmetry pinned (`r_green_channel_is_not_right_shifted_in_565`); `Graphics.h` masks;
+    10 log-derived grey-ramp anchors incl. the `i=64/128 → 0x0000` shift-out quirks;
+    256-slot stride check.
+  - **Map (synthetic, provenance `file:line`):** v2 file (16836 B) decodes in
+    `MapManager.cpp:687-703` order against the `map-save.cpp:44-55` write-order builder;
+    13 truncation cuts each refused at the **named** section; R3 MBCS 176-B header with
+    every field offset asserted; `Version < 2` GeoInfo gate; negative tile/Geo dims
+    refused by name; section-name stability.
+  - **Archive (synthetic, provenance `file:line`):** member-first (case-insensitive),
+    member-absent → loose fallback, archive-absent → loose, member-found-but-unreadable →
+    error with **no** fallback, neither → named error, loose-only source; `.mz` seam;
+    DoD 10.5 end-to-end — member **and** loose bytes both decode through `load_sprite`;
+    corrupt member surfaces a typed `SprError`, never a panic.
+  - **Integration (`tests/asset_fixtures.rs`, 11):** DoD 10.2/10.3/10.4/10.5 restated
+    through the crate's public API, plus synthetic SPR/MPR/v400/768-B palette builders
+    each carrying its legacy `file:line` provenance (P3-4).
+- **`git diff -- src` confirmation:** outside `src/graphics/**` the delivery changes only
+  3 tracked files / 4 insertions / 2 deletions — `src/lib.rs` (**+1 line only**:
+  `pub mod graphics;`, exactly the §5 sanction), `src/game/dispatcher.rs` (doc-link
+  retarget `[Frame]` → `[crate::net::codec::Frame]`), `src/protocol/bytes.rs`
+  (doc-link de-bracket of `` [`try_] ``). Both doc edits are comment-only fallout of the
+  directive-ordered D1/C1 (D1 removed the `Frame` import; C1 authored the new module
+  docs) and exist to keep `cargo doc` warning-free; no executable code outside
+  `src/graphics/**` changed beyond the cleanup in `078ecd0`.
+- **Write-guard expansion disclosure** (as directed): `078ecd0` applied D1
+  (`dispatch_frame` + orphaned `Frame` import in `dispatcher.rs`) and C1/C2
+  (`protocol/bytes.rs` extraction rewiring `dispatcher.rs`, `char_info.rs`,
+  `world_entry.rs`, `auth/login.rs`, `auth/world_list.rs`, `protocol/mod.rs` via
+  `use … as …` aliases); C3/C4 were evaluated and **deferred** — they are not byte
+  readers, carry module-specific error enums, and WO §7 forbids blind dedup. `Cargo.toml`
+  unchanged; zero new dependencies.
+- **Findings (WO prose defects — source implemented, WO left unedited):**
+  1. **§6.1 struct snippet is defective.** Real `TSprHeader` (`TSpr.h:32-47`) is
+     `7×SI32 + reserved[8] + iImageNum + ImageInfo[256]×12` → on-disk header is a fixed
+     **3136 B**, not "28-byte-fixed"; the real fixture proves `3136+1760=4896`.
+  2. **R5 prose is defective.** Source guard is `== 400` (`TSpr.cpp:74`) not `>= 400`, and
+     the palette is read **after** the image (`:66` precedes `:74`), so the file layout is
+     `header | image | pal565(512) | pal555(512)` (`:76-81`); implemented to source and
+     both quirks are pinned by failing-if-corrected tests.
+  3. **Palette 565 constants re-verified** term-by-term after an arithmetic slip in an
+     earlier run: idx1/2/3 = `0xDEFB/0xBDF7/0x9CF3` (intermediates printed and
+     cross-checked against a manual binary trace).
+  4. **GeoInfo service-area gate** (`MapManager.cpp:701`, legacy Korea check) is runtime
+     config, not a file property — the port keys solely on `Version >= 2`, documented in
+     `map.rs`.
+  5. **R2 confirmed** by repo-wide scan: no real `.Map/.Mpr/.sz/.mz` fixture exists →
+     map/archive tests are synthetic-only with provenance; sprite/palette use the two
+     real fixtures, both **tracked in git** (clean-clone harness via
+     `CARGO_MANIFEST_DIR`; `monarch.pal` SHA-256 prefix `574E44B1A8AFC1AE` verified on
+     both in-tree copies).
+- **Adversary / mutation probe:** per P3-6 `evidence/7.x/` is Verifier-only, so the
+  official probe bundle belongs to the Verifier's S4 run. As a pre-delivery
+  self-check both WO §8 example probes were run locally at `2c0964e` and **reverted**
+  (tree clean afterwards, gates re-run exit 0): (a) SPR sentinel break (`== COLOR_TRANS`
+  → `== 255`) fails the named `mask_spr_stream_consumes_exactly_1760_and_covers_exactly_3200`
+  with `StreamExhausted { row: 22, offset: 1760 }`; (b) map body-order swap (ID/collision
+  transposed) fails `synthetic_v2_map_decodes_in_mapmanager_body_order` (`2000 != 1000`)
+  and `truncated_stream_is_refused_at_the_named_section` (`CollMap` vs `IdMap`).
 
 ### Verdict - Verifier
 

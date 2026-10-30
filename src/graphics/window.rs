@@ -252,19 +252,39 @@ const DIB_RGB_COLORS: u32 = 0;
 const VER_PLATFORM_WIN32_NT: u32 = 2;
 const VER_NT_WORKSTATION: u8 = 1;
 
-/// The demo's `Tileset`: the real `Mask.Spr` tile for ref 0, nothing else
-/// (`mapdraw.cpp:900-901` treats other refs as absent slots).
+/// The demo's `Tileset`: two diamond tiles (refs 0 and 1) built from the
+/// real `Mask.Spr` canvas, forming the checkerboard; every other ref is an
+/// absent slot (`mapdraw.cpp:900-901`).
 struct DemoTileset {
-    tile: LoadedSprite,
+    /// `[0]` = ref 0 (dark green), `[1]` = ref 1 (light green).
+    tiles: [LoadedSprite; 2],
 }
 
 impl Tileset for DemoTileset {
     fn tile(&self, ref_index: u8, file: u8) -> Option<&LoadedSprite> {
-        if (ref_index, file) == (0, 0) {
-            Some(&self.tile)
-        } else {
-            None
+        if file != 0 {
+            return None;
         }
+        self.tiles.get(usize::from(ref_index))
+    }
+}
+
+/// Builds a demo checkerboard tile: the real fixture's decoded diamond
+/// canvas under an **embedded** color table (the `TSPR_VERSION_16PAL`
+/// v400 swap, `Graphic_Capsule.cpp:550-554` - `active_color_table` picks
+/// the embedded table over the global palette). The fixture's only
+/// literal palette index is 163 (see the 7.1 fixture walk in
+/// `blit.rs`), so only that entry needs a color; the RGB888 -> RGB565
+/// packing is 7.1's cited `palette::rgb_to_565` (`TSpr.cpp:188-191`),
+/// never hand-packed here.
+fn checker_tile(base: &LoadedSprite, diamond_rgb: (u8, u8, u8)) -> LoadedSprite {
+    let mut table = [0u16; 256];
+    table[163] = super::palette::rgb_to_565(diamond_rgb.0, diamond_rgb.1, diamond_rgb.2);
+    LoadedSprite {
+        header: base.header.clone(),
+        image: base.image.clone(),
+        embedded_palette: Some(table),
+        bytes_consumed: base.bytes_consumed,
     }
 }
 
@@ -283,7 +303,8 @@ struct WindowState {
     /// Raw bits of the DIB, `cells` `u16` cells, top-down.
     dib_bits: *mut u16,
     cells: usize,
-    /// Frame counter driving the demo's visible motion.
+    /// Frame counter (one increment per rendered frame; kept for future
+    /// demo motion and for diagnostics).
     frame: u64,
     /// Overlay sprite (second load of the same fixture - independent
     /// ownership keeps the borrow graph trivial).
@@ -344,17 +365,9 @@ unsafe fn render_and_present(state_ptr: *mut WindowState) {
     let clip = ClipArea::new(0, 0, state.geometry.xsize - 1, state.geometry.ysize - 1);
     state.fb.clear(0x0000);
 
-    // Overlay: the real Mask.Spr marching across the visible crop - pure
-    // demo motion so the operator can see the loop running. The crop
-    // spans x 80..879, y 40..639 (present.rs, Draw.cpp:1145-1149), and
-    // the sprite is 80x40 (map.h:33,35), so these ranges stay visible.
-    let ox = 80 + (state.frame as i32 * 4) % 720;
-    let oy = 100 + (state.frame as i32 * 2) % 500;
-    let table = blit::active_color_table(&state.overlay, &state.pal);
-    let _ = blit::put_spr(&mut state.fb, &clip, &state.overlay.image, ox, oy, table);
-
-    // Tile-map diamond (interior view: no near-edge clear,
-    // mapdraw.cpp:233).
+    // 1) Map first - legacy order `GameDraw()` runs `GameDrawMap()` before
+    // any sprite/interface layer (Draw.cpp:925-940). Interior view: no
+    // near-edge clear (mapdraw.cpp:233).
     let screen = state.geometry.screen_rect();
     draw_map(
         &mut state.fb,
@@ -367,6 +380,20 @@ unsafe fn render_and_present(state_ptr: *mut WindowState) {
         &screen,
         &state.pal,
     );
+
+    // 2) The real Mask.Spr over the map, static at the dead center of the
+    // visible crop (operator directive: the sprite must be clearly
+    // visible in the center of the screen). Center placement is computed
+    // from the crop, not hand-placed: crop (80, 40) 800x600 ->
+    // (80 + (800 - 80) / 2, 40 + (600 - 40) / 2) = (440, 320). The sprite
+    // keeps the real monarch.pal table (index 163 = ochre 0xE4C9), which
+    // contrasts against both checkerboard greens.
+    let sw = state.overlay.image.width as i32;
+    let sh = state.overlay.image.height as i32;
+    let ox = state.crop.src_x + (state.crop.width - sw) / 2;
+    let oy = state.crop.src_y + (state.crop.height - sh) / 2;
+    let table = blit::active_color_table(&state.overlay, &state.pal);
+    let _ = blit::put_spr(&mut state.fb, &clip, &state.overlay.image, ox, oy, table);
 
     present_now(state_ptr);
 }
@@ -483,12 +510,28 @@ fn build_scene() -> Result<WindowState, String> {
     let fb = Framebuffer::new(geometry.xsize as usize, geometry.ysize as usize)
         .map_err(|e| format!("backbuffer: {e}"))?;
     let overlay = load_sprite(MASK_SPR, RgbMode::Rgb565).map_err(|e| format!("Mask.Spr: {e}"))?;
-    let tile = load_sprite(MASK_SPR, RgbMode::Rgb565).map_err(|e| format!("Mask.Spr: {e}"))?;
+    let diamond = load_sprite(MASK_SPR, RgbMode::Rgb565).map_err(|e| format!("Mask.Spr: {e}"))?;
     let pal = load_pal_checked()?;
+    // Two checkerboard tiles: the same real diamond canvas under two
+    // embedded color tables (dark/light green). The fixture diamond is a
+    // single palette index everywhere (7.1 fixture walk in blit.rs), so
+    // with one uniform color the tessellating diamonds fuse into a flat
+    // field; alternating colors make every diamond edge legible.
+    let tiles = DemoTileset {
+        tiles: [
+            checker_tile(&diamond, (34, 100, 34)),
+            checker_tile(&diamond, (88, 160, 88)),
+        ],
+    };
     let cells = 64usize * 64usize;
-    // One `draw_info` cell: ref 0, file 0, font 0, unique 0
-    // (decomposition `Map-Layor.cpp:85-151`).
-    let cell = 0u32;
+    // Checkerboard `draw_info` cells: ref 0 on even (x + y), ref 1 on odd
+    // (file 0, font 0, unique 0 - decomposition `Map-Layor.cpp:85-151`).
+    let layer1_cells: Vec<u32> = (0..cells)
+        .map(|i| {
+            let ref_index = ((i % 64 + i / 64) % 2) as u32;
+            ref_index << 16 // LOBYTE(HIWORD) = ref (Map-Layor.cpp:107)
+        })
+        .collect();
     let map = MapFile {
         header: super::map::CltMapHeader {
             version: 1,
@@ -507,11 +550,11 @@ fn build_scene() -> Result<WindowState, String> {
         coll_map: vec![0; cells],
         layers: [
             super::map::MapLayer {
-                draw_info: vec![cell; cells],
+                draw_info: vec![0; cells],
                 unique: vec![0; cells],
             },
             super::map::MapLayer {
-                draw_info: vec![cell; cells],
+                draw_info: layer1_cells,
                 unique: vec![0; cells],
             },
         ],
@@ -532,7 +575,7 @@ fn build_scene() -> Result<WindowState, String> {
         overlay,
         pal,
         map,
-        tiles: DemoTileset { tile },
+        tiles,
     })
 }
 

@@ -385,6 +385,55 @@ draws the real `Mask.Spr` fixture over a synthetic 64×64 tile-map diamond, and 
 the legacy tick loop until the window closes. No gate test constructs any Win32
 object (P3-3).
 
+### Operator-feedback fix record - Implementer (2026-10-30)
+
+Operator report (PsiGinger / พี่แมว): the demo window opened at 800x600 but the whole
+client area rendered as one flat orange/ochre rectangle - no tile grid, no sprite.
+
+**Diagnosis** (headless frame dump of the exact demo render path; `render_and_present`
+is window-free at `hwnd == 0`, so the demo scene was rendered into a fresh
+`Framebuffer` and the present crop histogrammed + dumped to BMP):
+
+- The crop was **100.0% a single color** `0xE4C9` (2,400,000 of 2,400,000 pixels over
+  5 frames; `0xE4C9` = `monarch.pal` entry 163, RGB(57,38,19) in 565 - the exact
+  "orange/ochre" the operator saw). This disproved all three suspected classes:
+  palette packing (`0xE4C9` converts to precisely its source RGB), clipping (nothing
+  was clipped - the crop was fully covered), and the color-key blit (the kernels are
+  the 7.1-proven ones; their unit tests stayed green throughout).
+
+- Root cause was **demo scene composition** in `window.rs`, two defects compounding:
+  1. The synthetic 64x64 map pointed **every** cell at ref 0, and `DemoTileset`
+     served the same `Mask.Spr` diamond for it - a **single-palette-index** solid
+     diamond (the 7.1 fixture walk shows index 163 is its only literal). Isometric
+     80x40 diamonds on the (+-40,+-20) lattice **tessellate the plane exactly**
+     (each diamond's transparent corners are covered by its neighbors' tips), so
+     784 identical ochre diamonds fused into one perfectly flat field.
+  2. `render_and_present` drew the map **after** the overlay sprite, repainting the
+     marching `Mask.Spr` every frame - legacy draws the map first
+     (`GameDraw()` runs `GameDrawMap()` before any sprite layer, `Draw.cpp:925-940`).
+
+**Fix** (demo scene only - `window.rs`; zero changes to blit/palette/present/draw_map
+kernels, so no test or probe expectation moved):
+
+1. The map is now a **checkerboard**: cells alternate ref 0 / ref 1 by `(x + y) % 2`
+   (`ref << 16`, `Map-Layor.cpp:107`), and `DemoTileset` serves two tiles built from
+   the **same real fixture diamond canvas** under two embedded color tables
+   (dark/light green, the v400 embedded-table swap `Graphic_Capsule.cpp:550-554`).
+   Alternating colors make every diamond edge legible.
+2. Render order corrected to legacy: `draw_map` first, then the overlay sprite.
+3. The real `Mask.Spr` (real `monarch.pal` table, ochre `0xE4C9`) draws **static at
+   the dead center of the visible crop**, position computed from the crop
+   ((80,40) 800x600 -> (440,320)), per the operator's acceptance criterion.
+
+**Verification** (headless dump of the fixed scene, 5 frames): crop = 3 distinct
+colors - dark green `0x640c` 50.0%, light green `0x8c91` 49.7%, ochre `0xe4c9`
+exactly 1,600 px/frame (= the sprite's literal pixel count, at center). Rendered
+BMP reviewed visually: diamond checkerboard with clear contrast, `Mask.Spr` diamond
+visible at screen center. All five gates re-run green, counts unchanged (lib
+299 passed; 0 failed; 1 ignored; asset_fixtures 11; e2e_loopback 14). The demo
+remains a scene-presentation concern only - no gate test touches it (P3-3), and the
+blit/palette/present kernels that the gates pin are untouched by this fix.
+
 ### Verdict - Verifier
 
 ### Adversary record

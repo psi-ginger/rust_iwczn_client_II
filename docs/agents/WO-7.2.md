@@ -308,7 +308,82 @@ window code compiles under `check`/`clippy` and is exercised only on screen by t
 operator via the `#[ignore]`-d demo test), P3-5 quirks, P3-6 write guard, P3-7 second
 source, the §8 mutation probes (probe (d) lands on the pure crop-math test), and S4 evidence.
 
-### Delivery note - Implementer
+### Delivery note - Implementer (2026-10-29)
+
+Branch `step/7.2-windowing`, cut from `origin/step/7.1-assets` @ `1601b26`.
+
+**Delivered files** (§5, P3-6 honored): new `src/graphics/{framebuffer,blit,screen,
+present,draw_map,tick,window}.rs`; edited `src/graphics/mod.rs` only. Nothing outside
+`src/graphics/**` + `evidence/7.2/` + this `docs/agents/WO-7.2.md` was written;
+`git diff` against the 7.1 delivery shows `spr.rs`/`palette.rs`/`map.rs`/`archive.rs`
+byte-identical (their 7.1 tests pass unchanged), and `git status` shows no uncommitted
+path outside the guard. `Cargo.toml`, `tests/`, `main.rs`, `TASK_MATRIX.md` untouched —
+zero new crates, raw `extern "system"` FFI for user32/gdi32/kernel32/winmm (R1).
+
+**Gates at this SHA** (counts copied verbatim from `test result:` lines):
+
+```
+test result: ok. 299 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+`cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`,
+`cargo fmt --check`, `cargo test`, `cargo doc --no-deps` — all exit-0. The 1 ignored
+lib test is `operator_game_window_opens_on_screen` (counts toward no reported number);
+the 4 ignored `live_integration` tests are the 7.1 baseline, unchanged.
+
+**Adversary probes**: all five run, each exit-101 with the WO-named test, each source
+restored and the suite re-run green afterwards — recorded in
+`evidence/7.2/mutation-probes.md`.
+
+**Deviations / disclosures:**
+
+1. **Blit kernel signature narrows the WO §6.2 prose** — `put_spr`/`put_mpr` take
+   `&DecodedSprite` (Step 7.1's decoded canvas) + an explicit `&[u16; 256]` color
+   table rather than a sprite object that resolves its own table. Rationale: 7.1's
+   decode already normalizes SPR/MPR walks into one canvas shape (R3), so the kernel
+   is canvas-only; the v400 embedded-palette swap decision lives in capsule-level
+   `active_color_table(&LoadedSprite, &TPal)` (`Graphic_Capsule.cpp:550-554`), unit-
+   tested. Observable per-pixel results are unchanged.
+2. **Present seam is direct, per the Directive Adjustment** — no `Presenter` trait, no
+   `HeadlessPresenter`; `present.rs` = pure `PresentCrop` math (unit-tested) +
+   `#[cfg(windows)] present_to_window` doing one backbuffer→DIB memcpy then one
+   `BitBlt SRCCOPY` of the crop. The legacy convert-surface hop and vsync wait are
+   dropped per §4/§6.5 amendment (structural simplification, stated not hidden).
+3. **Demo pacing**: `run_demo()` runs `TickConfig { server_mode: true }` so the
+   verbatim legacy idle branch (`gamemode == 1` → `Sleep(10)`, `main.cpp:1579`) paces
+   the window at ~10 fps instead of a busy spin. The rule itself is ported exactly as
+   cited (a `server_mode: false` config never sleeps — tested); only the demo's choice
+   of config is a presentation decision. Stated here per P3-5.
+4. **`ShowWindow` is unconditional in the demo** — legacy calls it at `main.cpp:1077`
+   only under `gamemode == 1`; the demo's purpose is to be visible on screen
+   (Custodian directive), so it always shows. Window class/style/version quirk
+   (797×597 on Vista/Win7, `main.cpp:926-938`) are verbatim legacy, including the
+   `OSVERSIONINFOEX`→`OSVERSIONINFO` fallback (`:895-918`).
+5. **Fixture hand-walk correction (F-07)**: `Mask.Spr`'s RLE stream starts at
+   `TSPR_HEADER_LEN` = 7·4 + 8·4 + 4 + 256·12 = **3136** (`spr.rs:93`); row 0 is
+   `FE 27` (39 transparent) + `A3 A3` (idx 163) + `FE 27` (39 transparent) = exactly
+   80 cells — a symmetric diamond-mask row. The walk and its assertions are written
+   from those fixture bytes + `Graphics_PutSpr16T.cpp:28-48` semantics, not from Rust
+   output; `monarch.pal` entry 163 = RGB(57,38,19) → `0xE4C9` hand-packed per
+   `rgb_to_565`.
+6. **`ref >= 255` vs `ref == 255`**: clippy `absurd_extreme_comparisons` fires
+   because our `ref_index` is `u8` (legacy's is `SHORT`, `mapdraw.cpp:897`).
+   Since legacy reads `LOBYTE(HIWORD(draw_info))` (`Map-Layor.cpp:107`) — never
+   negative — `>= 255` and `== 255` are the same predicate; code uses `==` with the
+   legacy `>=` form cited at the line. Ref 255 still refuses before the tileset
+   lookup (tested).
+
+**For the operator (PsiGinger / พี่แมว)**: on-screen verification command is
+`cargo test --release -- --ignored operator_game_window_opens_on_screen` — it opens
+the real 800×600 (797×597 on Vista/Win7) game window with the legacy class styles,
+draws the real `Mask.Spr` fixture over a synthetic 64×64 tile-map diamond, and pumps
+the legacy tick loop until the window closes. No gate test constructs any Win32
+object (P3-3).
 
 ### Verdict - Verifier
 

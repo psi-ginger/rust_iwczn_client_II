@@ -9,7 +9,8 @@
 //! [`DispatcherState`] that models the legacy's `CR[]` avatar table for these
 //! five frames. It is a pure state machine — no sockets, no timers; the
 //! non-blocking pump that will feed it is Step 5.1's [`crate::client::
-//! event_loop`], whose handler receives each already-decifered [`Frame`].
+//! event_loop`], whose handler receives each already-decifered
+//! [`crate::net::codec::Frame`].
 //!
 //! # The five opcodes and where each body length comes from
 //!

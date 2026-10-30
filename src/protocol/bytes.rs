@@ -10,7 +10,7 @@
 //! Every infallible reader **panics** if `at` runs past the end of the slice —
 //! the exact contract the per-module copies had. Callers must gate the slice
 //! length first (the repo's "length gate, then field read" convention); the
-//! panic path is unreachable in gated code. The [`try_`] checked readers
+//! panic path is unreachable in gated code. The `try_`-prefixed checked readers
 //! return [`None`] instead for callers that surface truncation as a typed
 //! error.
 

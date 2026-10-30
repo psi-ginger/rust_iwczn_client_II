@@ -121,7 +121,7 @@ backend compiled but never exercised by gates** (P3-3):
 | `src/graphics/blit.rs` | `put_spr` / `put_mpr` color-key kernels, palette application | new |
 | `src/graphics/screen.rs` | screen modes, viewport geometry, diamond transform, present crop | new |
 | `src/graphics/draw_map.rs` | `DrawMap` full-redraw tile loop over `map::MapData` + tileset table | new |
-| `src/graphics/present.rs` | `Presenter` trait, headless recorder, `#[cfg(windows)]` Win32 presenter | new |
+| `src/graphics/present.rs` | pure present-crop math + `#[cfg(windows)]` direct Win32 `BitBlt` present path | new (AMENDED 2026-10-29, Directive Adjustment — §9) |
 | `src/graphics/window.rs` | `#[cfg(windows)]` minimal Win32 window creation + message pump (R1) | new |
 | `src/graphics/tick.rs` | tick loop: drain bound, clock/sleeper hooks, draw-skip, hooks | new |
 | `src/graphics/mod.rs` | declare + re-export the new submodules | edit (7.2's guard area) |
@@ -183,8 +183,8 @@ Legacy table, `Client.cpp:3197-3251` (`CreateDirectDraw`), all sizes `80*(n+2)` 
 - **Present crop** — legacy presents the sub-rect `src = (MAP_TILE_XSIZE + GetScreenRX(),
   MAP_TILE_YSIZE + GetScreenRY())` with draw size `(xsize - 2*MAP_TILE_XSIZE,
   ysize - 2*MAP_TILE_YSIZE)` (`Draw.cpp:1145-1154`, the one-tile border each side). The Rust
-  present seam exposes exactly these numbers; the headless presenter records the cropped rect
-  so tests can assert the crop.
+  present seam exposes exactly these numbers as pure geometry, asserted directly by unit tests
+  (AMENDED 2026-10-29 — no headless recorder, §9).
 - The inverse transform asymmetry (`TransFromScreenToRealXY` adds `MAP_TILE_YSIZE_HALF`,
   `Map-Client.cpp:187`) is mouse-picking territory — not needed in 7.2, noted for the future
   input step.
@@ -209,15 +209,20 @@ Port of `cltMapClient::DrawMap` full redraw (`mapdraw.cpp:231-257`):
 
 ### 6.5 Present seam - `present.rs` / window - `window.rs`
 
-- `trait Presenter { fn present(&mut self, fb: &Framebuffer, crop: PresentCrop) -> Result<(),
-  PresentError>; fn is_minimized(&self) -> bool; }`
-- `HeadlessPresenter` — stores presented frames (or a running checksum + frame count to stay
-  cheap) and the crop used; implements `is_minimized` via an explicit flag. **This is the only
-  presenter gate tests construct.**
-- `#[cfg(windows)] Win32Presenter` — legacy windowed present (`Graphic.cpp:266-310`):
-  `IsIconic` early-out (`:263`), `GetClientRect` + `ClientToScreen` (`:272-276`), `GetDC` →
-  `BitBlt SRCCOPY` of the crop (`:298-302`) → `ReleaseDC`. No convert surface, no vsync wait
-  (§4, R-note in §4).
+**AMENDED 2026-10-29 (Custodian Directive Adjustment, recorded in §9):** the `Presenter`
+trait and the `HeadlessPresenter` recorder are removed. The backbuffer is wired directly into
+the real Win32 window — running the client visibly pops up the actual game window on the
+desktop. Gate tests stay on the pure math (crop geometry, framebuffer, kernels, map loop,
+tick drain); the Win32 present path is verified interactively by the operator (PsiGinger /
+พี่แมว) on screen.
+
+- `present.rs` — pure `PresentCrop` math (src origin `(MAP_TILE_XSIZE + RX, MAP_TILE_YSIZE +
+  RY)`, size `(xsize - 2*MAP_TILE_XSIZE, ysize - 2*MAP_TILE_YSIZE)`, `Draw.cpp:1145-1154`),
+  unit-tested with no window involved. `#[cfg(windows)] present(hwnd, fb, crop)` — legacy
+  windowed present (`Graphic.cpp:266-310`): `IsIconic` early-out (`:263`), `GetClientRect` +
+  `ClientToScreen` (`:272-276`), `GetDC` → `BitBlt SRCCOPY` of the crop (`:298-302`) →
+  `ReleaseDC`. No convert surface, no vsync wait (§4). The only `unsafe` here is the Win32
+  extern glue (R1).
 - `#[cfg(windows)] window.rs` — `WNDCLASS` shape (`main.cpp:852-862`: `CS_VREDRAW|CS_HREDRAW|
   CS_DBLCLKS`, black background brush, our `WindowProc`), windowed style
   `WS_OVERLAPPED|WS_SYSMENU|WS_CAPTION|WS_MINIMIZEBOX` at 800×600 (`:880-885`, R6 for the
@@ -225,7 +230,10 @@ Port of `cltMapClient::DrawMap` full redraw (`mapdraw.cpp:231-257`):
   (`mainfunction.cpp:116`) handles `WM_PAINT` as legacy does — `BeginPaint`/`EndPaint` only,
   then a present request (`:1580-1596`) — `WM_DESTROY` → `PostQuitMessage` (`:1598+`), and
   `DefWindowProc` fallthrough (`:1695`). The pump mirrors the legacy drain one-for-one.
-  **No gate test calls any of this** (R2).
+  Also hosts `pub fn run_demo()` — the runnable on-screen scene (clear + real-fixture
+  `Mask.Spr` blit + synthetic tile-map draw, pumped through `tick.rs`) that the operator
+  launches via the `#[ignore]`-d `operator_game_window_opens_on_screen` test (`#[ignore]`d
+  tests count toward no reported number, §8). **No gate test calls any of this** (R2/P3-3).
 
 ### 6.6 Tick loop - `tick.rs`
 
@@ -247,8 +255,10 @@ Port of the `main.cpp` main loop (`:1544-1636`), made injectable (R5):
 
 - No `unsafe` outside `window.rs`/`present.rs` Win32 glue (R1's extern block + calls), and no
   `unsafe` at all in `framebuffer/blit/screen/draw_map/tick`.
-- No gate test may construct a window, DC, or presenter other than `HeadlessPresenter`
-  (P3-3). No `#[ignore]`-d test counts toward any reported number.
+- No gate test may construct a window, DC, or any Win32 object (P3-3; AMENDED 2026-10-29:
+  there is no headless presenter — window/present code compiles under `check`/`clippy` but is
+  exercised only by the operator on screen, via the `#[ignore]`-d demo). No `#[ignore]`-d test
+  counts toward any reported number.
 - No new dependency (`Cargo.toml` is out of guard, R1).
 - No expectation in any test derived from the code under test (F-07): expected pixels, crop
   rects, drain counts, and geometry numbers are either transcribed from the cited legacy
@@ -273,13 +283,30 @@ Port of the `main.cpp` main loop (`:1544-1636`), made injectable (R5):
   named `draw_map` test must fail; (d) move the present crop by one tile — a named present test
   must fail; (e) drain bound 10 → 11 — a named tick test must fail. Each probe: exit-101 with
   the named test in output, recorded in `evidence/7.2/mutation-probes.md`.
-- The headless determinism claim: a test renders the same synthetic scene twice (fresh
-  presenter) and asserts byte-identical frames; plus a frame built from a real 7.1 fixture
+- The frame-determinism claim (AMENDED 2026-10-29: no headless presenter exists): a test
+  renders the same synthetic scene into two fresh `Framebuffer`s and asserts byte-identical
+  results; plus a frame built from a real 7.1 fixture
   (`Mask.Spr` via `load_sprite`) asserting specific in-frame pixels against a hand-walked
   expectation (F-07: the walk is written from the fixture bytes + legacy kernel semantics, not
   from Rust output).
 
 ## 9. Return blocks (append; do not rewrite the sections above)
+
+### Directive adjustment record - Implementer (2026-10-29)
+
+Custodian directive, verbatim intent: skip the headless `Presenter`/recorder abstraction;
+wire the backbuffer **directly** into the Win32 presenter/window so running the client
+visibly pops up the real game window on the desktop; keep unit tests on the core
+math/framebuffer logic (no synthetic headless-recording harnesses); the human operator
+(PsiGinger / พี่แมว) performs interactive visual verification on screen.
+
+Applied amendments (each marked inline above): §5 `present.rs` role; §6.3 present-crop test
+claim; §6.5 rewritten (no `Presenter` trait, no `HeadlessPresenter`); §7 presenter bullet;
+§8 determinism-claim wording; §10 DoD point 3. Everything else in this work order stands
+unchanged: P3-1 citations, P3-2 typed refusal, P3-3 (gate tests remain window-free — the
+window code compiles under `check`/`clippy` and is exercised only on screen by the
+operator via the `#[ignore]`-d demo test), P3-5 quirks, P3-6 write guard, P3-7 second
+source, the §8 mutation probes (probe (d) lands on the pure crop-math test), and S4 evidence.
 
 ### Delivery note - Implementer
 
@@ -298,4 +325,5 @@ Port of the `main.cpp` main loop (`:1544-1636`), made injectable (R5):
    tests still pass unchanged); nothing outside `src/graphics/**` + `evidence/7.2/` +
    `docs/agents/WO-7.2.md` §9 was written by the Implementer.
 3. P3-3 holds: the full gate suite runs with zero window, DC, display, GPU, or network
-   involvement; the only presenter exercised is the headless recorder.
+   involvement; no test constructs any Win32 object (AMENDED 2026-10-29 — the on-screen
+   present path is verified interactively by the operator, PsiGinger / พี่แมว).

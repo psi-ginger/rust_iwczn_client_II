@@ -31,6 +31,7 @@
 pub mod auth;
 pub mod client;
 pub mod game;
+pub mod graphics;
 pub mod net;
 pub mod protocol;
 

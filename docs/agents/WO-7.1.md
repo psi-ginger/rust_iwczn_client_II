@@ -249,8 +249,49 @@ from `test.log`, per-format test inventory, and the `git diff -- src` confirmati
 
 ### Verdict - Verifier
 
-(to be appended on QC: S4 clean-clone re-run, mutation-probe result, per §2(a)-(d) acceptance,
-and the status decision — Verifier only, per S3)
+**`PASSED` — 2026-10-30, Verifier session (`psi-ginger`), independent S4 audit at `2c0964e`.**
+Clean clone from origin at the delivery commit (branch tip `1601b26` is the docs-only delivery
+note; `git diff 2c0964e 1601b26 -- src tests Cargo.toml` empty → identical code; merge-base
+with `main` = `2602e13`). The five mandatory gates re-ran green in the clone: **289/289**
+(264 lib + 11 `asset_fixtures` + 14 e2e; +60 over baseline), `fmt.log` 0 bytes, `doc.log` 0
+warnings — logs at `evidence/7.1/`.
+
+**Adversarial mutation probes (Adversary lane equivalent) — all three pass the bar**, each
+breaks a **named** test loudly at exit-101 and the clone is restored pristine (re-run 289/289):
+1. SPR sentinel `254→255` ⇒ `mask_spr_stream_consumes_exactly_1760_and_covers_exactly_3200`
+   (+3) FAIL.
+2. Map body-order swap (IdMap↔CollMap) ⇒ `truncated_stream_is_refused_at_the_named_section`
+   FAIL (`CollMap` vs `IdMap` at the same cut).
+3. 565 green-packing shift ⇒ `pal_565_conversion_of_known_indices_is_byte_exact` (+3) FAIL.
+
+**DoD 10.2–10.5 verified:** real `Mask.Spr` decodes byte-exact (1760/1760 consumed,
+3200/3200 covered, `iSize=224` exposed but never a bound — R1); real `monarch.pal` accepted
+at exactly 768 B with 767/769 refused **by name** and 565 known-index byte-exact; synthetic
+map decodes in the exact `MapManager.cpp:687-703` body order with truncations refused at the
+**named** section (R3 MBCS 176-B header); archive member/loose fallback matches the `.sz`/`.mz`
+legacy seam and decodes through `load_sprite`. **F-07 satisfied:** the hard-coded expectation
+figures reproduce the Verifier's own independent `Mask.Spr` byte-walk (performed in the Phase
+III setup, before this code existed) — no circularity. Quirk ledger R1–R5 each pinned by a
+failing-if-corrected test. No GPU/window/network anywhere.
+
+**Write guard:** outside `src/graphics/**` the delivery touches only `src/lib.rs` (+1 line
+`pub mod graphics;`), `src/protocol/{bytes.rs,mod.rs}` (the D1+C1/C2 refactor **the Custodian
+approved at the 7.0 sign-off**), and 2 doc-link comment retargets in `dispatcher.rs` required
+to keep `cargo doc` warning-free after D1 removed the `Frame` import. `net`/`client`/e2e/
+`Cargo.toml` untouched. This is within the disclosed, directive-ordered scope.
+
+**WO-7.1 prose defects adjudicated (Implementer honesty confirmed):** two defects the
+Implementer flagged in this work order are **real** and were correctly implemented-to-legacy-
+source, not to my defective prose — (1) §6.1 header is `reserved[8]`+`ImageInfo[256]` = 3136 B
+fixed (`TSpr.h:32-47`), not my "reserved[7]…28-byte-fixed"; (2) R5's guard is `== 400`
+(`TSpr.cpp:74`) with the palette read **after** the image (L66 then L74/L81), layout
+`header|image|pal`, not my "`>=400` skip-before-image". Both quirks are pinned by
+failing-if-corrected tests. The WO prose should be corrected by the Scribe lane in a future
+docs commit; it does **not** block this code, which matches legacy truth.
+
+**Green light:** Step 7.1 `PASSED` @ `2c0964e`; **Custodian fast-forward merge of
+`step/7.1-assets` into `main` is authorized** (merge-base `2602e13` = current main head, so it
+is a clean fast-forward). Row 7.1 recorded `PASSED`; matrix updated by the Verifier (S3).
 
 ## 10. Definition of done
 

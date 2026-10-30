@@ -1,0 +1,8 @@
+commit 0e86e3ae3942cd7aff30ce2653c1f48f757ec4d7
+Merge: 60d38dd 4005fcd
+Author:     goonzu-rs <goonzu-rs@localhost>
+AuthorDate: Fri Oct 30 17:57:26 2026 +0700
+Commit:     goonzu-rs <goonzu-rs@localhost>
+CommitDate: Fri Oct 30 17:57:26 2026 +0700
+
+    merge: bring Step 7.1 sign-off and Step 7.2 windowing lineage into main (Custodian-directed reconciliation)

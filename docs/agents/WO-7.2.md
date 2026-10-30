@@ -436,7 +436,57 @@ blit/palette/present kernels that the gates pin are untouched by this fix.
 
 ### Verdict - Verifier
 
+(Not appended — the Step 7.2 Verifier session was interrupted by quota exhaustion after
+completing technical verification but before filing this block. The verification substance
+and the unfinished merge-topology reconciliation are recorded by the Custodian/Lead in the
+reconciliation record below; evidence at `evidence/7.2/reconciliation/`.)
+
 ### Adversary record
+
+All five WO-§8 mutation probes were run by the Implementer at the delivery SHA and
+recorded in `evidence/7.2/mutation-probes.md` (each: named test fails at exit-101,
+source restored byte-clean, suite re-run green). Post-merge, the Custodian/Lead
+re-verified all five independently at `0e86e3a` — see the reconciliation record below.
+
+### Reconciliation & merge record - Custodian/Lead (2026-10-30, under directive)
+
+**Context.** The directive of 2026-10-30 ("Pull Step 7.2, Reconcile Topology & Merge to
+Main") records that Step 7.1/7.2 were technically verified and visually confirmed
+on-screen by the operator (PsiGinger), and that the Verifier session ran out of quota
+before finishing the merge-topology reconciliation. This block files that reconciliation.
+
+**Topology.** Divergence from merge-base `2602e13`: `origin/main` @ `60d38dd` (7.1 S4
+sign-off only) vs `origin/step/7.2-windowing` @ `4005fcd` (full 7.1 + 7.2 lineage, never
+touched the matrix). Reconciled by a `--no-ff` **merge** — not a rebase — because the
+sign-off record cites SHAs (`2c0964e`, `4005fcd`) that a rebase would orphan; merge
+commit **`0e86e3a`** (parents `60d38dd` + `4005fcd`), auto-merged without conflict, both
+WO-7.1 §9 return blocks intact, row 7.1 (PASSED @ `2c0964e`) unmodified.
+
+**Code identity.** `git diff 4005fcd 0e86e3a -- src tests Cargo.toml Cargo.lock` is
+empty: the reconciled tree runs the exact delivered 7.2 code.
+
+**Gates at `0e86e3a`** (logs in `evidence/7.2/reconciliation/`, SHA256SUMS over committed
+bytes): all five exit-0 — `check`, `clippy -D warnings` (0 warnings), `fmt --check`
+(0 bytes), `test` **324/324** = 299 lib + 11 asset_fixtures + 14 e2e (5 ignored: the
+operator demo test + 4 live), `doc` (0 warnings).
+
+**Adversary probes re-verified post-merge** (Custodian/Lead, independently of the
+Implementer's original run): (a) pitch advance, (b) color-key removal, (c) unique-90
+layer swap, (d) crop origin +80→+160, (e) drain bound 10→11 — each fails its WO-named
+test at exit-101, each restored byte-clean, and the full suite re-runs 324/324 after
+restoration (no `PROBE` markers remain in `src/`).
+
+**Operator confirmation.** On-screen at `4005fcd` after the demo-scene fix recorded in
+the operator-feedback block above.
+
+**Matrix.** Rows 7.1 (already PASSED) and 7.2 (set to PASSED @ `4005fcd`, 324/324)
+updated in a `docs(qc)` commit under this Custodian directive — status cells are
+Verifier-owned per `CONTRIBUTING_PHASE3.md` P3-6; the Verifier session's quota
+exhaustion and this directed override are disclosed in the commit message
+(precedent `fc5ffb1`, 7.0's "Governance actor (under Custodian directive)").
+
+**Merge executed** to `origin/main` per the same directive; full bundle in
+`evidence/7.2/reconciliation/`.
 
 ## 10. Definition of done
 

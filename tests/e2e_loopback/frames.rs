@@ -207,6 +207,25 @@ pub(crate) enum Mutation {
     /// from the bytes present — the dispatcher's strict size gate refuses
     /// (`dispatcher.rs:52-67`, `dispatcher/tests.rs:216-241`).
     ChatDataSize,
+    /// Link-key stage (Step 4, G-1): the **first** frame the double writes is
+    /// a link-ciphered opcode 3 (a roster frame) in the unsolicited
+    /// opcode-1 handshake's place. `ClientCharUnique::from_frame` refuses any
+    /// first command other than opcode 1 (`entry.rs:236-241`) *before* a
+    /// single session key is negotiated (`entry.rs:447-451`), so nothing may
+    /// be keyed and the session must stop at `LinkKey`.
+    GameHandshakeForeign,
+    /// World-entry stage (Step 4, G-3): `siServiceArea` names another region
+    /// — `ConstServiceArea_Korea` = 0x01 (`world_entry/tests.rs:478`) — so the
+    /// legacy handler's silent `return` (`Client-System.cpp:1682`) drops the
+    /// banner without storing it. Every other world-entry condition then
+    /// holds, which is what makes the `is_in_world` refusal at `InWorld`
+    /// (`driver.rs:683-688`) observable.
+    ServerInfoRegion,
+    /// World-entry stage (Step 4, G-6): the village answer's `SI16
+    /// VillageUnique` is negative — the legacy's message-box branch
+    /// (`Client-SystemNPC.cpp:880,898-900`), surfaced as
+    /// `WorldEntryError::NegativeVillageUnique` (`world_entry.rs:752-765`).
+    VillageNegative,
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +448,12 @@ pub(crate) const MAKE_CHAR_COMMON_PAYLOAD_LEN: usize = 68;
 /// `sizeof(cltGameMsgResponse_ServerInfo)` = 48 (binary-measured,
 /// `game.rs:35`, `world_entry.rs:154-158`); `usSize` 53.
 pub(crate) const SERVER_INFO_PAYLOAD_LEN: usize = 48;
+/// `ConstServiceArea_Korea` = 0x01 — a banner this build must **drop**: the
+/// region gate compares `siServiceArea` against the client's own
+/// [`SERVICE_AREA_ENGLISH`] and returns on a mismatch
+/// (`Client-System.cpp:1682`; the value cited where the module's own suite
+/// uses it, `world_entry/tests.rs:478`).
+pub(crate) const SERVICE_AREA_KOREA: i16 = 0x01;
 /// `sizeof(cltGameMsgResponse_VillageStruct)` = 2 + 10*2 = 22
 /// (`MsgType.h:3085-3102`, `world_entry.rs:160-165`); `usSize` 27.
 pub(crate) const VILLAGE_STRUCT_PAYLOAD_LEN: usize = 22;
@@ -529,8 +554,16 @@ pub(crate) fn village_request_payload(village_ref: i32) -> [u8; 4] {
 /// (`Client-System.cpp:1682`, `world_entry.rs:464-507`). The double answers
 /// with [`SERVICE_AREA_ENGLISH`]; the mutation tests flip exactly this.
 pub(crate) fn server_info_payload() -> [u8; SERVER_INFO_PAYLOAD_LEN] {
+    server_info_payload_for_area(SERVICE_AREA_ENGLISH)
+}
+
+/// The same 48-byte SERVERINFO body with an arbitrary `siServiceArea` — the
+/// one field the region gate reads (`Client-System.cpp:1682`,
+/// `world_entry.rs:698-710`). [`SERVICE_AREA_ENGLISH`] is the accepted
+/// banner; [`SERVICE_AREA_KOREA`] is the one the region mutation hands out.
+pub(crate) fn server_info_payload_for_area(service_area: i16) -> [u8; SERVER_INFO_PAYLOAD_LEN] {
     let mut p = [0u8; SERVER_INFO_PAYLOAD_LEN];
-    p[0..2].copy_from_slice(&SERVICE_AREA_ENGLISH.to_le_bytes());
+    p[0..2].copy_from_slice(&service_area.to_le_bytes()); // siServiceArea
     p[2..4].copy_from_slice(&1i16.to_le_bytes()); // siServerUnique
     p
 }
@@ -598,6 +631,17 @@ pub(crate) fn loginmany_body() -> Vec<u8> {
 pub(crate) fn village_struct_payload(village_ref: i32) -> [u8; VILLAGE_STRUCT_PAYLOAD_LEN] {
     let mut p = [0u8; VILLAGE_STRUCT_PAYLOAD_LEN];
     p[0..2].copy_from_slice(&(village_ref as i16).to_le_bytes());
+    p
+}
+
+/// The negative village answer (Step 4, G-6): the same 22-byte body with
+/// `SI16 VillageUnique` = -1 — the legacy's message-box branch refuses a
+/// negative village (`Client-SystemNPC.cpp:880,898-900`) and this port raises
+/// `WorldEntryError::NegativeVillageUnique` instead
+/// (`world_entry.rs:752-765`).
+pub(crate) fn negative_village_struct_payload() -> [u8; VILLAGE_STRUCT_PAYLOAD_LEN] {
+    let mut p = [0u8; VILLAGE_STRUCT_PAYLOAD_LEN];
+    p[0..2].copy_from_slice(&(-1i16).to_le_bytes()); // VillageUnique < 0
     p
 }
 

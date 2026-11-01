@@ -15,11 +15,14 @@ use tokio::sync::Notify;
 use tracing_subscriber::fmt::MakeWriter;
 
 use super::{
-    log_session_end, run, run_with_watcher, ConfigError, DriverConfig, DriverError, DriverOutcome,
-    Stage, DEFAULT_DRAIN_BOUND, DEFAULT_FRONT_ADDR, DEFAULT_GAME_ADDR, ENV_CHAR_SLOT, ENV_DRAIN_MS,
-    ENV_FRONT_ADDR, ENV_MAC_ADDRESS, ENV_USER_ID, ENV_USER_PW, ENV_VILLAGE_REF,
+    log_session_end, read_roster, run, run_with_watcher, ConfigError, DriverConfig, DriverError,
+    DriverOutcome, Stage, DEFAULT_DRAIN_BOUND, DEFAULT_FRONT_ADDR, DEFAULT_GAME_ADDR,
+    ENV_CHAR_SLOT, ENV_DRAIN_MS, ENV_FRONT_ADDR, ENV_MAC_ADDRESS, ENV_USER_ID, ENV_USER_PW,
+    ENV_VILLAGE_REF, RESPONSE_CHARLIST, RESPONSE_LOGIN,
 };
 use crate::client::teardown::{watch_signal, Cause, Shutdown};
+use crate::game::entry::GameLink;
+use crate::net::cipher::Cipher;
 
 /// The credentials every configuration in these tests starts from.
 fn base() -> Vec<(&'static str, String)> {
@@ -458,4 +461,81 @@ async fn a_console_event_stops_the_flow_at_the_next_stage_gate() {
     front_service
         .await
         .expect("the fake front service finishes");
+}
+
+/// `[usSize LE][ucChk=0][usCmd LE][payload]` — the 5-byte packed header every
+/// frame in this crate sits inside (`itzbase.h:63-68`, `#pragma pack(1)`).
+/// Written out here rather than imported so this unit test shares no code
+/// with the Step 6.2 harness (`tests/e2e_loopback/frames.rs:31-41`).
+fn frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
+    let size = u16::try_from(5 + payload.len()).expect("frame fits u16");
+    let mut bytes = Vec::with_capacity(5 + payload.len());
+    bytes.extend_from_slice(&size.to_le_bytes());
+    bytes.push(0x00); // ucChk — reserved
+    bytes.extend_from_slice(&cmd.to_le_bytes());
+    bytes.extend_from_slice(payload);
+    bytes
+}
+
+/// Step 4 (G-5) — the roster's **outer** opcode gate. A game login is
+/// answered with exactly `CHAR_SLOTS` opcode-3 frames (`char_info.rs:83-95`),
+/// and `read_roster` refuses the first frame carrying any other opcode
+/// *before* its payload reaches `parse_char_list_entry`
+/// (`driver.rs:782-787`). That refusal has a shape of its own —
+/// `Refused { stage: CharList }` carrying "expected opcode 3, got N" —
+/// distinct from the inner `CharInfoError` a well-opcoded frame with bad
+/// bytes produces (`char_info.rs:361-372`), and both gates are deliberately
+/// kept (Step 4 decision A-4).
+///
+/// The expectation is derived from the named constants, never read back from
+/// the code under test.
+#[tokio::test]
+async fn a_frame_that_is_not_opcode_3_refuses_the_roster_before_it_is_parsed() {
+    // One loopback peer that answers the game login with a well-formed
+    // opcode-5 frame — the shape a mis-routed service would actually put on
+    // the wire. Its socket stays open for the duration of the read, so the
+    // refusal below can only come from the gate and never from a close.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a loopback port is available");
+    let addr = listener.local_addr().expect("bound address");
+    let service = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the client dials");
+        // The game leg's server→client half travels under the fixed link
+        // cipher (`entry.rs:396-400`, `cipher.rs:61-64`).
+        let mut cipher = Cipher::link_cipher();
+        let wire = cipher
+            .encode(&frame(RESPONSE_LOGIN, &[0u8; 4]))
+            .expect("link encode");
+        socket.write_all(&wire).await.expect("the frame is written");
+        // Hold the link open while the gate fires, then let it go.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    });
+
+    let mut link = GameLink::connect(addr).await.expect("the link connects");
+
+    let error = read_roster(&mut link)
+        .await
+        .expect_err("opcode 5 is not a roster frame");
+
+    assert!(
+        matches!(
+            error,
+            DriverError::Refused {
+                stage: Stage::CharList,
+                ..
+            }
+        ),
+        "expected Refused{{CharList}}, got {error:?}"
+    );
+    let DriverError::Refused { detail, .. } = &error else {
+        panic!("expected a Refused refusal, got {error:?}");
+    };
+    assert_eq!(
+        *detail,
+        format!("expected opcode {RESPONSE_CHARLIST}, got {RESPONSE_LOGIN}"),
+        "the outer gate must name both the opcode it wanted and the one it got"
+    );
+
+    service.await.expect("the fake game service finishes");
 }

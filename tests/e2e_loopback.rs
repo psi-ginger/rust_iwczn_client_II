@@ -44,18 +44,21 @@ use goonzu_client::auth::login::LoginError;
 use goonzu_client::auth::world_list::WorldListError;
 use goonzu_client::client::driver::{self, DriverConfig, DriverError, DriverOutcome, Stage};
 use goonzu_client::client::teardown::Shutdown;
+use goonzu_client::game::entry::GameError;
+use goonzu_client::game::world_entry::WorldEntryError;
 
 use frames::{
     char_update_body, chat_body, frame, game_login_payload, handshake_payload, logout_payload,
-    make_char_record, mutated_worldlist_response, person_ip_body, roster_entry,
-    select_char_payload, server_info_payload, village_request_payload, village_struct_payload,
-    worldinfo_entry, Dir, Entry, Leg, Mutation, Transcript, CHAR_LIST_PAYLOAD_LEN, CHAR_UNIQUE,
-    CHAR_UPDATE_PAYLOAD_LEN, HEARTBEAT_WIRE, MAKE_CHAR_PAYLOAD_LEN, NEARBY_UNIQUE, OCCUPIED_SLOT,
-    OP_CHARLIST, OP_CHARUPDATE, OP_CHAT, OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_LOGINMANY,
-    OP_LOGOUT, OP_MAKE_CHAR, OP_PERSON_IP, OP_REQUEST_LOGIN, OP_REQUEST_NOTICE,
-    OP_REQUEST_WORLDLIST, OP_RESPONSE_LOGIN, OP_RESPONSE_NOTICE, OP_RESPONSE_WORLDLIST,
-    OP_SELECTCHAR, OP_SERVERINFO, OP_VILLAGESTRUCT_REQ, OP_VILLAGESTRUCT_RES,
-    PERSON_IP_PAYLOAD_LEN, ROSTER_SLOTS, SECRETKEY_WIRE, VILLAGE_REF, WORLDINFO_LEN,
+    make_char_record, mutated_worldlist_response, negative_village_struct_payload, person_ip_body,
+    roster_entry, select_char_payload, server_info_payload, village_request_payload,
+    village_struct_payload, worldinfo_entry, Dir, Entry, Leg, Mutation, Transcript,
+    CHAR_LIST_PAYLOAD_LEN, CHAR_UNIQUE, CHAR_UPDATE_PAYLOAD_LEN, HEARTBEAT_WIRE,
+    MAKE_CHAR_PAYLOAD_LEN, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT,
+    OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR, OP_PERSON_IP,
+    OP_REQUEST_LOGIN, OP_REQUEST_NOTICE, OP_REQUEST_WORLDLIST, OP_RESPONSE_LOGIN,
+    OP_RESPONSE_NOTICE, OP_RESPONSE_WORLDLIST, OP_SELECTCHAR, OP_SERVERINFO, OP_VILLAGESTRUCT_REQ,
+    OP_VILLAGESTRUCT_RES, PERSON_IP_PAYLOAD_LEN, ROSTER_SLOTS, SECRETKEY_WIRE, VILLAGE_REF,
+    WORLDINFO_LEN,
 };
 use front_double::{run_front_double, FrontReport};
 use game_double::{run_game_double_with, GameReport};
@@ -175,6 +178,32 @@ fn spawn_game_with(
 /// Awaits a double's task (the budget lives inside the task itself).
 async fn joined<T>(handle: JoinHandle<T>) -> T {
     handle.await.expect("a double task must not panic")
+}
+
+/// Step 4 (G-7): the game double with Step 4's SERVERINFO hold wired in —
+/// see [`game_double::ServerInfoGate`].
+fn spawn_game_gated(
+    listener: TcpListener,
+    mutation: Mutation,
+    transcript: Arc<Transcript>,
+    gate: game_double::ServerInfoGate,
+) -> JoinHandle<GameReport> {
+    tokio::spawn(async move {
+        tokio::time::timeout(
+            DOUBLE_TIME_BUDGET,
+            game_double::run_game_double_gated(
+                listener,
+                TEST_USER,
+                TEST_PASSWORD,
+                mutation,
+                &transcript,
+                game_double::Tail::HeartbeatThenFin,
+                Some(gate),
+            ),
+        )
+        .await
+        .expect("the game double must finish inside its budget")
+    })
 }
 
 /// A byte sink the scoped tracing subscriber writes into, so the terminal
@@ -801,5 +830,306 @@ async fn a_flipped_byte_in_a_chat_frame_is_refused_at_the_in_world_stage() {
     assert!(
         transcript.snapshot().len() >= ROSTER_SLOTS,
         "the harness must have observed the whole roster before the in-world set"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Step 4 characterization (G-1 … G-6) — one falsifiable test per seam of the
+// game leg, each asserting a bounded, stage-named outcome. G-7 lives beside
+// its Ctrl+C predecessor in `robustness.rs`.
+// ---------------------------------------------------------------------------
+
+/// Step 4 (G-1): the game double's **first** frame is a link-ciphered
+/// opcode 3 in the unsolicited opcode-1 handshake's place. This port refuses
+/// any first command it does not own (`GameError::UnexpectedOpcode`,
+/// `entry.rs:236-241`) and negotiates nothing on a failure — the encoder and
+/// the key slot are written only after a full parse succeeds
+/// (`entry.rs:447-451`) — so the session must stop at `LinkKey` with the
+/// owning step's `GameError` in the source chain and no game login ever sent.
+#[tokio::test]
+async fn a_foreign_first_game_frame_is_refused_at_the_link_key_stage() {
+    let transcript = Arc::new(Transcript::new());
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game(
+        game_listener,
+        Mutation::GameHandshakeForeign,
+        Arc::clone(&transcript),
+    );
+
+    let err = run_driver(config(front_addr, game_addr))
+        .await
+        .expect_err("a roster frame in the handshake's place must refuse");
+    assert!(
+        matches!(
+            err,
+            DriverError::Stage {
+                stage: Stage::LinkKey,
+                ..
+            }
+        ),
+        "expected a Stage{{LinkKey}} refusal, got {err:?}"
+    );
+    let source = std::error::Error::source(&err).expect("a Stage refusal carries its step's error");
+    let game_error = source
+        .downcast_ref::<GameError>()
+        .expect("the link-key stage must surface a GameError");
+    assert!(
+        matches!(game_error, GameError::UnexpectedOpcode { cmd: OP_CHARLIST }),
+        "expected GameError::UnexpectedOpcode{{cmd: {OP_CHARLIST}}}, got {game_error:?}"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete before the game leg is dialled"
+    );
+
+    let game_report = joined(game).await;
+    assert_eq!(
+        game_report.frames_received, 0,
+        "a refused handshake must never reach the opcode-2 game login"
+    );
+    assert!(
+        game_report.closed_early,
+        "the refusing client must drop the game link while the double waits \
+         for the game login"
+    );
+    assert!(
+        transcript.snapshot().iter().any(|entry| {
+            entry.leg == Leg::Game
+                && entry.dir == Dir::S2C
+                && entry.plain == frame(OP_CHARLIST, &roster_entry(0, TEST_USER, None))
+        }),
+        "the harness must have observed the foreign frame it put in the \
+         handshake's place"
+    );
+}
+
+/// Step 4 (G-2): nothing is listening on the game port. The front leg must
+/// run all the way to its login response first — the legacy dials the game
+/// service only after the front login captured (`front_phase`,
+/// `driver.rs:536-591`) — and the dial failure must be named
+/// `GameConnected`.
+#[tokio::test]
+async fn a_dead_game_port_is_reported_at_the_game_connected_stage() {
+    let transcript = Arc::new(Transcript::new());
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    drop(game_listener); // nothing listens: the dial must fail fast
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+
+    let err = run_driver(config(front_addr, game_addr))
+        .await
+        .expect_err("a refused game dial must refuse the session");
+    assert!(
+        matches!(
+            err,
+            DriverError::Stage {
+                stage: Stage::GameConnected,
+                ..
+            }
+        ),
+        "expected a Stage{{GameConnected}} refusal, got {err:?}"
+    );
+
+    let front_report = joined(front).await;
+    assert_eq!(
+        front_report.frames_received, 3,
+        "the front leg must have sent notice, world list and login before \
+         the game service was dialled"
+    );
+    assert!(
+        front_report.closed_cleanly,
+        "the front link must be dropped where `front_phase` drops it \
+         (driver.rs:587)"
+    );
+    assert!(
+        transcript
+            .snapshot()
+            .iter()
+            .all(|entry| entry.leg == Leg::Front),
+        "the session must stop before any game frame is exchanged"
+    );
+}
+
+/// Step 4 (G-3): the SERVERINFO banner names another region
+/// (`ConstServiceArea_Korea` = 0x01). The legacy handler's silent `return`
+/// (`Client-System.cpp:1682`) drops it without storing anything, so every
+/// *other* world-entry condition holds and the session stops at `InWorld`
+/// with the driver's own detail — after the warning that names the stage it
+/// left untouched (`driver.rs:649-654`).
+#[tokio::test]
+async fn a_banner_for_another_region_is_dropped_and_refused_at_the_in_world_stage() {
+    let capture = Capture::default();
+    let _guard = tracing::subscriber::set_default(capture_subscriber(capture.clone()));
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game(
+        game_listener,
+        Mutation::ServerInfoRegion,
+        Arc::clone(&transcript),
+    );
+
+    let err = run_driver(config(front_addr, game_addr))
+        .await
+        .expect_err("a banner for another region must never be stored");
+    assert!(
+        matches!(
+            err,
+            DriverError::Refused {
+                stage: Stage::InWorld,
+                ..
+            }
+        ),
+        "expected a Refused{{InWorld}} refusal, got {err:?}"
+    );
+    let DriverError::Refused { detail, .. } = &err else {
+        panic!("expected a Refused refusal, got {err:?}");
+    };
+    assert!(
+        detail.contains("the banner was not accepted?"),
+        "the refusal must name the banner as the unsatisfied condition; got: {detail}"
+    );
+
+    // The region gate's own report: the frame parsed, the banner did not
+    // match, and the state was left untouched at `ServerInfo`.
+    let logs = {
+        let guard = capture.0.lock().expect("capture lock");
+        String::from_utf8_lossy(&guard).into_owned()
+    };
+    assert!(
+        logs.contains("the service-area banner was not for this build; state left untouched"),
+        "the dropped banner must be warned about, not silently ignored; got:\n{logs}"
+    );
+    assert!(
+        logs.contains("stage=ServerInfo"),
+        "the warning must name the stage it left untouched; got:\n{logs}"
+    );
+
+    let front_report = joined(front).await;
+    assert!(front_report.closed_cleanly);
+
+    let game_report = joined(game).await;
+    assert!(
+        game_report.closed_early,
+        "the refusing client must drop the game link while the double waits \
+         for a heartbeat"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "the session must stop before the in-world phase"
+    );
+}
+
+/// Step 4 (G-4): the dispatcher's per-frame outcome is observable in the
+/// driver's own `DEBUG` record, so the wiring between world entry and the
+/// dispatcher is pinned from the outside: the opcode-200 delta naming the
+/// session's `char_unique` must be reported as landing on the **local**
+/// avatar, which is only true when `DispatcherState::new` was handed the
+/// handshake's unique (`dispatcher.rs:921-948`). The expectation is derived
+/// from the fixture's own `CHAR_UNIQUE` and `ApplyTarget`'s meaning, never
+/// read back from the record under assertion.
+#[tokio::test]
+async fn the_dispatch_record_reports_the_local_target_for_the_sessions_own_unique() {
+    let capture = Capture::default();
+    let _guard = tracing::subscriber::set_default(debug_capture_subscriber(capture.clone()));
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game(game_listener, Mutation::None, Arc::clone(&transcript));
+
+    let outcome = run_driver(config(front_addr, game_addr))
+        .await
+        .expect("the full session must complete cleanly");
+
+    let front_report = joined(front).await;
+    let game_report = joined(game).await;
+    assert_eq!(outcome.stage, Stage::TornDown);
+    assert!(
+        front_report.closed_cleanly && !game_report.saw_corruption,
+        "both legs must complete cleanly for the dispatch record to exist"
+    );
+
+    let logs = {
+        let guard = capture.0.lock().expect("capture lock");
+        String::from_utf8_lossy(&guard).into_owned()
+    };
+    let expected = format!(
+        "opcode={OP_CHARUPDATE} outcome=Applied {{ char_unique: {CHAR_UNIQUE}, target: Local }}"
+    );
+    assert!(
+        logs.contains(&expected),
+        "the opcode-200 record must show the session's own unique landing on \
+         the local avatar (dispatcher.rs:921-948); expected `{expected}` in:\n\
+         {logs}"
+    );
+}
+
+/// Step 4 (G-6): the village answer carries a negative `VillageUnique`. The
+/// legacy's message-box branch (`Client-SystemNPC.cpp:880,898-900`) is
+/// surfaced as `WorldEntryError::NegativeVillageUnique`, which the driver
+/// maps to the stage it was reading at — `InWorld`.
+#[tokio::test]
+async fn a_negative_village_answer_is_refused_at_the_in_world_stage() {
+    let transcript = Arc::new(Transcript::new());
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game(
+        game_listener,
+        Mutation::VillageNegative,
+        Arc::clone(&transcript),
+    );
+
+    let err = run_driver(config(front_addr, game_addr))
+        .await
+        .expect_err("a negative village answer must refuse the session");
+    assert!(
+        matches!(
+            err,
+            DriverError::Stage {
+                stage: Stage::InWorld,
+                ..
+            }
+        ),
+        "expected a Stage{{InWorld}} refusal, got {err:?}"
+    );
+    let source = std::error::Error::source(&err).expect("a Stage refusal carries its step's error");
+    let world = source
+        .downcast_ref::<WorldEntryError>()
+        .expect("the in-world stage must surface a WorldEntryError");
+    assert!(
+        matches!(
+            world,
+            WorldEntryError::NegativeVillageUnique { village_unique: -1 }
+        ),
+        "expected WorldEntryError::NegativeVillageUnique{{village_unique: \
+         -1}}, got {world:?}"
+    );
+
+    let front_report = joined(front).await;
+    assert!(front_report.closed_cleanly);
+
+    let game_report = joined(game).await;
+    assert!(
+        game_report.closed_early,
+        "the refusing client must drop the game link while the double waits \
+         for the in-world set"
+    );
+    assert_eq!(game_report.heartbeats, 0);
+    assert!(
+        transcript.snapshot().iter().any(|entry| {
+            entry.leg == Leg::Game
+                && entry.dir == Dir::S2C
+                && entry.plain == frame(OP_VILLAGESTRUCT_RES, &negative_village_struct_payload())
+        }),
+        "the harness must have observed the negative village frame it sent"
     );
 }

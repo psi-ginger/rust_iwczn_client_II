@@ -23,13 +23,14 @@ use goonzu_client::net::cipher::Cipher;
 
 use crate::frames::{
     char_update_body, chat_body, encode_link, frame, game_login_payload, handshake_payload,
-    loginmany_body, loginmany_npc_led_body, logout_payload, make_char_record, person_ip_body,
-    read_ciphered, roster_entry, select_char_payload, server_info_payload, village_request_payload,
-    village_struct_payload, Dir, Leg, Mutation, ReadOutcome, Transcript, CHAR_UNIQUE, GAME_KEY1,
-    GAME_KEY2, HEARTBEAT_WIRE, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT,
-    OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_HEARTBEAT, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR,
-    OP_PERSON_IP, OP_SELECTCHAR, OP_SERVERINFO, OP_UNHANDLED_IN_WORLD, OP_VILLAGESTRUCT_REQ,
-    OP_VILLAGESTRUCT_RES, ROSTER_SLOTS, VILLAGE_REF,
+    loginmany_body, loginmany_npc_led_body, logout_payload, make_char_record,
+    negative_village_struct_payload, person_ip_body, read_ciphered, roster_entry,
+    select_char_payload, server_info_payload, server_info_payload_for_area,
+    village_request_payload, village_struct_payload, Dir, Leg, Mutation, ReadOutcome, Transcript,
+    CHAR_UNIQUE, GAME_KEY1, GAME_KEY2, HEARTBEAT_WIRE, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST,
+    OP_CHARUPDATE, OP_CHAT, OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_HEARTBEAT, OP_LOGINMANY,
+    OP_LOGOUT, OP_MAKE_CHAR, OP_PERSON_IP, OP_SELECTCHAR, OP_SERVERINFO, OP_UNHANDLED_IN_WORLD,
+    OP_VILLAGESTRUCT_REQ, OP_VILLAGESTRUCT_RES, ROSTER_SLOTS, SERVICE_AREA_KOREA, VILLAGE_REF,
 };
 
 /// What the game double observed by the time its conversation ended.
@@ -105,6 +106,30 @@ pub(crate) enum Tail {
     CtrlCSeam(Arc<Notify>),
 }
 
+/// Step 4 (G-7): the SERVERINFO hold — a **sequenced** stand-in for a
+/// delayed double, with no wall clock in the ordering.
+///
+/// The double signals [`ServerInfoGate::at_hold`] the instant it has read
+/// SELECTCHAR and is holding the SERVERINFO frame back, then waits for
+/// [`ServerInfoGate::release`]. The test wires `at_hold` into its own
+/// watcher's future, so the shutdown flag is claimed *while* the driver is
+/// parked on the SERVERINFO read, and releases the frame only after that
+/// claim has actually happened. What the test then observes cannot depend on
+/// timing: the frame the driver unblocks on is always written after the flag
+/// is set, and the conversation stops there — a driver that had already
+/// marched past the gate would never see the frame at all.
+///
+/// A gated conversation ends immediately after the held SERVERINFO: the
+/// driver refuses at the gate behind it and drops the link, so continuing
+/// the flow would only write frames into a socket that is already closing.
+#[derive(Debug)]
+pub(crate) struct ServerInfoGate {
+    /// Signalled by the double as the SERVERINFO frame starts being held.
+    pub(crate) at_hold: Arc<Notify>,
+    /// Signalled by the test to let the held SERVERINFO go.
+    pub(crate) release: Arc<Notify>,
+}
+
 /// How many frames one storm tick writes for a given target: the whole
 /// target spreads over 300 ticks (30 s at [`STORM_PACE`]), so the stream
 /// rate — not the target — is the fixed dimension and storm-size
@@ -136,6 +161,27 @@ pub(crate) async fn run_game_double_with(
     transcript: &Transcript,
     tail: Tail,
 ) -> GameReport {
+    run_game_double_gated(
+        listener, account, password, mutation, transcript, tail, None,
+    )
+    .await
+}
+
+/// [`run_game_double_with`] with Step 4 (G-7)'s SERVERINFO hold wired in
+/// (see [`ServerInfoGate`]). `None` is the unchanged Step 6.2 conversation.
+///
+/// # Panics
+///
+/// As [`run_game_double_with`].
+pub(crate) async fn run_game_double_gated(
+    listener: TcpListener,
+    account: &str,
+    password: &str,
+    mutation: Mutation,
+    transcript: &Transcript,
+    tail: Tail,
+    gate: Option<ServerInfoGate>,
+) -> GameReport {
     let (mut stream, _peer) = listener.accept().await.expect("game accept");
 
     // One persistent link cipher for every server→client frame: its keys
@@ -147,11 +193,21 @@ pub(crate) async fn run_game_double_with(
     let mut session = Cipher::session_cipher(GAME_KEY1, GAME_KEY2);
 
     // 1. The unsolicited GAMEMSG_RESPONSE_CLIENTCHARUNIQUE: SI32
-    // char_unique + two session keys + version (`entry.rs:38-60`).
-    let handshake = frame(OP_CLIENTCHARUNIQUE, &handshake_payload());
-    let wire = encode_link(&mut link, &handshake);
-    stream.write_all(&wire).await.expect("write handshake");
-    transcript.push(Leg::Game, Dir::S2C, handshake.clone(), wire.len());
+    // char_unique + two session keys + version (`entry.rs:38-60`). Step 4
+    // (G-1) replaces it with a link-ciphered opcode 3: a first frame this
+    // port does not own, which `ClientCharUnique::from_frame` refuses before
+    // it looks at a single body byte (`entry.rs:236-241`).
+    let first = if mutation == Mutation::GameHandshakeForeign {
+        frame(OP_CHARLIST, &roster_entry(0, account, None))
+    } else {
+        frame(OP_CLIENTCHARUNIQUE, &handshake_payload())
+    };
+    let wire = encode_link(&mut link, &first);
+    stream
+        .write_all(&wire)
+        .await
+        .expect("write first game frame");
+    transcript.push(Leg::Game, Dir::S2C, first, wire.len());
 
     let mut report = GameReport {
         frames_received: 0,
@@ -219,12 +275,37 @@ pub(crate) async fn run_game_double_with(
     }
 
     // 5. RESPONSE_SERVERINFO — 48 bytes, siServiceArea = 0x08
-    // (`Server-Login.cpp:184`, `world_entry.rs:154-197`).
-    let info = frame(OP_SERVERINFO, &server_info_payload());
+    // (`Server-Login.cpp:184`, `world_entry.rs:154-197`). Step 4 (G-7) holds
+    // this frame behind the gate first: the driver is by then parked on
+    // exactly this read (`driver.rs:640-641`).
+    let held = gate.is_some();
+    if let Some(gate) = &gate {
+        gate.at_hold.notify_one();
+        gate.release.notified().await;
+    }
+    let info = if mutation == Mutation::ServerInfoRegion {
+        // Step 4 (G-3): a banner for another region — the gate compares
+        // `siServiceArea` against the build's own and returns on a mismatch
+        // without storing anything (`Client-System.cpp:1682`,
+        // `world_entry.rs:698-710`).
+        frame(
+            OP_SERVERINFO,
+            &server_info_payload_for_area(SERVICE_AREA_KOREA),
+        )
+    } else {
+        frame(OP_SERVERINFO, &server_info_payload())
+    };
     let wire = encode_link(&mut link, &info);
     stream.write_all(&wire).await.expect("write SERVERINFO");
-    transcript.push(Leg::Game, Dir::S2C, info.clone(), wire.len());
+    transcript.push(Leg::Game, Dir::S2C, info, wire.len());
     report.frames_sent += 1;
+
+    if held {
+        // The gated conversation ends here (see `ServerInfoGate`): the
+        // driver refuses at the gate behind this frame and drops the link.
+        drain_to_eof(&mut stream, &mut session, &mut report).await;
+        return report;
+    }
 
     // 6. RESPONSE_LOGIN — the 592-byte clMakeCharInfo whose
     // uiMakeCharUnique must equal the handshake's char_unique
@@ -257,8 +338,14 @@ pub(crate) async fn run_game_double_with(
     }
 
     // 8. RESPONSE_VILLAGESTRUCT — 22 bytes, non-negative village
-    // (`Client-SystemNPC.cpp:875`, `world_entry.rs:552-566`).
-    let village = frame(OP_VILLAGESTRUCT_RES, &village_struct_payload(VILLAGE_REF));
+    // (`Client-SystemNPC.cpp:875`, `world_entry.rs:552-566`). Step 4 (G-6)
+    // answers with a negative `VillageUnique` instead, which the legacy
+    // refuses in its message-box branch (`Client-SystemNPC.cpp:880,898-900`).
+    let village = if mutation == Mutation::VillageNegative {
+        frame(OP_VILLAGESTRUCT_RES, &negative_village_struct_payload())
+    } else {
+        frame(OP_VILLAGESTRUCT_RES, &village_struct_payload(VILLAGE_REF))
+    };
     let wire = encode_link(&mut link, &village);
     stream.write_all(&wire).await.expect("write village struct");
     transcript.push(Leg::Game, Dir::S2C, village.clone(), wire.len());

@@ -26,6 +26,11 @@
 // undeliverable in this ConPTY environment, which is exactly why the seam
 // exists).
 //
+// Step 4 (G-7) — Ctrl+C earlier in the session, while the driver is parked
+// on the SERVERINFO read: the same watcher primitive, but triggered by the
+// double's own hold on that frame instead of by a heartbeat, so the claim
+// lands before the world-entry leg finishes (`Cancelled{ServerInfo}`).
+//
 // Zero-orphan evidence is behavioral on every path: the driver returning
 // at all implies the watcher was aborted and awaited and the tracker
 // drained (`driver.rs:485-494`); the double observing the client's EOF
@@ -44,10 +49,10 @@ use goonzu_client::net::codec::CodecError;
 use goonzu_client::protocol::header::HeaderError;
 
 use super::frames::{CHAR_UNIQUE, MALFORMED_OVERSIZE_WIRE, MALFORMED_SHORT_WIRE, VILLAGE_REF};
-use super::game_double::Tail;
+use super::game_double::{ServerInfoGate, Tail};
 use super::{
-    bind, capture_subscriber, config, joined, spawn_front, spawn_game_with, Capture, Mutation,
-    Transcript, DOUBLE_TIME_BUDGET,
+    bind, capture_subscriber, config, joined, spawn_front, spawn_game_gated, spawn_game_with,
+    Capture, Mutation, Transcript, DOUBLE_TIME_BUDGET,
 };
 
 /// R1/R2/R3 never wait out a heartbeat: the fault lands right after the
@@ -362,5 +367,104 @@ async fn r4_ctrl_c_mid_session_claims_the_cause_and_tears_down_cleanly() {
         "the terminal INFO record must carry Cause::CtrlC from the injected \
          watcher; got:\n{logs}"
     );
+    assert_clean_aftermath(elapsed, CTRL_C_BOUND, &front_report, &game_report, &logs);
+}
+
+/// Step 4 (G-7): Ctrl+C while the driver is parked on the **SERVERINFO**
+/// read — the one stage before world entry whose read has no shutdown poll
+/// of its own: `read_game` simply awaits the frame (`driver.rs:769-774`), so
+/// the flow can only notice the claim at the gate immediately behind it
+/// (`check_shutdown(shutdown, Stage::ServerInfo)`, `driver.rs:655`), which is
+/// exactly where it must stop.
+///
+/// The ordering is sequenced, not timed (see
+/// [`ServerInfoGate`](super::game_double::ServerInfoGate)): the double holds
+/// the frame and signals the watcher's own future from that hold, the flag
+/// is claimed while the read is provably outstanding, and only then is the
+/// frame released. A driver that had marched past the gate would never see
+/// it, and one still parked at an earlier stage would refuse before the read
+/// could return — either way the assertion cannot pass by luck.
+#[tokio::test]
+async fn a_ctrl_c_during_the_server_info_wait_is_cancelled_at_the_server_info_stage() {
+    let capture = Capture::default();
+    let _guard = tracing::subscriber::set_default(capture_subscriber(capture.clone()));
+    let transcript = Arc::new(Transcript::new());
+
+    let shutdown = Shutdown::new();
+    let gate = ServerInfoGate {
+        at_hold: Arc::new(Notify::new()),
+        release: Arc::new(Notify::new()),
+    };
+    let at_hold = Arc::clone(&gate.at_hold);
+    let release = Arc::clone(&gate.release);
+
+    // The seam: the double's own hold completes this future, so the watcher
+    // claims Ctrl+C exactly while the driver waits for SERVERINFO (R4's
+    // seam, same primitive — `teardown::watch_signal`).
+    let watcher = tokio::spawn(watch_signal(shutdown.clone(), move || {
+        let at_hold = Arc::clone(&at_hold);
+        async move {
+            at_hold.notified().await;
+            Ok(())
+        }
+    }));
+
+    // The release is sequenced *behind* the claim rather than after a delay:
+    // the held frame is let go only once the watcher has actually claimed
+    // the flag, and the cause comes back from the same task.
+    let releaser = tokio::spawn(async move {
+        let cause = watcher
+            .await
+            .expect("the injected watcher task must not panic");
+        release.notify_one();
+        cause
+    });
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game_gated(game_listener, Mutation::None, Arc::clone(&transcript), gate);
+
+    let started = Instant::now();
+    let outcome = tokio::time::timeout(
+        CTRL_C_BOUND,
+        driver::run(&config(front_addr, game_addr), &shutdown),
+    )
+    .await
+    .expect("the SERVERINFO-wait session must terminate inside its bound");
+    let elapsed = started.elapsed();
+
+    let err = outcome.expect_err(
+        "a Ctrl+C claimed during the SERVERINFO read must stop the session \
+         before the world-entry leg completes",
+    );
+    assert!(
+        matches!(
+            err,
+            DriverError::Cancelled {
+                stage: Stage::ServerInfo
+            }
+        ),
+        "expected Cancelled{{stage: ServerInfo}}, got {err:?}"
+    );
+
+    let cause = releaser.await.expect("the release task must not panic");
+    assert_eq!(
+        cause,
+        Some(Cause::CtrlC),
+        "the injected watcher must have claimed the shutdown as Ctrl+C"
+    );
+
+    let game_report = joined(game).await;
+    let front_report = joined(front).await;
+    let logs = {
+        let guard = capture.0.lock().expect("capture lock");
+        String::from_utf8_lossy(&guard).into_owned()
+    };
+    // No "session ended" record is expected here: `run_with_watcher` emits
+    // the terminal record only for an `Ok` outcome (`driver.rs:498-502`), and
+    // this session ends in a refusal. What must *not* appear is the drain
+    // warning that would mean an orphaned link — asserted by
+    // `assert_clean_aftermath` below.
     assert_clean_aftermath(elapsed, CTRL_C_BOUND, &front_report, &game_report, &logs);
 }

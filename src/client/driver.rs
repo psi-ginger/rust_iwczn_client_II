@@ -47,7 +47,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 use crate::auth::front::FrontLink;
-use crate::auth::login::{parse_login_response, request_login};
+use crate::auth::login::{parse_login_response, request_login, FrontAuth};
 use crate::auth::world_list::{
     parse_notice, request_notice, request_worldlist, WorldList, RESPONSE_NOTICE, RESPONSE_WORLDLIST,
 };
@@ -519,13 +519,24 @@ fn log_session_end(outcome: &DriverOutcome, cause: Option<Cause>) {
     );
 }
 
-/// The stages themselves. `game` is filled in as soon as the game link exists so
-/// [`run`] can tear it down on every error path below.
-async fn flow(
+/// The front leg of the session — dial, handshake, notice, world list and
+/// front login — everything [`flow`] used to do before dialling the game
+/// service.
+///
+/// Extracted **verbatim** from `flow` (Step 3, T-1): every statement, stage
+/// gate, `debug!` and citation moved unchanged; only the return type is new.
+/// The front link is dropped here exactly where `flow` dropped it — the
+/// legacy closes this connection before dialling the game service (3.3).
+///
+/// # Errors
+///
+/// Exactly as `flow`'s front segment: any stage refusal or owning-step
+/// error, attributed to its stage ([`DriverError::at`] /
+/// [`DriverError::refused`]).
+async fn front_phase(
     cfg: &DriverConfig,
     shutdown: &Shutdown,
-    game: &mut Option<GameLink>,
-) -> Result<DriverOutcome, DriverError> {
+) -> Result<(FrontAuth, usize), DriverError> {
     check_shutdown(shutdown, Stage::FrontConnected)?;
 
     let mut front = FrontLink::connect(cfg.front)
@@ -575,6 +586,18 @@ async fn flow(
     // before dialling the game service (3.3), and dropping it does the same.
     drop(front);
     check_shutdown(shutdown, Stage::FrontLogin)?;
+
+    Ok((auth, worlds))
+}
+
+/// The stages themselves. `game` is filled in as soon as the game link exists so
+/// [`run`] can tear it down on every error path below.
+async fn flow(
+    cfg: &DriverConfig,
+    shutdown: &Shutdown,
+    game: &mut Option<GameLink>,
+) -> Result<DriverOutcome, DriverError> {
+    let (auth, worlds) = front_phase(cfg, shutdown).await?;
 
     let link = GameLink::connect(cfg.game)
         .await

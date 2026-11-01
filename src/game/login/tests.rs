@@ -13,47 +13,23 @@
 // `u8`), and the `FrontAuth` fed to the sender is produced by the real Step
 // 3.3 capture path (`parse_login_response` → `capture`) — not a mock.
 use super::*;
+// Step 4 (T-3g): the loopback listener, the plaintext frame builder, the
+// link encoder and the handshake literals are shared by every game suite
+// and live once in `crate::game::test_support` — their citation docs merged
+// there, no citation lost (F-07).
 use crate::auth::login::{parse_login_response, LOGIN_RESPONSE_PAYLOAD_LEN, RESPONSE_LOGIN};
 use crate::game::entry::RESPONSE_CLIENTCHARUNIQUE;
+use crate::game::test_support::{
+    encode_link, frame, local_listener, HANDSHAKE_KEY1, HANDSHAKE_KEY2, HANDSHAKE_PAYLOAD,
+};
 use crate::net::cipher::Cipher;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
 
-/// Binds a loopback listener on an ephemeral port.
-async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    (listener, addr)
-}
-
-/// A complete plaintext frame: `[usSize LE][ucChk][usCmd LE][payload]` —
-/// what the peer *means*; on the client→server half it only ever exists
-/// before `Cipher::encode`.
-fn frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
-    let size = u16::try_from(5 + payload.len()).expect("frame fits u16");
-    let mut bytes = Vec::with_capacity(5 + payload.len());
-    bytes.extend_from_slice(&size.to_le_bytes());
-    bytes.push(0x00); // ucChk
-    bytes.extend_from_slice(&cmd.to_le_bytes());
-    bytes.extend_from_slice(payload);
-    bytes
-}
-
-/// The server→client encoding: a fresh link cipher per connection, keyed
-/// `0x12,0x34` — what the game service builds per session
-/// (`services/game/src/main.rs`, the `outbound` cipher) and writes the
-/// opcode 1 handshake with.
-fn encode_link(plain: &[u8]) -> Vec<u8> {
-    Cipher::link_cipher().encode(plain).expect("encode")
-}
-
-/// The handshake body as the server writes it: `char_unique` 42 LE, session
-/// seeds `0x7E/0xAD`, `version` 1 LE — the same literals the Step 4.2 suite
-/// pins, restated here so this module proves its own pairing.
-const HANDSHAKE_PAYLOAD: [u8; 8] = [0x2A, 0x00, 0x00, 0x00, 0x7E, 0xAD, 0x01, 0x00];
-const HANDSHAKE_KEY1: u8 = 0x7E;
-const HANDSHAKE_KEY2: u8 = 0xAD;
+// The handshake payload and its two seeds are imported from
+// `crate::game::test_support` rather than restated here (Step 4, T-3g) —
+// this module proves its own pairing against the same hand-placed literal
+// the Step 4.2 suite pins.
 
 /// The account and password every payload test uses.
 const ACCOUNT: &str = "haru";

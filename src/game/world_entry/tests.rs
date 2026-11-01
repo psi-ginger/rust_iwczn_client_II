@@ -14,45 +14,23 @@
 // and the server port's own offset comments `game.rs:990-1015`), built with
 // independent byte math rather than by any function under test.
 use super::*;
+// Step 4 (T-3g): the loopback listener, the plaintext frame builder, the
+// link encoder and the handshake literals are shared by every game suite
+// and live once in `crate::game::test_support` — their citation docs merged
+// there, no citation lost (F-07).
 use crate::game::char_info::{MAKE_CHAR_INFO_PAYLOAD_LEN, RESPONSE_LOGIN};
 use crate::game::entry::RESPONSE_CLIENTCHARUNIQUE;
+use crate::game::test_support::{
+    encode_link, frame, local_listener, HANDSHAKE_KEY1, HANDSHAKE_KEY2, HANDSHAKE_PAYLOAD,
+};
 use crate::net::cipher::Cipher;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
 
-/// Binds a loopback listener on an ephemeral port.
-async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    (listener, addr)
-}
-
-/// A complete plaintext frame: `[usSize LE][ucChk][usCmd LE][payload]` —
-/// what the peer *means*; on the client→server half it only ever exists
-/// before `Cipher::encode`.
-fn frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
-    let size = u16::try_from(5 + payload.len()).expect("frame fits u16");
-    let mut bytes = Vec::with_capacity(5 + payload.len());
-    bytes.extend_from_slice(&size.to_le_bytes());
-    bytes.push(0x00); // ucChk
-    bytes.extend_from_slice(&cmd.to_le_bytes());
-    bytes.extend_from_slice(payload);
-    bytes
-}
-
-/// The server→client encoding: a fresh link cipher per connection, keyed
-/// `0x12,0x34` — what the game service builds per session.
-fn encode_link(plain: &[u8]) -> Vec<u8> {
-    Cipher::link_cipher().encode(plain).expect("encode")
-}
-
-/// The handshake body as the server writes it: `char_unique` 42 LE, session
-/// seeds `0x7E/0xAD`, `version` 1 LE — the same literals the Step 4.2/4.3
-/// suites pin, restated so this module proves its own pairing.
-const HANDSHAKE_PAYLOAD: [u8; 8] = [0x2A, 0x00, 0x00, 0x00, 0x7E, 0xAD, 0x01, 0x00];
-const HANDSHAKE_KEY1: u8 = 0x7E;
-const HANDSHAKE_KEY2: u8 = 0xAD;
+// The handshake payload and its two seeds are imported from
+// `crate::game::test_support` rather than restated here (Step 4, T-3g) —
+// this module proves its own pairing against the same hand-placed literal
+// the Step 4.2/4.3 suites pin.
 
 /// The session character id the handshake hands out — the value this suite
 /// holds `WorldEntryState` to, so an opcode-5 record must match it.

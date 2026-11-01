@@ -25,3 +25,6 @@ pub mod dispatcher;
 pub mod entry;
 pub mod login;
 pub mod world_entry;
+
+#[cfg(test)]
+mod test_support;

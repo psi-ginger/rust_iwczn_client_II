@@ -15,39 +15,18 @@
 // `ITZSession.cpp:56` / the payload literals — never from `GameLink`'s own
 // state.
 use super::*;
+// Step 4 (T-3g): the loopback listener, the plaintext frame builder, the
+// link encoder and the handshake literals are shared by every game suite
+// and live once in `crate::game::test_support` — their citation docs merged
+// there, no citation lost (F-07).
+use crate::game::test_support::{
+    encode_link, frame, local_listener, HANDSHAKE_KEY1, HANDSHAKE_KEY2, HANDSHAKE_PAYLOAD,
+};
 use crate::net::cipher::{LINK_KEY1, LINK_KEY2};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-
-/// Binds a loopback listener on an ephemeral port.
-async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    (listener, addr)
-}
-
-/// A complete plaintext frame: `[usSize LE][ucChk][usCmd LE][payload]` —
-/// what the peer *means*; on this link it only ever exists before
-/// `Cipher::encode`.
-fn frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
-    let size = u16::try_from(5 + payload.len()).expect("frame fits u16");
-    let mut bytes = Vec::with_capacity(5 + payload.len());
-    bytes.extend_from_slice(&size.to_le_bytes());
-    bytes.push(0x00); // ucChk
-    bytes.extend_from_slice(&cmd.to_le_bytes());
-    bytes.extend_from_slice(payload);
-    bytes
-}
-
-/// The server→client encoding: a fresh link cipher per connection, keyed
-/// `0x12,0x34` — exactly what the game service builds per session
-/// (`main.rs:680`) and writes with (`send_encoded`, `main.rs:2057`).
-fn encode_link(plain: &[u8]) -> Vec<u8> {
-    Cipher::link_cipher().encode(plain).expect("encode")
-}
 
 /// Opcode 1 (`GAMEMSG_RESPONSE_CLIENTCHARUNIQUE`) with a deliberately
 /// non-conforming 7-byte body: Step 4.1's tests prove *decryption* only and
@@ -57,13 +36,11 @@ const OPAQUE_CMD: u16 = 1;
 /// Its handwritten payload, asserted bit-exactly on both sides.
 const OPAQUE_PAYLOAD: &[u8] = &[0x2A, 0x00, 0x00, 0x00, 0xA7, 0x5C, 0xFF];
 
-/// The handshake body as the server writes it (`game.rs:98-110`):
-/// `char_unique` 42 LE, keys `0x7E/0xAD`, `version` 1 LE — the advertised
-/// `CLIENT_COMPAT_VERSION`, `game.rs:81-85`.
-const HANDSHAKE_PAYLOAD: [u8; 8] = [0x2A, 0x00, 0x00, 0x00, 0x7E, 0xAD, 0x01, 0x00];
+// `HANDSHAKE_PAYLOAD` and its two seeds are shared (Step 4, T-3g) and live
+// in `crate::game::test_support`, which carries the `game.rs:98-110` body
+// layout and the `game.rs:81-85` `CLIENT_COMPAT_VERSION` citation. The
+// char-unique and version fields this suite asserts on stay here.
 const HANDSHAKE_CHAR_UNIQUE: i32 = 42;
-const HANDSHAKE_KEY1: u8 = 0x7E;
-const HANDSHAKE_KEY2: u8 = 0xAD;
 const HANDSHAKE_VERSION: i16 = 1;
 
 #[test]

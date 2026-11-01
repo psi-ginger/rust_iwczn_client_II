@@ -301,13 +301,15 @@ impl FrontLink {
     /// [`FrontError::Session`] on read timeout or socket error;
     /// [`FrontError::Codec`] on a sticky framing/integrity refusal.
     pub async fn next_frame(&mut self) -> Result<Option<Frame>, FrontError> {
+        // Port-chosen read granularity, not a frame-size limit: the
+        // decoder accumulates across reads (QC P-12; doc above). The
+        // scratch is hoisted above the loop — one stack slot, reused by
+        // every iteration (T-2).
+        let mut buf = [0u8; 4096];
         loop {
             if let Some(frame) = self.decoder.next_frame()? {
                 return Ok(Some(frame));
             }
-            // Port-chosen read granularity, not a frame-size limit: the
-            // decoder accumulates across reads (QC P-12; doc above).
-            let mut buf = [0u8; 4096];
             let n = self.session.read(&mut buf).await?;
             if n == 0 {
                 return Ok(None);

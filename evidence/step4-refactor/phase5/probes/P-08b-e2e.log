@@ -1,0 +1,21 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-30c84c0a3b381c2f.exe)
+
+running 1 test
+test a_flipped_byte_in_the_opcode_5_record_is_refused_at_the_char_client_stage ... FAILED
+
+failures:
+
+---- a_flipped_byte_in_the_opcode_5_record_is_refused_at_the_char_client_stage stdout ----
+
+thread 'a_flipped_byte_in_the_opcode_5_record_is_refused_at_the_char_client_stage' (7676) panicked at tests\e2e_loopback.rs:743:10:
+an opcode-5 record for another character must refuse: DriverOutcome { stage: TornDown, worlds: 1, char_unique: 4242, char_slot: 2, village: Some(7) }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_flipped_byte_in_the_opcode_5_record_is_refused_at_the_char_client_stage
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 10.02s
+
+error: test failed, to rerun pass `--test e2e_loopback`

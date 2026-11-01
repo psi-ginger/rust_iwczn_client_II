@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.33s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::world_entry::tests::an_opcode_5_record_for_another_character_is_not_adopted ... FAILED
+
+failures:
+
+---- game::world_entry::tests::an_opcode_5_record_for_another_character_is_not_adopted stdout ----
+
+thread 'game::world_entry::tests::an_opcode_5_record_for_another_character_is_not_adopted' (6892) panicked at src\game\world_entry\tests.rs:610:5:
+a foreign record must not be adopted
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::world_entry::tests::an_opcode_5_record_for_another_character_is_not_adopted
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

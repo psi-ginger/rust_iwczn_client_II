@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.10s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::char_info::tests::login_many_walks_a_mixed_batch_by_each_records_own_stride ... FAILED
+
+failures:
+
+---- game::char_info::tests::login_many_walks_a_mixed_batch_by_each_records_own_stride stdout ----
+
+thread 'game::char_info::tests::login_many_walks_a_mixed_batch_by_each_records_own_stride' (8332) panicked at src\game\char_info\tests.rs:817:72:
+three records: PartialRecord { offset: 592, have: 136, expected: 592 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::char_info::tests::login_many_walks_a_mixed_batch_by_each_records_own_stride
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

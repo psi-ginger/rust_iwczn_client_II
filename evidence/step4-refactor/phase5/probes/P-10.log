@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.82s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-30c84c0a3b381c2f.exe)
+
+running 1 test
+test a_foreign_first_game_frame_is_refused_at_the_link_key_stage ... FAILED
+
+failures:
+
+---- a_foreign_first_game_frame_is_refused_at_the_link_key_stage stdout ----
+
+thread 'a_foreign_first_game_frame_is_refused_at_the_link_key_stage' (2972) panicked at tests\e2e_loopback.rs:864:5:
+expected a Stage{LinkKey} refusal, got Stage { stage: GameLogin, source: UnexpectedOpcode { cmd: 3 } }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_foreign_first_game_frame_is_refused_at_the_link_key_stage
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test e2e_loopback`

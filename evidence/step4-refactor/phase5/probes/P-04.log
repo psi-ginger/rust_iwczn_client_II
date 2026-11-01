@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.11s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::char_info::tests::char_list_fields_read_their_literal_offsets ... FAILED
+
+failures:
+
+---- game::char_info::tests::char_list_fields_read_their_literal_offsets stdout ----
+
+thread 'game::char_info::tests::char_list_fields_read_their_literal_offsets' (8624) panicked at src\game\char_info\tests.rs:312:5:
+assertion `left == right` failed: every modeled cltCharListInfo field at its literal offset
+  left: CharListEntry { account_idnum: 287454020, account_id: "haru", slot: 7, sex: 1, class_kind: 10811, home_village: -3, map_index: 41, x: 512, y: 271, character_id: 1432778632, name: "chan", str_: 10, dex: 11, vit: 12, mag: 13, hnd: 14, luk: 15, wis: 16, level: 34, bonus: 5, life: 1234, mana: 567, exp: 72623859790382856, money: 999999, del_char_time: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+ right: CharListEntry { account_idnum: 287454020, account_id: "haru", slot: 7, sex: 1, class_kind: 10811, home_village: -3, map_index: 41, x: 512, y: 271, character_id: 1432778632, name: "haruchan", str_: 10, dex: 11, vit: 12, mag: 13, hnd: 14, luk: 15, wis: 16, level: 34, bonus: 5, life: 1234, mana: 567, exp: 72623859790382856, money: 999999, del_char_time: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::char_info::tests::char_list_fields_read_their_literal_offsets
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

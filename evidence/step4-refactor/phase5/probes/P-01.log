@@ -1,0 +1,21 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::entry::tests::send_before_the_handshake_is_refused_and_writes_nothing ... FAILED
+
+failures:
+
+---- game::entry::tests::send_before_the_handshake_is_refused_and_writes_nothing stdout ----
+
+thread 'game::entry::tests::send_before_the_handshake_is_refused_and_writes_nothing' (1180) panicked at src\game\entry\tests.rs:531:50:
+called `Result::unwrap_err()` on an `Ok` value: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::entry::tests::send_before_the_handshake_is_refused_and_writes_nothing
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

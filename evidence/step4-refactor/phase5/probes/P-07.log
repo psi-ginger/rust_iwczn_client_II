@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.14s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::world_entry::tests::the_region_gate_drops_a_mismatched_banner_without_storing_it ... FAILED
+
+failures:
+
+---- game::world_entry::tests::the_region_gate_drops_a_mismatched_banner_without_storing_it stdout ----
+
+thread 'game::world_entry::tests::the_region_gate_drops_a_mismatched_banner_without_storing_it' (8288) panicked at src\game\world_entry\tests.rs:460:5:
+a region mismatch must report the drop
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::world_entry::tests::the_region_gate_drops_a_mismatched_banner_without_storing_it
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

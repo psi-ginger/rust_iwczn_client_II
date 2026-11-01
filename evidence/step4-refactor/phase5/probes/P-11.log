@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.73s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-30c84c0a3b381c2f.exe)
+
+running 1 test
+test a_full_session_conversation_is_byte_exact_and_tears_down_cleanly ... FAILED
+
+failures:
+
+---- a_full_session_conversation_is_byte_exact_and_tears_down_cleanly stdout ----
+
+thread 'a_full_session_conversation_is_byte_exact_and_tears_down_cleanly' (7764) panicked at tests\e2e_loopback.rs:281:10:
+the full session must complete cleanly: Stage { stage: ServerInfo, source: UnexpectedOpcode { expected: 106, cmd: 3 } }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_full_session_conversation_is_byte_exact_and_tears_down_cleanly
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test e2e_loopback`

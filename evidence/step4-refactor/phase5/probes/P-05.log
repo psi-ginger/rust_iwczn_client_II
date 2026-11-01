@@ -1,0 +1,33 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.20s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::char_info::tests::every_bitfield_mask_stops_at_its_declared_width ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\goonzu_client-dd7984470ac4d81d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\asset_fixtures.rs (target\debug\deps\asset_fixtures-ed2b483bc6f05f46.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-30c84c0a3b381c2f.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+
+     Running tests\live_integration.rs (target\debug\deps\live_integration-9f09c18d7d688b99.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

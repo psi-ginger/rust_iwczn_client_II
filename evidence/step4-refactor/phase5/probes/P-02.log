@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.77s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 1 test
+test game::entry::tests::handshake_keys_the_outbound_channel_and_ciphers_every_frame_after_it ... FAILED
+
+failures:
+
+---- game::entry::tests::handshake_keys_the_outbound_channel_and_ciphers_every_frame_after_it stdout ----
+
+thread 'game::entry::tests::handshake_keys_the_outbound_channel_and_ciphers_every_frame_after_it' (8916) panicked at src\game\entry\tests.rs:454:5:
+assertion `left == right` failed: outbound seeded from payload[4], payload[5] (Client-SystemNPC.cpp:701-703, SetKey)
+  left: Some((18, 52))
+ right: Some((126, 173))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::entry::tests::handshake_keys_the_outbound_channel_and_ciphers_every_frame_after_it
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

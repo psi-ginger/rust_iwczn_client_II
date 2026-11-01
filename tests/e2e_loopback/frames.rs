@@ -185,6 +185,15 @@ pub(crate) enum Mutation {
     /// the frame carries one entry — `WorldList::from_frame` must refuse
     /// (`world_list.rs:194-200`, Truncated).
     WorldListCount,
+    /// Front stage: the notice response carries 15 bytes instead of the
+    /// exact 16 — `parse_notice` refuses with the observed length
+    /// (`FrontClientProtocol.cpp:760`, `world_list.rs`
+    /// UnexpectedNoticeLength).
+    ShortNotice,
+    /// Front stage: the login response parses but carries `usResult` 2 —
+    /// `capture()` refuses before any token moves (`Client-Winsock.cpp:
+    /// 287-350` result switch, `login.rs` capture gate).
+    LoginResult,
     /// Game-login stage: the occupied roster entry's `szName[0]` becomes a
     /// NUL, so slot 2 reads empty and the driver must refuse the roster
     /// (`driver.rs:598-606`).

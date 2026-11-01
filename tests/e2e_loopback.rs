@@ -40,6 +40,8 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
+use goonzu_client::auth::login::LoginError;
+use goonzu_client::auth::world_list::WorldListError;
 use goonzu_client::client::driver::{self, DriverConfig, DriverError, DriverOutcome, Stage};
 use goonzu_client::client::teardown::Shutdown;
 
@@ -527,6 +529,114 @@ async fn a_flipped_byte_in_the_world_list_response_is_refused_at_the_world_list_
             .iter()
             .all(|entry| entry.leg == Leg::Front),
         "the session must stop before the game leg"
+    );
+}
+
+/// Characterization (Step 3, T-4 / G-1) — a login response that parses but
+/// carries `usResult` 2 must be refused at `FrontLogin` with the owning
+/// step's `LoginError::Rejected` in the source chain, before anything moves
+/// toward the game leg (`Client-Winsock.cpp:287-350` result switch,
+/// `login.rs` capture gate).
+#[tokio::test]
+async fn a_rejected_login_result_is_refused_at_the_front_login_stage() {
+    let transcript = Arc::new(Transcript::new());
+    let (front_listener, front_addr) = bind().await;
+    let (_game_listener, game_addr) = bind().await; // never dialled
+    let front = spawn_front(
+        front_listener,
+        Mutation::LoginResult,
+        Arc::clone(&transcript),
+    );
+
+    let err = run_driver(config(front_addr, game_addr))
+        .await
+        .expect_err("a login response with usResult 2 must never capture");
+    assert!(
+        matches!(
+            err,
+            DriverError::Stage {
+                stage: Stage::FrontLogin,
+                ..
+            }
+        ),
+        "expected a Stage{{FrontLogin}} refusal, got {err:?}"
+    );
+    let source = std::error::Error::source(&err).expect("a Stage refusal carries its step's error");
+    let login = source
+        .downcast_ref::<LoginError>()
+        .expect("the front login stage must surface a LoginError");
+    assert!(
+        matches!(login, LoginError::Rejected { result: 2 }),
+        "expected LoginError::Rejected{{result: 2}}, got {login:?}"
+    );
+
+    let front_report = joined(front).await;
+    assert_eq!(
+        front_report.frames_received, 3,
+        "the double must have seen the notice, world list and login requests"
+    );
+    assert_eq!(
+        front_report.frames_sent, 4,
+        "the double must have sent SECRETKEY, notice, world list and the rejected login"
+    );
+    assert!(
+        front_report.closed_cleanly,
+        "the refusing client must close the front link as it stops"
+    );
+    assert!(
+        transcript
+            .snapshot()
+            .iter()
+            .all(|entry| entry.leg == Leg::Front),
+        "the session must stop before the game leg"
+    );
+}
+
+/// Characterization (Step 3, T-4 / G-2) — a notice response of 15 bytes
+/// instead of the exact 16 must be refused at `WorldList` with
+/// `WorldListError::UnexpectedNoticeLength` in the source chain
+/// (`FrontClientProtocol.cpp:760` exact 16, `world_list.rs` gate).
+#[tokio::test]
+async fn a_short_notice_response_is_refused_at_the_world_list_stage() {
+    let transcript = Arc::new(Transcript::new());
+    let (front_listener, front_addr) = bind().await;
+    let (_game_listener, game_addr) = bind().await; // never dialled
+    let front = spawn_front(
+        front_listener,
+        Mutation::ShortNotice,
+        Arc::clone(&transcript),
+    );
+
+    let err = run_driver(config(front_addr, game_addr))
+        .await
+        .expect_err("a 15-byte notice must never parse");
+    assert!(
+        matches!(
+            err,
+            DriverError::Stage {
+                stage: Stage::WorldList,
+                ..
+            }
+        ),
+        "expected a Stage{{WorldList}} refusal, got {err:?}"
+    );
+    let source = std::error::Error::source(&err).expect("a Stage refusal carries its step's error");
+    let world = source
+        .downcast_ref::<WorldListError>()
+        .expect("the world-list stage must surface a WorldListError");
+    assert!(
+        matches!(world, WorldListError::UnexpectedNoticeLength { len: 15 }),
+        "expected WorldListError::UnexpectedNoticeLength{{len: 15}}, got {world:?}"
+    );
+
+    let front_report = joined(front).await;
+    assert_eq!(
+        front_report.frames_sent, 2,
+        "the double must have sent SECRETKEY and the short notice only"
+    );
+    assert!(
+        front_report.ended_by_peer,
+        "the refusing client must drop the front connection before the world-list request"
     );
 }
 

@@ -320,3 +320,57 @@ async fn send_before_the_handshake_is_refused_and_writes_nothing() {
         "a pre-key send must never reach the socket, got {received:02x?}"
     );
 }
+
+/// Characterization (Step 3, T-4 / G-3) — a malformed frame arriving after
+/// the handshake is a **sticky** codec refusal: the first `next_frame`
+/// surfaces the header error, and every later call re-returns the same
+/// refusal for the connection's life — the peer's EOF can never turn a
+/// refusal into a clean close (`codec.rs` sticky rejection; the legacy's
+/// `Completion() == FALSE` → `SESSION_STATE_DISCONNECTED`,
+/// `ITZNetIOCP.cpp:145-150`).
+#[tokio::test]
+async fn a_malformed_frame_after_the_handshake_refuses_and_sticks() {
+    use crate::protocol::header::HeaderError;
+
+    let (listener, addr) = local_listener().await;
+    let server = tokio::spawn(async move {
+        let (mut stream, _addr) = listener.accept().await.unwrap();
+        stream.write_all(&SECRETKEY_FRAME).await.unwrap();
+        // The client's first keyed frame is the causal signal that the
+        // handshake and send completed — no sleeps anywhere in this test.
+        let mut sync = [0u8; 64];
+        let n = stream.read(&mut sync).await.unwrap();
+        assert!(n > 0, "the client's keyed frame must arrive first");
+        // usSize 0 in the clear — below the legacy's own `< 2` guard
+        // (`ITZRecvBuffer.cpp:163`), then junk header bytes.
+        stream
+            .write_all(&[0x00, 0x00, 0x11, 0x18, 0x1F, 0x26, 0x2D, 0x34])
+            .await
+            .unwrap();
+        // Close immediately: the sticky refusal must win over the EOF.
+        drop(stream);
+    });
+
+    let mut link = FrontLink::connect(addr).await.unwrap();
+    link.handshake().await.unwrap();
+    link.send(2, b"").await.unwrap();
+
+    let first = match link.next_frame().await.unwrap_err() {
+        FrontError::Codec(error) => error,
+        other => panic!("expected a Codec refusal, got {other:?}"),
+    };
+    assert_eq!(
+        first,
+        CodecError::Header(HeaderError::SizeBelowMinimum { declared: 0 }),
+        "usSize 0 must refuse as a below-minimum header (ITZRecvBuffer.cpp:163)"
+    );
+
+    // Sticky: the same refusal comes back with no new bytes read.
+    let second = match link.next_frame().await.unwrap_err() {
+        FrontError::Codec(error) => error,
+        other => panic!("expected the sticky Codec refusal, got {other:?}"),
+    };
+    assert_eq!(second, first, "the decoder's refusal must stick");
+
+    server.await.unwrap();
+}

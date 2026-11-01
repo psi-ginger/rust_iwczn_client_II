@@ -98,8 +98,12 @@ pub(crate) async fn run_front_double(
     }
 
     // 2. RESPONSE_NOTICE — 16 bytes of C-string text
-    // (`FrontClientProtocol.cpp:760`, `world_list.rs:162-166`).
-    let notice = frame(OP_RESPONSE_NOTICE, &NOTICE_TEXT);
+    // (`FrontClientProtocol.cpp:760`, `world_list.rs:162-166`), or 15 when
+    // the mutation probes the exact-length gate.
+    let notice = match mutation {
+        Mutation::ShortNotice => frame(OP_RESPONSE_NOTICE, &NOTICE_TEXT[..15]),
+        _ => frame(OP_RESPONSE_NOTICE, &NOTICE_TEXT),
+    };
     stream.write_all(&notice).await.expect("write notice");
     transcript.push(Leg::Front, Dir::S2C, notice.clone(), notice.len());
     report.frames_sent += 1;
@@ -162,8 +166,16 @@ pub(crate) async fn run_front_double(
 
     // 6. RESPONSE_LOGIN — 108 bytes, `usResult` 0, the auth_key and the
     // canonical userid the game login must then carry
-    // (`FrontMsg.h:419-442`).
-    let login = frame(OP_RESPONSE_LOGIN, &login_response_payload());
+    // (`FrontMsg.h:419-442`); the mutation flips `usResult` to 2, which
+    // parses but must never capture (`Client-Winsock.cpp:287-350`).
+    let login = match mutation {
+        Mutation::LoginResult => {
+            let mut payload = login_response_payload();
+            payload[0..2].copy_from_slice(&2u16.to_le_bytes());
+            frame(OP_RESPONSE_LOGIN, &payload)
+        }
+        _ => frame(OP_RESPONSE_LOGIN, &login_response_payload()),
+    };
     stream
         .write_all(&login)
         .await

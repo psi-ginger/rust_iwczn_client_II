@@ -1,4 +1,5 @@
 use super::*;
+use crate::auth::test_support::{SECRETKEY_FRAME, SEED_KEY1, SEED_KEY2};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -9,17 +10,6 @@ async fn local_listener() -> (TcpListener, SocketAddr) {
     let addr = listener.local_addr().unwrap();
     (listener, addr)
 }
-
-/// `FRONTMSG_RESPONSE_SECRETKEY` as it sits on the wire, in the clear:
-/// usSize 10 (`FrontMsg.h:132-141`), ucChk 0 (what the server port writes;
-/// the legacy leaves it uninitialized — either parses identically), usCmd
-/// 30000 LE, then `ucTemp1 ucTemp2 ucKey1 ucTemp3 ucKey2` with seeds
-/// 0xA7/0x5C.
-const SECRETKEY_FRAME: [u8; 10] = [0x0A, 0x00, 0x00, 0x30, 0x75, 0x00, 0x00, 0xA7, 0x00, 0x5C];
-
-/// The two seeds `SECRETKEY_FRAME` carries, at payload offsets 2 and 4.
-const SEED_KEY1: u8 = 0xA7;
-const SEED_KEY2: u8 = 0x5C;
 
 /// A server→client push (opcode 9002, LE `2A 23`) with a 7-byte payload:
 /// usSize 12. Server→client is plaintext on this link (module docs), so the

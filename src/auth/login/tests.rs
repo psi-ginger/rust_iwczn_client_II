@@ -12,38 +12,21 @@
 // `login_request_payload` compared against itself), and the frame headers
 // are handwritten numbers from `FrontMsg.h`/`AuthProcess.cpp`.
 use super::*;
+use crate::auth::test_support::{
+    frame, read_ciphered_frame, SECRETKEY_FRAME, SEED_KEY1, SEED_KEY2,
+};
 use crate::auth::world_list::RESPONSE_WORLDLIST;
 use crate::net::cipher::Cipher;
 use crate::net::codec::Decoder;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-
-/// `FRONTMSG_RESPONSE_SECRETKEY` as it sits on the wire, in the clear:
-/// usSize 10, ucChk 0, usCmd 30000 LE, seed slots 0xA7/0x5C at payload
-/// offsets 2 and 4 (`FrontMsg.h:132-141`).
-const SECRETKEY_FRAME: [u8; 10] = [0x0A, 0x00, 0x00, 0x30, 0x75, 0x00, 0x00, 0xA7, 0x00, 0x5C];
-const SEED_KEY1: u8 = 0xA7;
-const SEED_KEY2: u8 = 0x5C;
+use tokio::net::TcpListener;
 
 /// Binds a loopback listener on an ephemeral port.
 async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     (listener, addr)
-}
-
-/// Builds raw plaintext frame bytes: `[usSize LE][ucChk][usCmd LE][payload]`.
-/// Server → client is plaintext on this link, so this is a literal wire
-/// image (`front.rs` module docs, asymmetry table).
-fn frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
-    let size = u16::try_from(5 + payload.len()).expect("frame fits u16");
-    let mut bytes = Vec::with_capacity(5 + payload.len());
-    bytes.extend_from_slice(&size.to_le_bytes());
-    bytes.push(0x00); // ucChk
-    bytes.extend_from_slice(&cmd.to_le_bytes());
-    bytes.extend_from_slice(payload);
-    bytes
 }
 
 /// A complete 108-byte `sResponse_LogIn` payload with every field written at
@@ -96,25 +79,6 @@ fn expected_request_payload() -> [u8; LOGIN_REQUEST_PAYLOAD_LEN] {
     expected[20..26].copy_from_slice(b"s3cret");
     expected[40..52].copy_from_slice(b"A1B2C3D4E5F6");
     expected
-}
-
-/// Reads one ciphered frame the way the front service does: usSize in the
-/// clear selects the length, then the session cipher decodes it. Returns
-/// `(wire bytes, plaintext frame)`.
-async fn read_ciphered_frame(stream: &mut TcpStream, cipher: &mut Cipher) -> (Vec<u8>, Vec<u8>) {
-    let mut head = [0u8; 2];
-    stream.read_exact(&mut head).await.unwrap();
-    let size = usize::from(u16::from_le_bytes(head));
-    let mut raw = vec![0u8; size];
-    raw[..2].copy_from_slice(&head);
-    stream.read_exact(&mut raw[2..]).await.unwrap();
-    let mut plain = vec![0u8; size];
-    let accepted = cipher.decode(&raw, &mut plain).expect("decode");
-    assert!(
-        accepted,
-        "the seeded session cipher must satisfy the integrity check"
-    );
-    (raw, plain)
 }
 
 #[test]

@@ -11,3 +11,6 @@
 pub mod front;
 pub mod login;
 pub mod world_list;
+
+#[cfg(test)]
+mod test_support;

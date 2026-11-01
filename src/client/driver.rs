@@ -590,7 +590,8 @@ async fn front_phase(
     Ok((auth, worlds))
 }
 
-/// The stages themselves. `game` is filled in as soon as the game link exists so
+/// The stages themselves — now the two legs, in order: [`front_phase`] then
+/// [`game_phase`]. `game` is filled in as soon as the game link exists so
 /// [`run`] can tear it down on every error path below.
 async fn flow(
     cfg: &DriverConfig,
@@ -598,7 +599,39 @@ async fn flow(
     game: &mut Option<GameLink>,
 ) -> Result<DriverOutcome, DriverError> {
     let (auth, worlds) = front_phase(cfg, shutdown).await?;
+    game_phase(cfg, shutdown, &auth, worlds, game).await
+}
 
+/// The game leg of the session — dial the game service, the handshake, the
+/// opcode-2 game login, the roster, select-char, SERVERINFO / opcode-5 world
+/// entry, the optional village round-trip, then the in-world loop.
+///
+/// Extracted **verbatim** from `flow` (Step 4, T-1g): every statement, stage
+/// gate, tracing record and citation moved unchanged; only the signature is
+/// new. [`front_phase`] is the same move Step 3 made for the front half
+/// (`driver.rs:522-591`).
+///
+/// Exactly one token differs from the source: the game-login call passed
+/// `&auth` when `auth` was a local, and passes `auth` now that it is already
+/// a `&FrontAuth` — the stricter lint run denies the needless borrow that
+/// would leave. Nothing else moved a byte.
+///
+/// `auth` and `worlds` are [`front_phase`]'s results, handed in rather than
+/// re-derived; `game` is filled in as soon as the game link exists so
+/// [`run`] can tear it down on every error path below — exactly where `flow`
+/// filled it before this extraction.
+///
+/// # Errors
+///
+/// Exactly as `flow`'s game segment: any stage refusal or owning-step error,
+/// attributed to its stage ([`DriverError::at`] / [`DriverError::refused`]).
+async fn game_phase(
+    cfg: &DriverConfig,
+    shutdown: &Shutdown,
+    auth: &FrontAuth,
+    worlds: usize,
+    game: &mut Option<GameLink>,
+) -> Result<DriverOutcome, DriverError> {
     let link = GameLink::connect(cfg.game)
         .await
         .map_err(|error| DriverError::at(Stage::GameConnected, error))?;
@@ -611,7 +644,7 @@ async fn flow(
     debug!(char_unique = unique.char_unique, "game handshake complete");
     check_shutdown(shutdown, Stage::LinkKey)?;
 
-    request_game_login(game_link_mut(game, Stage::GameLogin)?, &auth, &cfg.password)
+    request_game_login(game_link_mut(game, Stage::GameLogin)?, auth, &cfg.password)
         .await
         .map_err(|error| DriverError::at(Stage::GameLogin, error))?;
     debug!(stage = %Stage::GameLogin, "game login submitted");

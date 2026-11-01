@@ -1,0 +1,15 @@
+commit 56d197a8c4d40eef8b6ec93789fe59f1eeb355e9
+Author:     goonzu-rs <goonzu-rs@local>
+AuthorDate: Sun Nov 1 17:12:26 2026 +0700
+Commit:     goonzu-rs <goonzu-rs@local>
+CommitDate: Sun Nov 1 17:12:26 2026 +0700
+
+    refactor(auth): Phase 4 consolidate duplicated test helpers into test_support (T-3)
+    
+    src/auth/test_support.rs (#[cfg(test)] in auth/mod.rs) now owns
+    SECRETKEY_FRAME/SEED_KEY1/SEED_KEY2 (was in front, world_list and login
+    suites) and frame()/read_ciphered_frame() (was in world_list and login),
+    byte-identical with their citation docs moved verbatim — no citation
+    lost, no expectation re-derived (F-07). Donor suites import from
+    test_support; unused TcpStream imports dropped. Gates:
+    check/clippy/fmt/test/doc all 0, 327/327.

@@ -1,0 +1,22 @@
+3 consecutive full cargo test runs after all phases + probe restores (Step 3, Phase 5)
+run1 exit=0
+  test result: ok. 300 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.36s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.12s
+  test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+run2 exit=0
+  test result: ok. 300 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.39s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.12s
+  test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+run3 exit=0
+  test result: ok. 300 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.38s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.12s
+  test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

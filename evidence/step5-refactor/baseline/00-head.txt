@@ -1,0 +1,27 @@
+commit 68d3ad9c3a48a01f31c5aae6bbe3e658fedabd74
+Author:     psi-ginger <psi-ginger@local>
+AuthorDate: Mon Nov 2 15:13:10 2026 +0700
+Commit:     psi-ginger <psi-ginger@local>
+CommitDate: Mon Nov 2 15:13:10 2026 +0700
+
+    docs(qc): Step 4 structural refactoring merged - PASSED, evidence evidence/step4-refactor/
+    
+    Custodian fast-forward of main to the branch tip dfe39b8 (delivery
+    458acf0 preserved as parent; no merge commit, no squash - full lane
+    history kept). Verifier verdict PASSED: S4 clean-clone gates all exit
+    0 at 334/334 across 4 independent runs; T-1g extraction byte-identical
+    except the disclosed &auth token; all 14 probe runs re-executed (11
+    named failures, P-5 neutrality confirmed 3 ways); adopt_local blind
+    spot and P-5 fixture gap disclosures reproduced honest; blob-hash
+    table 12/12; citations 207->217 net +10, none lost; F-07 intact.
+    
+    Two non-blocking documentation corrections requested (verdict section
+    8): summary.md probe prose miscounts 11 of 14 as 13 of 14; stale
+    not-pushed prose.
+    
+    Full verdict: docs/audit/2026-11-02-step-4-refactor-verification.md;
+    evidence: evidence/step4-refactor/ (summary.md, baseline/, phase1-5/,
+    probes P-01..P-11).
+    
+    Step: 4 refactor
+    Lane: custodian

@@ -391,6 +391,55 @@ fn a_char_update_lands_every_field_and_self_skips_move_speed() {
     assert_eq!(delta.make_ani_type, Some(6), ":1257");
 }
 
+/// The blind spot Step 4 §8 disclosed, characterized from the dispatcher
+/// side: the self path guards its `life`/`x`/`y` store with `local_char`
+/// (`dispatcher.rs` `if let Some(local) = self.local_char.as_mut()`), so a
+/// state that never adopted reports the *same* outcome and lands the *same*
+/// delta overlay while the avatar write is dropped without a trace.
+///
+/// This is exactly why deleting the driver's adoption call left the whole
+/// suite green (`docs/audit/2026-11-02-step-4-refactor-verification.md`,
+/// §7 "adopt_local blind spot"): every observable outside that store is
+/// adoption-independent. The counterpart assertion — that the driver *does*
+/// adopt at world entry — is the wiring test in `crate::client::driver::
+/// tests` (`world_entry_adoption_is_wired_before_the_in_world_loop_starts`).
+#[test]
+fn a_self_char_update_before_adoption_reports_the_same_outcome_and_drops_the_write() {
+    // The window `game_phase`'s adoption call closes: the state exists with
+    // the connection's `MyCharUnique`, but the opcode-5 record is not in it.
+    let mut state = DispatcherState::new(7);
+
+    let outcome = state
+        .dispatch(
+            RESPONSE_CHARUPDATE,
+            &char_update_body(7, 3, true, 4321, 90, 88, 300, 400, 1, true, 6),
+        )
+        .expect("a 24-byte self update dispatches");
+
+    assert_eq!(
+        outcome,
+        DispatchOutcome::Applied {
+            char_unique: 7,
+            target: ApplyTarget::Local,
+        },
+        "the outcome must not reveal adoption — that is the blind spot"
+    );
+    assert!(
+        state.local_char().is_none(),
+        "before adoption there is nowhere for life/x/y to land"
+    );
+    let delta = state.local_delta();
+    assert_eq!(
+        delta.reserved_life,
+        Some(90),
+        "the delta overlay exists from construction and lands unconditionally"
+    );
+    assert_eq!(delta.mana, Some(88), "SetMana lands without adoption too");
+    assert_eq!(delta.gm_mode, Some(1));
+    assert_eq!(delta.pc_room, Some(true));
+    assert_eq!(delta.make_ani_type, Some(6));
+}
+
 #[test]
 fn a_char_update_for_a_nearby_character_writes_move_speed_too() {
     let mut state = in_world_state();

@@ -5,6 +5,10 @@
 //! rejected configuration never opens a socket. Keeping the split honest is the
 //! point: a green run of this module must not be readable as "the session
 //! works".
+//!
+//! Step 5 Phase 1 adds one source-level composition assertion — the world-entry
+//! adoption wiring — because no behavioral test in any harness can observe it
+//! (see that test's doc for the audit reference).
 
 use std::net::{SocketAddr, TcpListener};
 use std::sync::{Arc, Mutex};
@@ -538,4 +542,61 @@ async fn a_frame_that_is_not_opcode_3_refuses_the_roster_before_it_is_parsed() {
     );
 
     service.await.expect("the fake game service finishes");
+}
+
+/// Step 5 Phase 1 (T-4e) — the world-entry adoption wiring, asserted at the
+/// source level because no behavioral assertion can see it.
+///
+/// `game_phase` constructs the connection's `DispatcherState` and adopts the
+/// opcode-5 `CharClient` into it before the in-world loop starts. The store
+/// has no reader outside `apply_char_update`'s self-path writes, and the
+/// `DispatcherState` dies with `game_phase`, so the Step 4 Verifier could
+/// delete `dispatcher.adopt_local(&char_client);` and still run 334/334
+/// green (`docs/audit/2026-11-02-step-4-refactor-verification.md`, §7
+/// "adopt_local blind spot").
+///
+/// What is left to pin is the composition itself: the exact statement, once,
+/// between the dispatcher's construction and the loop that will use it. The
+/// whole line must equal the statement, so a comment quoting it can never
+/// satisfy the assertion; the count of one mirrors the T-1g verbatim
+/// checklist this test automates. The behavioral half of the story — that
+/// the outcome cannot reveal a missing adoption — lives in
+/// `crate::game::dispatcher::tests`
+/// (`a_self_char_update_before_adoption_reports_the_same_outcome_and_drops_the_write`).
+#[test]
+fn world_entry_adoption_is_wired_before_the_in_world_loop_starts() {
+    let source = include_str!("../driver.rs");
+    let lines: Vec<&str> = source.lines().map(str::trim).collect();
+
+    let adoption = "dispatcher.adopt_local(&char_client);";
+    let hits: Vec<usize> = lines
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, line)| *line == adoption)
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "world entry adopts the local avatar exactly once"
+    );
+
+    let constructed = lines
+        .iter()
+        .position(|line| line.contains("DispatcherState::new("))
+        .expect("the in-world dispatcher is constructed at world entry");
+    assert!(
+        constructed < hits[0],
+        "adoption must follow the dispatcher's construction"
+    );
+
+    let looping = lines
+        .iter()
+        .position(|line| line.contains("run_with_shutdown("))
+        .expect("the in-world loop is started");
+    assert!(
+        hits[0] < looping,
+        "adoption must land before the loop starts using the dispatcher"
+    );
 }

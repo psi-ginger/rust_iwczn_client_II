@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Data\06_Client_Goonzu\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.46s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 1 test
+test client::driver::tests::world_entry_adoption_is_wired_before_the_in_world_loop_starts ... FAILED
+
+failures:
+
+---- client::driver::tests::world_entry_adoption_is_wired_before_the_in_world_loop_starts stdout ----
+
+thread 'client::driver::tests::world_entry_adoption_is_wired_before_the_in_world_loop_starts' (21036) panicked at src\client\driver\tests.rs:579:5:
+assertion `left == right` failed: world entry adopts the local avatar exactly once
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    client::driver::tests::world_entry_adoption_is_wired_before_the_in_world_loop_starts
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

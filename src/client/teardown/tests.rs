@@ -29,18 +29,12 @@ use super::*;
 use crate::client::event_loop::{
     run_with_shutdown, Flow, LoopError, LoopEvent, Ticker, READ_POLL_BUDGET,
 };
+use crate::client::test_support::local_listener;
 use crate::game::entry::{GameError, GameLink};
 use std::convert::Infallible;
 use std::sync::atomic::AtomicBool;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-
-/// Binds a loopback listener on an ephemeral port.
-async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    (listener, addr)
-}
+use tokio::net::TcpStream;
 
 /// Dials `addr` and returns the link — over the **real** clock, then back to
 /// virtual (see [`held_link`] for why the dial cannot run paused).

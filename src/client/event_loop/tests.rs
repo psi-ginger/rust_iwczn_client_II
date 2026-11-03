@@ -39,19 +39,12 @@
 // test's expectation (one whole frame) is derived from the bytes the peer
 // chose to send, split at a literal offset.
 use super::*;
+use crate::client::test_support::local_listener;
 use crate::game::entry::GameError;
 use crate::net::cipher::Cipher;
 use crate::net::session::SessionTimeouts;
 use std::convert::Infallible;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
-
-/// Binds a loopback listener on an ephemeral port.
-async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    (listener, addr)
-}
 
 /// Dials `addr` and returns the link — **without moving the virtual clock**.
 ///

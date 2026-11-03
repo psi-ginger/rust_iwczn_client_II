@@ -13,4 +13,4 @@ pub mod login;
 pub mod world_list;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;

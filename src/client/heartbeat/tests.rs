@@ -19,18 +19,17 @@
 // believes it sent.
 use super::*;
 use crate::client::event_loop::{run, Flow};
+use crate::client::test_support::local_listener;
 use crate::game::entry::RESPONSE_CLIENTCHARUNIQUE;
+// `HANDSHAKE_PAYLOAD` and its two seeds are the same literals Steps 4.2/4.3
+// pin — imported from the game suite's donor (Step 5, T-3e) rather than
+// restated, so this module proves its own pairing against the same
+// hand-placed bytes; the payload's citation docs live with it in
+// `game/test_support.rs` (F-07, no citation lost).
+use crate::game::test_support::{HANDSHAKE_KEY1, HANDSHAKE_KEY2, HANDSHAKE_PAYLOAD};
 use crate::net::cipher::Cipher;
 use crate::net::codec::Encoder;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-
-/// Binds a loopback listener on an ephemeral port.
-async fn local_listener() -> (TcpListener, std::net::SocketAddr) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    (listener, addr)
-}
 
 /// A complete plaintext frame: `[usSize LE][ucChk][usCmd LE][payload]` — the
 /// pre-cipher image of anything the client sends.
@@ -49,13 +48,6 @@ fn frame(cmd: u16, payload: &[u8]) -> Vec<u8> {
 fn encode_link(plain: &[u8]) -> Vec<u8> {
     Cipher::link_cipher().encode(plain).expect("encode")
 }
-
-/// The handshake body as the server writes it: `char_unique` 42 LE, session
-/// seeds `0x7E/0xAD`, `version` 1 LE — the same literals Steps 4.2/4.3 pin,
-/// restated so this module proves its own pairing.
-const HANDSHAKE_PAYLOAD: [u8; 8] = [0x2A, 0x00, 0x00, 0x00, 0x7E, 0xAD, 0x01, 0x00];
-const HANDSHAKE_KEY1: u8 = 0x7E;
-const HANDSHAKE_KEY2: u8 = 0xAD;
 
 /// The unsolicited opcode 1 handshake, link-encoded, written before any
 /// client read — exactly as the service writes it at accept.

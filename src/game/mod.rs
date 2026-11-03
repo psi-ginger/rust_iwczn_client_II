@@ -27,4 +27,4 @@ pub mod login;
 pub mod world_entry;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;

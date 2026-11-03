@@ -1,0 +1,8 @@
+ src/auth/mod.rs                |  2 +-
+ src/client/driver/tests.rs     | 10 ++++++----
+ src/client/event_loop/tests.rs |  9 +--------
+ src/client/heartbeat/tests.rs  | 22 +++++++---------------
+ src/client/mod.rs              |  3 +++
+ src/client/teardown/tests.rs   | 10 ++--------
+ src/game/mod.rs                |  2 +-
+ 7 files changed, 21 insertions(+), 37 deletions(-)

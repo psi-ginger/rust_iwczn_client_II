@@ -24,6 +24,12 @@ use super::{
     ENV_CHAR_SLOT, ENV_DRAIN_MS, ENV_FRONT_ADDR, ENV_MAC_ADDRESS, ENV_USER_ID, ENV_USER_PW,
     ENV_VILLAGE_REF, RESPONSE_CHARLIST, RESPONSE_LOGIN,
 };
+// `FRONTMSG_RESPONSE_SECRETKEY` as it sits on the wire, in the clear — the
+// same bytes `auth::front`'s tests replay (FrontMsg.h:114). Imported from
+// the auth suite's donor (Step 5, T-3e) rather than restated; the donor's
+// own doc cites the struct layout (FrontMsg.h:132-141) — both citations
+// stand, byte-identical (F-07, no citation lost).
+use crate::auth::test_support::SECRETKEY_FRAME;
 use crate::client::teardown::{watch_signal, Cause, Shutdown};
 use crate::game::entry::GameLink;
 use crate::net::cipher::Cipher;
@@ -68,10 +74,6 @@ fn valid_config(front: SocketAddr) -> DriverConfig {
         drain_bound: DEFAULT_DRAIN_BOUND,
     }
 }
-
-/// `FRONTMSG_RESPONSE_SECRETKEY` as it sits on the wire, in the clear — the
-/// same bytes `auth::front`'s tests replay (FrontMsg.h:114).
-const SECRETKEY_FRAME: [u8; 10] = [0x0A, 0x00, 0x00, 0x30, 0x75, 0x00, 0x00, 0xA7, 0x00, 0x5C];
 
 /// An in-memory sink behind `tracing_subscriber::fmt`, so a test can read back
 /// the record the driver actually rendered instead of asserting about one it

@@ -17,3 +17,6 @@ pub mod driver;
 pub mod event_loop;
 pub mod heartbeat;
 pub mod teardown;
+
+#[cfg(test)]
+mod test_support;

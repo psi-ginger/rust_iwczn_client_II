@@ -1,0 +1,111 @@
+[1mdiff --git a/src/client/driver.rs b/src/client/driver.rs[m
+[1mindex 6f6204c..ca6b571 100644[m
+[1m--- a/src/client/driver.rs[m
+[1m+++ b/src/client/driver.rs[m
+[36m@@ -58,10 +58,10 @@[m [muse crate::game::char_info::{[m
+     parse_char_list_entry, CharListEntry, CHAR_SLOTS, RESPONSE_CHARLIST, RESPONSE_LOGIN,[m
+ };[m
+ use crate::game::dispatcher::{DispatchError, DispatcherState};[m
+[31m-use crate::game::entry::{GameError, GameLink};[m
+[32m+[m[32muse crate::game::entry::{ClientCharUnique, GameError, GameLink};[m
+ use crate::game::login::request_game_login;[m
+ use crate::game::world_entry::{[m
+[31m-    request_select_char, request_village_struct, WorldEntryState, RESPONSE_SERVERINFO,[m
+[32m+[m[32m    request_select_char, request_village_struct, CharClient, WorldEntryState, RESPONSE_SERVERINFO,[m
+     RESPONSE_VILLAGESTRUCT, SERVICE_AREA_ENGLISH,[m
+ };[m
+ use crate::net::codec::Frame;[m
+[36m@@ -590,9 +590,10 @@[m [masync fn front_phase([m
+     Ok((auth, worlds))[m
+ }[m
+ [m
+[31m-/// The stages themselves — now the two legs, in order: [`front_phase`] then[m
+[31m-/// [`game_phase`]. `game` is filled in as soon as the game link exists so[m
+[31m-/// [`run`] can tear it down on every error path below.[m
+[32m+[m[32m/// The stages themselves — now three phases in order: [`front_phase`], then[m
+[32m+[m[32m/// [`game_phase`], which ends in [`in_world_phase`]. `game` is filled in as[m
+[32m+[m[32m/// soon as the game link exists so [`run`] can tear it down on every error[m
+[32m+[m[32m/// path below.[m
+ async fn flow([m
+     cfg: &DriverConfig,[m
+     shutdown: &Shutdown,[m
+[36m@@ -604,7 +605,7 @@[m [masync fn flow([m
+ [m
+ /// The game leg of the session — dial the game service, the handshake, the[m
+ /// opcode-2 game login, the roster, select-char, SERVERINFO / opcode-5 world[m
+[31m-/// entry, the optional village round-trip, then the in-world loop.[m
+[32m+[m[32m/// entry, the optional village round-trip, then [`in_world_phase`].[m
+ ///[m
+ /// Extracted **verbatim** from `flow` (Step 4, T-1g): every statement, stage[m
+ /// gate, tracing record and citation moved unchanged; only the signature is[m
+[36m@@ -721,6 +722,51 @@[m [masync fn game_phase([m
+     }[m
+     check_shutdown(shutdown, Stage::InWorld)?;[m
+ [m
+[32m+[m[32m    in_world_phase(cfg, shutdown, &unique, worlds, char_client, game).await[m
+[32m+[m[32m}[m
+[32m+[m
+[1;36m+[m[1;36m/// A handler failure inside the in-world loop: either the dispatcher or the[m
+[1;36m+[m[1;36m/// heartbeat, both of which must stop the session rather than be swallowed.[m
+[1;36m+[m[1;36m#[derive(Debug, thiserror::Error)][m
+[1;36m+[m[1;36menum InWorldError {[m
+[1;36m+[m[1;36m    /// A dispatcher parser refused a frame.[m
+[1;36m+[m[1;36m    #[error(transparent)][m
+[1;36m+[m[1;36m    Dispatch(#[from] DispatchError),[m
+[1;36m+[m[1;36m    /// The heartbeat could not be written.[m
+[1;36m+[m[1;36m    #[error(transparent)][m
+[1;36m+[m[1;36m    Heartbeat(#[from] GameError),[m
+[1;36m+[m[1;36m}[m
+[1;36m+[m
+[32m+[m[32m/// The in-world leg of the session — the world-entry dispatcher, then the[m
+[32m+[m[32m/// Step 5.1 loop with its 5.2 heartbeat and 5.4 dispatch, then the session[m
+[32m+[m[32m/// outcome.[m
+[32m+[m[32m///[m
+[32m+[m[32m/// Extracted **verbatim** from `game_phase` (Step 5, T-1e): every statement,[m
+[32m+[m[32m/// stage gate, tracing record and citation moved unchanged; only the[m
+[32m+[m[32m/// signature is new. [`front_phase`] (Step 3, T-1) and [`game_phase`][m
+[32m+[m[32m/// (Step 4, T-1g) made the same move for the two legs before this one.[m
+[32m+[m[32m///[m
+[32m+[m[32m/// The body moved byte-for-byte; the only edits outside it are the two[m
+[32m+[m[32m/// `use` bindings the new signature needs (`CharClient`, `ClientCharUnique`)[m
+[32m+[m[32m/// and the delegation `game_phase` now makes. `cfg`, `shutdown` and `game`[m
+[32m+[m[32m/// are `game_phase`'s own parameters passed through; `unique`, `worlds` and[m
+[32m+[m[32m/// `char_client` are its locals at the point the in-world segment began —[m
+[32m+[m[32m/// exactly where `game_phase` held them, with `char_client` moved rather[m
+[32m+[m[32m/// than borrowed so the body reads unchanged.[m
+[32m+[m[32m///[m
+[32m+[m[32m/// # Errors[m
+[32m+[m[32m///[m
+[32m+[m[32m/// Exactly as `game_phase`'s in-world segment: a link failure or a handler[m
+[32m+[m[32m/// refusal, attributed to [`Stage::InWorld`] ([`DriverError::at`] /[m
+[32m+[m[32m/// [`DriverError::refused`]).[m
+[32m+[m[32masync fn in_world_phase([m
+[32m+[m[32m    cfg: &DriverConfig,[m
+[32m+[m[32m    shutdown: &Shutdown,[m
+[32m+[m[32m    unique: &ClientCharUnique,[m
+[32m+[m[32m    worlds: usize,[m
+[32m+[m[32m    char_client: CharClient,[m
+[32m+[m[32m    game: &mut Option<GameLink>,[m
+[32m+[m[32m) -> Result<DriverOutcome, DriverError> {[m
+     let mut dispatcher = DispatcherState::new(i32::from(char_client.char_unique));[m
+     dispatcher.adopt_local(&char_client);[m
+ [m
+[36m@@ -763,18 +809,6 @@[m [masync fn game_phase([m
+     })[m
+ }[m
+ [m
+[1;35m-/// A handler failure inside the in-world loop: either the dispatcher or the[m
+[1;35m-/// heartbeat, both of which must stop the session rather than be swallowed.[m
+[1;35m-#[derive(Debug, thiserror::Error)][m
+[1;35m-enum InWorldError {[m
+[1;35m-    /// A dispatcher parser refused a frame.[m
+[1;35m-    #[error(transparent)][m
+[1;35m-    Dispatch(#[from] DispatchError),[m
+[1;35m-    /// The heartbeat could not be written.[m
+[1;35m-    #[error(transparent)][m
+[1;35m-    Heartbeat(#[from] GameError),[m
+[1;35m-}[m
+[1;35m-[m
+ /// Borrows the game link, or refuses: every stage after 4.1 needs it open.[m
+ fn game_link_mut(game: &mut Option<GameLink>, stage: Stage) -> Result<&mut GameLink, DriverError> {[m
+     game.as_mut()[m

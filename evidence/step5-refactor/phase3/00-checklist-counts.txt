@@ -1,0 +1,31 @@
+T-1e code-token checklist: src/client/driver.rs at HEAD(5ef7dc4) vs working tree, comment lines excluded
+before_code_lines=619  after_code_lines=631  (delta = new signature + delegation call)
+
+check_shutdown(              before=12  after=12  OK
+map_err(                     before=24  after=24  OK
+debug!(                      before=8   after=8   OK
+info!(                       before=2   after=2   OK
+warn!(                       before=2   after=2   OK
+dispatcher.adopt_local       before=1   after=1   OK
+DispatcherState::new(        before=1   after=1   OK
+run_with_shutdown(           before=1   after=1   OK
+Stage::                      before=60  after=60  OK
+GameLink::connect            before=1   after=1   OK
+read_roster                  before=2   after=2   OK
+is_in_world                  before=1   after=1   OK
+is_heartbeat(                before=1   after=1   OK
+send_heartbeat(              before=1   after=1   OK
+heartbeat_ticker()           before=1   after=1   OK
+dispatcher.dispatch          before=1   after=1   OK
+LoopError::Link              before=1   after=1   OK
+LoopError::Handler           before=1   after=1   OK
+Flow::Continue               before=2   after=2   OK
+DriverOutcome {              before=2   after=2   OK
+game_link_mut(               before=10  after=10  OK
+
+ALL_PREEXISTING_CODE_TOKENS_EQUAL=True
+
+new bindings (expected):
+in_world_phase               before=0   after=2  
+ClientCharUnique             before=0   after=2  
+char_client                  before=4   after=6  

@@ -1,0 +1,8 @@
+moved block: driver.rs:724-763 (pre) -> in_world_phase body:770-809 (post)
+before_lines=40  after_lines=40
+before_sha256=307e06e578e17023517fffc49e33b0dd52f36c1f553267951116f14914bb7db0
+after_sha256 =307e06e578e17023517fffc49e33b0dd52f36c1f553267951116f14914bb7db0
+byte_identical=True
+
+moved-block token checklist (both sides):
+  DispatcherState::new=1 adopt_local=1 run_with_shutdown=1 heartbeat_ticker=1 is_heartbeat=1 send_heartbeat=1 dispatcher.dispatch=1 debug!=2 info!=1 LoopError::Link=1 LoopError::Handler=1 Flow::Continue=2 DriverOutcome{=1 Stage::InWorld=4

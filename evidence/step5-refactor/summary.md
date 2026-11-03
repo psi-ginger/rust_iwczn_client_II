@@ -212,7 +212,7 @@ CRLF working-tree bytes — the Step 3 §7 lesson.
 df316a3 docs(step5): fix line count in phase4 evidence README (27, not 30)
 d06bf63 refactor(step5): T-3e consolidate client test_support - local_listener x3 deduped, cross-group wire literals import from Step 3/4 donors (336/336 held)
 7251cbc refactor(step5): T-1e extract in_world_phase from game_phase - byte-identical 40-line move, gates green, 336/336 held
-5ef7dc4 evidence(step5): Phase 2 T-2e motion survey - N/A, no loop-scratch to hoist (336/336 held)
+5ef7dc4 evidence(step5): Phase 2 T-2e motion survey - N/A, no loop-scope scratch to hoist (336/336 held)
 0f52ca2 test(step5): Phase 1 characterization - adopt_local wiring test closes the Step 4 blind spot
 943679d evidence(step5): Phase 0 baseline @68d3ad9 - all 5 gates green, 334/334
 ```

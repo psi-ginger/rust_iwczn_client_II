@@ -29,7 +29,7 @@ Diff (`00-diff-stat.txt`, new file excluded from `git diff` until add):
  7 files changed, 21 insertions(+), 37 deletions(-)
 ```
 
-Plus `src/client/test_support.rs` (new, 30 lines: header, one import, the
+Plus `src/client/test_support.rs` (new, 27 lines: header, one import, the
 verbatim `local_listener`).
 
 ## F-07 compliance

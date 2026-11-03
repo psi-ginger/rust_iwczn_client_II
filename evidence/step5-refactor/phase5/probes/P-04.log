@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Data\06_Client_Goonzu\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.64s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 1 test
+test game::dispatcher::tests::a_foreign_opcode_is_unhandled_not_an_error ... FAILED
+
+failures:
+
+---- game::dispatcher::tests::a_foreign_opcode_is_unhandled_not_an_error stdout ----
+
+thread 'game::dispatcher::tests::a_foreign_opcode_is_unhandled_not_an_error' (16420) panicked at src\game\dispatcher\tests.rs:932:44:
+called `Result::unwrap()` on an `Err` value: UnexpectedOpcode { expected: 118, cmd: 999 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::dispatcher::tests::a_foreign_opcode_is_unhandled_not_an_error
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

@@ -1,0 +1,12 @@
+diff --git a/src/game/dispatcher.rs b/src/game/dispatcher.rs
+index 2192c21..2ce3771 100644
+--- a/src/game/dispatcher.rs
++++ b/src/game/dispatcher.rs
+@@ -869,7 +869,6 @@ impl DispatcherState {
+                 let logout = parse_logout(cmd, payload)?;
+                 Ok(self.apply_logout(logout.char_unique))
+             }
+-            RESPONSE_CHAT => Ok(DispatchOutcome::Chat(parse_chat(cmd, payload)?)),
+             RESPONSE_CHARUPDATE => {
+                 let update = parse_char_update(cmd, payload)?;
+                 Ok(self.apply_char_update(update))

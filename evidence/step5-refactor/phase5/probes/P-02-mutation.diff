@@ -1,0 +1,13 @@
+diff --git a/src/client/driver.rs b/src/client/driver.rs
+index ca6b571..14c3a42 100644
+--- a/src/client/driver.rs
++++ b/src/client/driver.rs
+@@ -794,7 +794,7 @@ async fn in_world_phase(
+         return match error {
+             LoopError::Link(error) => Err(DriverError::at(Stage::InWorld, error)),
+             LoopError::Handler(error) => {
+-                Err(DriverError::refused(Stage::InWorld, error.to_string()))
++                Err(DriverError::refused(Stage::CharClient, error.to_string()))
+             }
+         };
+     }

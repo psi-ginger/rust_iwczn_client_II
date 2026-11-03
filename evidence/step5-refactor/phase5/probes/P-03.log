@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Data\06_Client_Goonzu\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.31s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 1 test
+test game::dispatcher::tests::a_chat_body_that_disagrees_with_its_si_data_size_is_refused ... FAILED
+
+failures:
+
+---- game::dispatcher::tests::a_chat_body_that_disagrees_with_its_si_data_size_is_refused stdout ----
+
+thread 'game::dispatcher::tests::a_chat_body_that_disagrees_with_its_si_data_size_is_refused' (21572) panicked at src\game\dispatcher\tests.rs:232:53:
+called `Result::unwrap_err()` on an `Ok` value: Unhandled { cmd: 118 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::dispatcher::tests::a_chat_body_that_disagrees_with_its_si_data_size_is_refused
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

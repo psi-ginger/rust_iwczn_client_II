@@ -1,0 +1,12 @@
+diff --git a/src/client/driver.rs b/src/client/driver.rs
+index ca6b571..df14322 100644
+--- a/src/client/driver.rs
++++ b/src/client/driver.rs
+@@ -768,7 +768,6 @@ async fn in_world_phase(
+     game: &mut Option<GameLink>,
+ ) -> Result<DriverOutcome, DriverError> {
+     let mut dispatcher = DispatcherState::new(i32::from(char_client.char_unique));
+-    dispatcher.adopt_local(&char_client);
+ 
+     let link = game_link_mut(game, Stage::InWorld)?;
+     let loop_result = run_with_shutdown(

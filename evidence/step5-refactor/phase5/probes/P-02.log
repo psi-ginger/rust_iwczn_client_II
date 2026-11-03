@@ -1,0 +1,40 @@
+   Compiling goonzu_client v0.1.0 (C:\Data\06_Client_Goonzu\rust_iwczn_client_II)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.25s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\goonzu_client-4517c3fe8a162453.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\asset_fixtures.rs (target\debug\deps\asset_fixtures-f85526a612301aca.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-4612501860a645ca.exe)
+
+running 1 test
+test a_flipped_byte_in_a_chat_frame_is_refused_at_the_in_world_stage ... FAILED
+
+failures:
+
+---- a_flipped_byte_in_a_chat_frame_is_refused_at_the_in_world_stage stdout ----
+
+thread 'a_flipped_byte_in_a_chat_frame_is_refused_at_the_in_world_stage' (10092) panicked at tests\e2e_loopback.rs:796:5:
+expected a Refused{InWorld} refusal, got Refused { stage: CharClient, detail: "game opcode 118 body truncated: expected 35 bytes, got 34" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_flipped_byte_in_a_chat_frame_is_refused_at_the_in_world_stage
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test e2e_loopback`

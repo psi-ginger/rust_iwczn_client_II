@@ -1,0 +1,5 @@
+--- restore verification (P-01) ---
+$ git status --porcelain -- src tests
+$ git diff --stat -- src tests
+HEAD:src/client/driver.rs = ca6b571a1129991b2a50e5c228db1f7b7c4dfb64
+=> empty status/diff = byte-identical restore

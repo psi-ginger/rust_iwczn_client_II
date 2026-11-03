@@ -1,0 +1,16 @@
+diff --git a/src/game/dispatcher.rs b/src/game/dispatcher.rs
+index 2192c21..ce087f8 100644
+--- a/src/game/dispatcher.rs
++++ b/src/game/dispatcher.rs
+@@ -878,7 +878,10 @@ impl DispatcherState {
+                 let ip = parse_person_ip(cmd, payload)?;
+                 Ok(self.apply_person_ip(ip))
+             }
+-            other => Ok(DispatchOutcome::Unhandled { cmd: other }),
++            other => Err(DispatchError::UnexpectedOpcode {
++                expected: RESPONSE_CHAT,
++                cmd: other,
++            }),
+         }
+     }
+ 

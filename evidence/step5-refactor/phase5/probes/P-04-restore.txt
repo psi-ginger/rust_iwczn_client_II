@@ -1,0 +1,5 @@
+--- restore verification (P-04) ---
+$ git status --porcelain -- src tests
+$ git diff --stat -- src tests
+HEAD:src/game/dispatcher.rs = 2192c21a2f3771f196e182e1363edfa4a783c1cf
+=> empty status/diff = byte-identical restore

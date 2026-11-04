@@ -1,4 +1,5 @@
-//! Shared little-endian byte readers and fixed-width C-string decoding.
+//! Shared little-endian byte readers, fixed-width C-string decoding, and the
+//! credential copier.
 //!
 //! Introduced by Step 7.0's lean audit (recommendations C1–C2, applied under
 //! the Custodian's Step 7.1 directive; C3 and C4 close the set under Step 6 —
@@ -6,7 +7,8 @@
 //! triplicated across `game::{char_info,dispatcher,world_entry}` and
 //! duplicated across `auth::{login,world_list}`. They now live here once and
 //! are reused by the `graphics` decoders, which length-gate every section
-//! before reading.
+//! before reading. The credential copier (Step 6's C3) was previously
+//! duplicated across `auth::login` and `game::login`.
 //!
 //! Every infallible reader **panics** if `at` runs past the end of the slice —
 //! the exact contract the per-module copies had. Callers must gate the slice
@@ -131,6 +133,53 @@ pub fn cstr_lossy(field: &[u8]) -> String {
 #[inline]
 pub fn cstr_at(payload: &[u8], off: usize, len: usize) -> String {
     cstr_lossy(&payload[off..off + len])
+}
+
+/// The fixed width of one credential field — `userid`/`userpw`/`macaddress`
+/// on the front (`FrontMsg.h:344-347`) and `szID`/`szPassword` in the game
+/// login (`CommonHeader.h:575`): 20 bytes each, terminator included.
+const CREDENTIAL_FIELD_LEN: usize = 20;
+
+/// A credential that cannot fit its fixed-width field with a NUL terminator,
+/// reported by [`copy_credential`]. Each caller converts it explicitly
+/// (`.map_err`) into its own error variant — the repo's conversion idiom
+/// (`src/client/event_loop.rs:236-239`), not a blanket `From`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CredentialTooLong {
+    /// The legacy field name (`userid`, `szID`, …).
+    pub(crate) field: &'static str,
+    /// Credential length (up to its first NUL) that failed to fit.
+    pub(crate) len: usize,
+}
+
+/// Copies `value` into the fixed-width `slot` with `StringCchCopy`
+/// semantics: bytes up to the first NUL, then zero-fill (`MStrCpy`,
+/// `Lib\commonutil.cpp:6-16`; the legacy's remainder is uninitialized
+/// stack — zero-filling is observationally identical, because the server
+/// reads only up to the terminator, and the zero tail is exactly what
+/// `StringCchCopy` leaves behind).
+///
+/// # Errors
+///
+/// [`CredentialTooLong`] when the value needs 20 or more bytes and therefore
+/// cannot fit a terminator.
+pub(crate) fn copy_credential(
+    slot: &mut [u8],
+    field: &'static str,
+    value: &str,
+) -> Result<(), CredentialTooLong> {
+    debug_assert_eq!(
+        slot.len(),
+        CREDENTIAL_FIELD_LEN,
+        "one 20-byte field per call"
+    );
+    let raw = value.as_bytes();
+    let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+    if len >= CREDENTIAL_FIELD_LEN {
+        return Err(CredentialTooLong { field, len });
+    }
+    slot[..len].copy_from_slice(&raw[..len]);
+    Ok(())
 }
 
 #[cfg(test)]

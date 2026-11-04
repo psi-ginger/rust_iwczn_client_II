@@ -148,7 +148,7 @@
 use crate::auth::front::{FrontError, FrontLink};
 use crate::net::codec::Frame;
 use crate::protocol::bytes::{
-    cstr_at as cstr, i16_at as le_i16, i32_at as le_i32, u16_at as le_u16,
+    copy_credential, cstr_at as cstr, i16_at as le_i16, i32_at as le_i32, u16_at as le_u16,
 };
 
 /// `FRONTMSG_REQUEST_LOGIN` (`FrontMsg.h:44`): the front login request,
@@ -242,26 +242,6 @@ pub enum LoginError {
     },
 }
 
-/// Copies `value` into the 20-byte `slot` with `StringCchCopy` semantics:
-/// bytes up to the first NUL, then zero-fill (the legacy's remainder is
-/// uninitialized stack; zero-filling is observationally identical — the
-/// server reads only up to the terminator).
-///
-/// # Errors
-///
-/// [`LoginError::CredentialTooLong`] when the value needs 20 or more bytes
-/// and therefore cannot fit a terminator.
-fn copy_credential(slot: &mut [u8], field: &'static str, value: &str) -> Result<(), LoginError> {
-    debug_assert_eq!(slot.len(), CREDENTIAL_LEN, "one 20-byte field per call");
-    let raw = value.as_bytes();
-    let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
-    if len >= CREDENTIAL_LEN {
-        return Err(LoginError::CredentialTooLong { field, len });
-    }
-    slot[..len].copy_from_slice(&raw[..len]);
-    Ok(())
-}
-
 /// Builds the 60-byte payload of a `FRONTMSG_REQUEST_LOGIN`
 /// (`sRequest_LogIn`, `FrontMsg.h:336-348`): `userid` at 0..20, `userpw` at
 /// 20..40, `macaddress` at 40..60, each C-string + zero-fill.
@@ -281,9 +261,24 @@ pub fn login_request_payload(
     mac_address: &str,
 ) -> Result<[u8; LOGIN_REQUEST_PAYLOAD_LEN], LoginError> {
     let mut payload = [0u8; LOGIN_REQUEST_PAYLOAD_LEN];
-    copy_credential(&mut payload[0..20], "userid", user_id)?;
-    copy_credential(&mut payload[20..40], "userpw", password)?;
-    copy_credential(&mut payload[40..60], "macaddress", mac_address)?;
+    copy_credential(&mut payload[0..20], "userid", user_id).map_err(|e| {
+        LoginError::CredentialTooLong {
+            field: e.field,
+            len: e.len,
+        }
+    })?;
+    copy_credential(&mut payload[20..40], "userpw", password).map_err(|e| {
+        LoginError::CredentialTooLong {
+            field: e.field,
+            len: e.len,
+        }
+    })?;
+    copy_credential(&mut payload[40..60], "macaddress", mac_address).map_err(|e| {
+        LoginError::CredentialTooLong {
+            field: e.field,
+            len: e.len,
+        }
+    })?;
     Ok(payload)
 }
 

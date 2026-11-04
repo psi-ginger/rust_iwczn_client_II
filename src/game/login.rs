@@ -122,6 +122,7 @@
 
 use crate::auth::login::{AuthKey, FrontAuth};
 use crate::game::entry::{GameError, GameLink};
+use crate::protocol::bytes::copy_credential;
 
 /// `GAMEMSG_REQUEST_LOGIN` - the game login opcode
 /// (`MsgType.h:23`; the server port's `GameMsg::RequestLogin`,
@@ -169,30 +170,6 @@ pub enum GameLoginError {
     },
 }
 
-/// Copies `value` into the `slot`-sized field with `StringCchCopy`
-/// semantics: bytes up to the first NUL, then zero-fill (`MStrCpy`,
-/// `Lib\commonutil.cpp:6-16`; the zero tail is what `StringCchCopy` leaves
-/// behind and the server reads only up to the terminator).
-///
-/// # Errors
-///
-/// [`GameLoginError::CredentialTooLong`] when the value needs 20 or more
-/// bytes and therefore cannot fit a terminator.
-fn copy_credential(
-    slot: &mut [u8],
-    field: &'static str,
-    value: &str,
-) -> Result<(), GameLoginError> {
-    debug_assert_eq!(slot.len(), PLAYER_NAME_LEN, "one 20-byte field per call");
-    let raw = value.as_bytes();
-    let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
-    if len >= PLAYER_NAME_LEN {
-        return Err(GameLoginError::CredentialTooLong { field, len });
-    }
-    slot[..len].copy_from_slice(&raw[..len]);
-    Ok(())
-}
-
 /// Builds the 48-byte payload of a `GAMEMSG_REQUEST_LOGIN`
 /// (`cltLogInInfo`, `CommonHeader.h:1442-1452`): `siAuthKey` at 0..4
 /// little-endian, `szID` at 4..24, `szPassword` at 24..44 (each C-string,
@@ -214,8 +191,18 @@ pub fn game_login_payload(
 ) -> Result<[u8; GAME_LOGIN_PAYLOAD_LEN], GameLoginError> {
     let mut payload = [0u8; GAME_LOGIN_PAYLOAD_LEN];
     payload[0..4].copy_from_slice(&auth_key.get().to_le_bytes());
-    copy_credential(&mut payload[4..24], "szID", account)?;
-    copy_credential(&mut payload[24..44], "szPassword", password)?;
+    copy_credential(&mut payload[4..24], "szID", account).map_err(|e| {
+        GameLoginError::CredentialTooLong {
+            field: e.field,
+            len: e.len,
+        }
+    })?;
+    copy_credential(&mut payload[24..44], "szPassword", password).map_err(|e| {
+        GameLoginError::CredentialTooLong {
+            field: e.field,
+            len: e.len,
+        }
+    })?;
     payload[44] = GAME_MODE_WINDOWED;
     Ok(payload)
 }

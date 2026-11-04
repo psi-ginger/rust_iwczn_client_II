@@ -151,6 +151,7 @@
 use super::char_info::{
     parse_make_char_info_many, CharInfoError, MakeCharInfo, RESPONSE_LOGINMANY,
 };
+use super::gate::GateViolation;
 use super::world_entry::CharClient;
 use crate::protocol::bytes::{cstr_lossy as cstring_lossy, i16_at, i32_at, i64_at};
 use std::collections::BTreeMap;
@@ -422,34 +423,37 @@ pub struct Logout {
 }
 
 /// Gate: opcode, then the exact (or declared) length — never a field read
-/// first. Mirrors `world_entry::gate_frame`.
+/// first. Thin wrapper over the shared core in `super::gate` (Step 6's C4),
+/// mapping its `GateViolation` into [`DispatchError`].
 fn gate_frame(
     cmd: u16,
     expected_cmd: u16,
     expected_len: usize,
     payload: &[u8],
 ) -> Result<(), DispatchError> {
-    if cmd != expected_cmd {
-        return Err(DispatchError::UnexpectedOpcode {
-            expected: expected_cmd,
-            cmd,
-        });
-    }
-    if payload.len() < expected_len {
-        return Err(DispatchError::Truncated {
-            opcode: expected_cmd,
-            expected: expected_len,
-            got: payload.len(),
-        });
-    }
-    if payload.len() > expected_len {
-        return Err(DispatchError::TrailingBytes {
-            opcode: expected_cmd,
-            expected: expected_len,
-            got: payload.len(),
-        });
-    }
-    Ok(())
+    super::gate::gate_frame(cmd, expected_cmd, expected_len, payload).map_err(|v| match v {
+        GateViolation::UnexpectedOpcode { expected, cmd } => {
+            DispatchError::UnexpectedOpcode { expected, cmd }
+        }
+        GateViolation::Truncated {
+            opcode,
+            expected,
+            got,
+        } => DispatchError::Truncated {
+            opcode,
+            expected,
+            got,
+        },
+        GateViolation::TrailingBytes {
+            opcode,
+            expected,
+            got,
+        } => DispatchError::TrailingBytes {
+            opcode,
+            expected,
+            got,
+        },
+    })
 }
 
 /// Parses an opcode-118 body: opcode first, then the declared-size contract

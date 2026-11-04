@@ -26,5 +26,7 @@ pub mod entry;
 pub mod login;
 pub mod world_entry;
 
+mod gate;
+
 #[cfg(test)]
 pub(crate) mod test_support;

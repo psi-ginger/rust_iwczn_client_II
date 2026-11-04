@@ -116,6 +116,7 @@
 
 use crate::game::char_info::{parse_make_char_info, CharInfoError, MakeCharInfo};
 use crate::game::entry::{GameError, GameLink};
+use crate::game::gate::GateViolation;
 use crate::protocol::bytes::{i16_at, i32_at, i64_at};
 
 /// `GAMEMSG_REQUEST_SELECTCHAR` — "the message that selects a character"
@@ -377,32 +378,38 @@ pub async fn request_village_struct(
 }
 
 /// Enforces the strict (cmd, payload) length contract shared by every parser
-/// in this module: opcode first, then an exact-size body.
+/// in this module: opcode first, then an exact-size body. Thin wrapper over
+/// the shared core in `super::gate` (Step 6's C4), mapping its
+/// `GateViolation` into [`WorldEntryError`].
 fn gate_frame(
     cmd: u16,
     expected_cmd: u16,
     expected_len: usize,
     payload: &[u8],
 ) -> Result<(), WorldEntryError> {
-    if cmd != expected_cmd {
-        return Err(WorldEntryError::UnexpectedOpcode {
-            expected: expected_cmd,
-            cmd,
-        });
-    }
-    match payload.len() {
-        len if len < expected_len => Err(WorldEntryError::Truncated {
-            expected: expected_len,
-            got: len,
-            opcode: cmd,
-        }),
-        len if len > expected_len => Err(WorldEntryError::TrailingBytes {
-            expected: expected_len,
-            got: len,
-            opcode: cmd,
-        }),
-        _ => Ok(()),
-    }
+    super::gate::gate_frame(cmd, expected_cmd, expected_len, payload).map_err(|v| match v {
+        GateViolation::UnexpectedOpcode { expected, cmd } => {
+            WorldEntryError::UnexpectedOpcode { expected, cmd }
+        }
+        GateViolation::Truncated {
+            opcode,
+            expected,
+            got,
+        } => WorldEntryError::Truncated {
+            opcode,
+            expected,
+            got,
+        },
+        GateViolation::TrailingBytes {
+            opcode,
+            expected,
+            got,
+        } => WorldEntryError::TrailingBytes {
+            opcode,
+            expected,
+            got,
+        },
+    })
 }
 
 /// `cltGameMsgResponse_ServerInfo` (`MsgType-System.h:1168-1197`) as it sits on

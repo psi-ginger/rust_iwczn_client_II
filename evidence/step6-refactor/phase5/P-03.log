@@ -1,0 +1,35 @@
+﻿cargo :    Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+At line:8 char:1
++ cargo test -- server_info_rejects_foreign_opcodes_and_wrong_lengths v ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling go...wczn_client_II):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.88s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 2 tests
+test game::world_entry::tests::server_info_rejects_foreign_opcodes_and_wrong_lengths ... FAILED
+test game::world_entry::tests::village_struct_rejects_foreign_opcodes_and_wrong_lengths ... FAILED
+
+failures:
+
+---- game::world_entry::tests::server_info_rejects_foreign_opcodes_and_wrong_lengths stdout ----
+
+thread 'game::world_entry::tests::server_info_rejects_foreign_opcodes_and_wrong_lengths' (8884) panicked at src\game\world_entry\tests.rs:403:59:
+called `Result::unwrap_err()` on an `Ok` value: ServerInfo { service_area: 8, server_unique: 7, item_mall_use: true, village_war: false, bonus_time: true, bonus2_time: false, special_quest_bonus_time: true, broadcast: false, best_village_level: 9, npc_price_rate: 150, item_price_index: 1234605616436508552, event_switch: [true, false, true, false, true, false, true, false], minimum_teacher_level: 30, service_age: -2, enable_pvp: 1, auto_unblock_mode: true, vote_campaign: false, event_toggle_switch: [true, false] }
+
+---- game::world_entry::tests::village_struct_rejects_foreign_opcodes_and_wrong_lengths stdout ----
+
+thread 'game::world_entry::tests::village_struct_rejects_foreign_opcodes_and_wrong_lengths' (4768) panicked at src\game\world_entry\tests.rs:506:67:
+called `Result::unwrap_err()` on an `Ok` value: VillageStruct { village_unique: 1, structure_info: [-30, -19, -8, 3, 14, 25, 36, 47, 58, 69] }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    game::world_entry::tests::server_info_rejects_foreign_opcodes_and_wrong_lengths
+    game::world_entry::tests::village_struct_rejects_foreign_opcodes_and_wrong_lengths
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

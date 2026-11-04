@@ -1,0 +1,13 @@
+﻿diff --git a/src/game/gate.rs b/src/game/gate.rs
+index 25003eb..c39271c 100644
+--- a/src/game/gate.rs
++++ b/src/game/gate.rs
+@@ -54,7 +54,7 @@ pub(crate) fn gate_frame(
+     expected_len: usize,
+     payload: &[u8],
+ ) -> Result<(), GateViolation> {
+-    if cmd != expected_cmd {
++    if cmd == expected_cmd {
+         return Err(GateViolation::UnexpectedOpcode {
+             expected: expected_cmd,
+             cmd,

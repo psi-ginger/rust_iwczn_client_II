@@ -1,0 +1,9 @@
+﻿Committed blob hashes (L-2) at HEAD 5a6d5239435175b3f9d3d6c788a0d37ea98471e0:
+7695abc88d6d64ebcb884551d080c0e3bf0c130c  src/protocol/bytes.rs
+86e9ab5dc2c72937f564de9f387632e5e7f09be4  src/auth/login.rs
+9f1017c3a2f59efd4eef13cd971fabf97a4faa21  src/auth/login/tests.rs
+178af6078e64e02a6e725780d7803a87cf58c35a  src/game/login.rs
+5cac2c807b17fae93ea4b76fcc89c01243a5eb3f  src/game/dispatcher.rs
+b5821fde3bb3ee8756f7810c98a30c3e71be9a9c  src/game/world_entry.rs
+25003eb6c3eef32b89c5387467f50436beed7987  src/game/gate.rs
+b7fb706fa2b42b6de33db8876e36059c943aeeb3  src/game/mod.rs

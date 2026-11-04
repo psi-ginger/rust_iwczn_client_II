@@ -1,0 +1,2 @@
+﻿git status --porcelain -- src tests => [] (empty = clean)
+git diff --exit-code -- src/game/gate.rs => EXIT=0

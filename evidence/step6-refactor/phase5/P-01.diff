@@ -1,0 +1,13 @@
+﻿diff --git a/src/protocol/bytes.rs b/src/protocol/bytes.rs
+index 7695abc..080e377 100644
+--- a/src/protocol/bytes.rs
++++ b/src/protocol/bytes.rs
+@@ -175,7 +175,7 @@ pub(crate) fn copy_credential(
+     );
+     let raw = value.as_bytes();
+     let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+-    if len >= CREDENTIAL_FIELD_LEN {
++    if len > CREDENTIAL_FIELD_LEN {
+         return Err(CredentialTooLong { field, len });
+     }
+     slot[..len].copy_from_slice(&raw[..len]);

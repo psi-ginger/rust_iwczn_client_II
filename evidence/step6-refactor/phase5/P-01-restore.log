@@ -1,0 +1,2 @@
+﻿git status --porcelain -- src tests => [] (empty = clean)
+git diff --exit-code -- src/protocol/bytes.rs => EXIT=0

@@ -1,0 +1,13 @@
+﻿diff --git a/src/protocol/bytes.rs b/src/protocol/bytes.rs
+index 7695abc..0f5eaf4 100644
+--- a/src/protocol/bytes.rs
++++ b/src/protocol/bytes.rs
+@@ -174,7 +174,7 @@ pub(crate) fn copy_credential(
+         "one 20-byte field per call"
+     );
+     let raw = value.as_bytes();
+-    let len = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
++    let len = raw.len();
+     if len >= CREDENTIAL_FIELD_LEN {
+         return Err(CredentialTooLong { field, len });
+     }

@@ -1,0 +1,8 @@
+﻿cargo :     Checking goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+At line:6 char:1
++ cargo clippy --all-targets -- -D warnings 2>&1 | Out-File -FilePath " ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking go...wczn_client_II):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.56s

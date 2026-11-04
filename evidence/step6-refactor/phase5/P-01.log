@@ -1,0 +1,35 @@
+﻿cargo :    Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+At line:8 char:1
++ cargo test -- credentials_that_do_not_fit_are_refused_not_truncated a ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling go...wczn_client_II):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.69s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 2 tests
+test game::login::tests::a_credential_without_room_for_its_terminator_is_refused ... FAILED
+test auth::login::tests::credentials_that_do_not_fit_are_refused_not_truncated ... FAILED
+
+failures:
+
+---- game::login::tests::a_credential_without_room_for_its_terminator_is_refused stdout ----
+
+thread 'game::login::tests::a_credential_without_room_for_its_terminator_is_refused' (7116) panicked at src\game\login\tests.rs:232:77:
+called `Result::unwrap_err()` on an `Ok` value: [13, 12, 11, 10, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 98, 115, 51, 99, 114, 101, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- auth::login::tests::credentials_that_do_not_fit_are_refused_not_truncated stdout ----
+
+thread 'auth::login::tests::credentials_that_do_not_fit_are_refused_not_truncated' (2996) panicked at src\auth\login\tests.rs:219:58:
+called `Result::unwrap_err()` on an `Ok` value: [120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 112, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65, 49, 66, 50, 67, 51, 68, 52, 69, 53, 70, 54, 0, 0, 0, 0, 0, 0, 0, 0]
+
+
+failures:
+    auth::login::tests::credentials_that_do_not_fit_are_refused_not_truncated
+    game::login::tests::a_credential_without_room_for_its_terminator_is_refused
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

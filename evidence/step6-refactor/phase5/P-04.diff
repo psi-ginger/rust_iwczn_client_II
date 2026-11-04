@@ -1,0 +1,21 @@
+﻿diff --git a/src/game/gate.rs b/src/game/gate.rs
+index 25003eb..49909e7 100644
+--- a/src/game/gate.rs
++++ b/src/game/gate.rs
+@@ -61,14 +61,14 @@ pub(crate) fn gate_frame(
+         });
+     }
+     if payload.len() < expected_len {
+-        return Err(GateViolation::Truncated {
++        return Err(GateViolation::TrailingBytes {
+             opcode: expected_cmd,
+             expected: expected_len,
+             got: payload.len(),
+         });
+     }
+     if payload.len() > expected_len {
+-        return Err(GateViolation::TrailingBytes {
++        return Err(GateViolation::Truncated {
+             opcode: expected_cmd,
+             expected: expected_len,
+             got: payload.len(),

@@ -1,0 +1,37 @@
+﻿cargo :    Compiling goonzu_client v0.1.0 (C:\Tmp_project\rust_iwczn_client_II)
+At line:8 char:1
++ cargo test -- strings_stop_at_their_terminator_and_zero_fill_the_rest ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling go...wczn_client_II):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.03s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-fd385e3f808246da.exe)
+
+running 2 tests
+test auth::login::tests::login_request_payload_is_byte_exact_at_literal_offsets ... FAILED
+test game::login::tests::strings_stop_at_their_terminator_and_zero_fill_the_rest ... FAILED
+
+failures:
+
+---- auth::login::tests::login_request_payload_is_byte_exact_at_literal_offsets stdout ----
+
+thread 'auth::login::tests::login_request_payload_is_byte_exact_at_literal_offsets' (10040) panicked at src\auth\login\tests.rs:143:5:
+empty fields are all-zero
+
+---- game::login::tests::strings_stop_at_their_terminator_and_zero_fill_the_rest stdout ----
+
+thread 'game::login::tests::strings_stop_at_their_terminator_and_zero_fill_the_rest' (11080) panicked at src\game\login\tests.rs:195:5:
+assertion `left == right` failed: szID is 'haru' zero-filled to 20 ΓÇö the junk after the NUL is not part of the string
+  left: [104, 97, 114, 117, 0, 106, 117, 110, 107, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ right: [104, 97, 114, 117, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    auth::login::tests::login_request_payload_is_byte_exact_at_literal_offsets
+    game::login::tests::strings_stop_at_their_terminator_and_zero_fill_the_rest
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

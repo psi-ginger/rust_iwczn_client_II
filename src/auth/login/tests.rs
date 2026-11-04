@@ -159,6 +159,46 @@ fn login_request_payload_is_byte_exact_at_literal_offsets() {
 }
 
 #[test]
+fn short_credentials_are_terminated_and_zero_filled_at_every_field() {
+    // FrontMsg.h:344-347: three 20-byte C-string fields (userid, userpw,
+    // macaddress), each NUL-terminated and zero-filled - StringCchCopy
+    // semantics (Lib/commonutil.cpp:6-16). Concrete short credentials:
+    // id "test2" (5 bytes), password "test" (4 bytes), a valid 12-hex
+    // mac (Client.cpp:7286).
+    let payload = login_request_payload("test2", "test", "A1B2C3D4E5F6").unwrap();
+
+    let mut expected = [0u8; LOGIN_REQUEST_PAYLOAD_LEN];
+    expected[0..6].copy_from_slice(b"test2\0");
+    expected[20..25].copy_from_slice(b"test\0");
+    expected[40..52].copy_from_slice(b"A1B2C3D4E5F6");
+    assert_eq!(
+        payload, expected,
+        "the 60-byte request frames id/password/mac at 0/20/40, zero-padded"
+    );
+
+    assert_eq!(
+        payload[5], 0,
+        "userid terminator after \"test2\" (FrontMsg.h:344)"
+    );
+    assert_eq!(
+        payload[24], 0,
+        "userpw terminator after \"test\" (FrontMsg.h:345)"
+    );
+    assert!(
+        payload[6..20].iter().all(|&b| b == 0),
+        "userid tail zero-filled"
+    );
+    assert!(
+        payload[25..40].iter().all(|&b| b == 0),
+        "userpw tail zero-filled"
+    );
+    assert!(
+        payload[52..60].iter().all(|&b| b == 0),
+        "mac tail zero-filled (Client.cpp:7286)"
+    );
+}
+
+#[test]
 fn credentials_that_do_not_fit_are_refused_not_truncated() {
     // Each field independently: 20+ chars cannot fit with a NUL. The legacy
     // sent StringCchCopy's truncated remainder; this port refuses with the

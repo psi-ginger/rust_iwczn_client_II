@@ -128,6 +128,30 @@ Step 4's summary recorded 1.99.1 / `x86_64-pc-windows-gnu` (Step 3
 recorded 1.99.0). Same class as Step 4 §8.3. Gates above are green under
 the toolchain this bundle records.
 
+## Live integration over the ngrok tunnels (Verifier run, 2026-11-04)
+
+Appended per Verdict §9.2. The audit directive's tunnel labels were
+swapped relative to the deployed services; the mapping below is the one
+the live run proved empirically — each service identified itself by the
+handshake it pushes on connect:
+
+| Endpoint | Service | Empirical proof |
+|---|---|---|
+| `0.tcp.ap.ngrok.io:18646` | **FRONT** (repo default FRONT = `127.0.0.1:5700`) | plaintext 10-byte cmd-30000 `SECRETKEY` frame pushed on connect; live front handshake `session_seed=(0x1c, 0x39)` |
+| `0.tcp.ap.ngrok.io:14195` | **GAME** (repo default GAME = `127.0.0.1:4010`) | 13-byte ciphered handshake pushed on connect; live game handshake `seed=(0xe7, 0x67)`, `char_unique=6`, server version 1 |
+
+Run: `GOONZU_LIVE_FRONT=0.tcp.ap.ngrok.io:18646`,
+`GOONZU_LIVE_GAME=0.tcp.ap.ngrok.io:14195`, then
+`cargo test --test live_integration -- --ignored --nocapture` →
+**exit 0, 4/4 PASS**: front handshake ok; game handshake ok — proves the
+link cipher `0x12/0x34` matches the **deployed** service (the
+non-circular assumption `tests/live_integration.rs` exists for); event
+loop idles cleanly with 3 WAN ticks, 0 frames; heartbeat soak 7/7 across
+70.01 s, connection never dropped. This run is evidence only — the
+gates themselves never touch the network (F-01, see invariant below).
+Full record: Verdict §3 of
+`docs/audit/2026-11-04-step-5-refactor-verification.md`.
+
 ## Step 4 verdict §8 follow-ups (addressed here)
 
 1. **Probe-count prose — corrected.** Step 4's `summary.md` says "13 of
@@ -138,11 +162,14 @@ the toolchain this bundle records.
    recommendation the fix goes in a follow-up `docs(qc)` note (drafted
    below), not by editing committed Step 4 evidence; no technical claim
    depends on it.
-2. **Stale push prose — noted.** Step 4's summary says "the branch has
-   not been pushed yet" while `refactor/step4-structure` is present on
-   `origin` (Step 4 §8.2). This bundle states its own push status
-   factually: `refactor/step5-structure` currently has **no upstream**
-   (`git status -sb` → `## refactor/step5-structure`).
+2. **Stale push prose — corrected (Verdict §9.1).** Step 4's summary
+   says "the branch has not been pushed yet" while
+   `refactor/step4-structure` is present on `origin` (Step 4 §8.2).
+   This bundle originally repeated that class of error — "no upstream /
+   not pushed" conflated local upstream configuration with push status.
+   Factually, `refactor/step5-structure` is pushed to and tracked on
+   `origin` (the Verifier fetched it from there during the 2026-11-04
+   audit; tip `ec3822e` at audit time, `b431000` = verdict commit).
 3. **rustc informational (Step 4 §8.3)** — see env disclosure above.
 
 ## Drafts ready for Verifier sign-off (`docs(qc)`)
@@ -167,16 +194,19 @@ or modified by the Implementer.
   in the client group, 1 `HANDSHAKE_PAYLOAD`, 1 `SECRETKEY_FRAME`
   tree-wide) and both removed literals are byte-identical to their donors
   (`True` / `True`).
-- **F-01**: every address is loopback (`127.0.0.1:0`); no live server
-  named.
+- **F-01**: every address the suite binds is loopback (`127.0.0.1:0`);
+  no live server is named by any gate. The Verifier's separate run of
+  the ignored `live_integration` suite over ngrok (see "Live
+  integration" above) is evidence only, outside all 5 gates.
 - **No fixture edits**: the 4 probes mutate production source only and
   restore it; no test expectation or fixture byte was changed to make a
   probe bite (or to hide one).
 - **Test count locked**: 336/336 from Phase 1 through Phase 5's three
   determinism runs.
 - **One commit per phase, forward-only** (no rebase, no force-push; the
-  branch has not been pushed), with the Phase 4 evidence-prose fix
-  disclosed above.
+  branch is pushed to and tracked on `origin` — push status corrected
+  per Verdict §9.1), with the Phase 4 evidence-prose fix disclosed
+  above.
 - **Counts copied from `test result:` lines**, never hand-computed.
 - Never pushed to `main`; all work on `refactor/step5-structure`.
 

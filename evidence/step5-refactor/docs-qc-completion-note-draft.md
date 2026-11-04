@@ -1,12 +1,17 @@
 # DRAFT — `docs(qc)` completion note for `main` (pending Verifier sign-off)
 
-**Status: draft only.** To be committed as the short `docs(qc)`
+**Status: draft, precondition met.** The Verifier's signed verdict now
+exists at `docs/audit/2026-11-04-step-5-refactor-verification.md`
+(filed 2026-11-04, commit `b431000`, `PASSED` / FF merge authorized),
+so this note is cleared for the Custodian's use. The verdict's three
+§9 observations have been resolved on the branch pre-merge: push prose
+corrected, the empirical ngrok tunnel mapping recorded in `summary.md`,
+and the live integration results added to the message below. To be
+committed as the short `docs(qc)`
 completion note on `main` *immediately after* the Custodian's advance,
-per `CONTRIBUTING_PHASE2.md:256-259`, and only once the Verifier's
-signed verdict exists at
-`docs/audit/2026-11-04-step-5-refactor-verification.md`. The Verifier's
-merge-skew `fmt` + `test` re-run on `main` follows. Nothing here has been
-committed; the Implementer does not file `docs(qc)` verdicts.
+per `CONTRIBUTING_PHASE2.md:256-259`. The Verifier's
+merge-skew `fmt` + `test` re-run on `main` follows. Nothing here has
+been committed; the Implementer does not file `docs(qc)` verdicts.
 
 Proposed commit message:
 
@@ -35,6 +40,20 @@ hash table 10/10; citations across the 10 changed files 48 -> 49
 (+1, no file lost); F-07 intact (local_listener/HANDSHAKE_PAYLOAD/
 SECRETKEY_FRAME each defined once tree-wide, removed literals
 byte-identical to their donors); Cargo.toml/Cargo.lock untouched.
+
+Live integration (Verifier run over the ngrok tunnels, 2026-11-04;
+empirical mapping 18646 = FRONT, 14195 = GAME - the directive's labels
+were swapped): cargo test --test live_integration -- --ignored
+--nocapture exit 0, 4/4 PASS - front handshake
+session_seed=(0x1c,0x39); game handshake seed=(0xe7,0x67)
+char_unique=6 server version 1 (proves link cipher 0x12/0x34 matches
+the deployed service); event loop 3 WAN ticks, 0 frames; heartbeat
+soak 7/7 across 70.01s, connection never dropped.
+
+Verifier verdict section 9's three non-blocking observations are
+resolved on the branch before the merge: stale push prose corrected in
+summary.md, the empirical tunnel mapping recorded there (Verdict
+section 3), and these live results added to this note.
 
 Documentation correction carried from Step 4 verdict section 8: Step 4's
 summary.md prose says "13 of 14 probe runs failed their named test at

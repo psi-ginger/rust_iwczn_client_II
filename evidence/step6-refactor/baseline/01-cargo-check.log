@@ -1,0 +1,7 @@
+﻿cargo :     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+At line:11 char:1
++ cargo check --all-targets 2>&1 | Out-File -FilePath "$ev/01-cargo-che ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished `d...get(s) in 0.08s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

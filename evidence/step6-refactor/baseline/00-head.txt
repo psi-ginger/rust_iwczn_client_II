@@ -1,0 +1,7 @@
+﻿commit fd8e8d1f7f164e4d9dcb392dbdbad41e64240538
+Author:     goonzu-rs <goonzu-rs@localhost>
+AuthorDate: Wed Nov 4 19:34:31 2026 +0700
+Commit:     goonzu-rs <goonzu-rs@localhost>
+CommitDate: Wed Nov 4 19:34:31 2026 +0700
+
+    docs(step6): WO for Step 6 structural refactoring - lean findings sweep C3+C4, scope settled from the pre-implementation audit

@@ -1,7 +1,8 @@
 //! Shared little-endian byte readers and fixed-width C-string decoding.
 //!
-//! Introduced by Step 7.0's lean audit (recommendations C1–C4, applied under
-//! the Custodian's Step 7.1 directive): the readers below were previously
+//! Introduced by Step 7.0's lean audit (recommendations C1–C2, applied under
+//! the Custodian's Step 7.1 directive; C3 and C4 close the set under Step 6 —
+//! `docs/agents/WO-step6-structure.md`): the readers below were previously
 //! triplicated across `game::{char_info,dispatcher,world_entry}` and
 //! duplicated across `auth::{login,world_list}`. They now live here once and
 //! are reused by the `graphics` decoders, which length-gate every section

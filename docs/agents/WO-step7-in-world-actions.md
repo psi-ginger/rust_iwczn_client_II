@@ -2,9 +2,9 @@
 
 **Status:** `DRAFT` for Custodian alignment — definition-before-implementation.
 No `src/**` byte may move before this scope is accepted.
-**Date:** 2026-11-05 · **Revision:** Rev 2 — payload design replaced by the *Modern Rust
+**Date:** 2026-11-05 · **Revision:** Rev 2.1 — payload design replaced by the *Modern Rust
 Protocol Spec* (§8) under the architectural direction (§2); the Rev-1 legacy-faithful
-wire layouts are retired and mapped in §9.
+wire layouts are retired and mapped in §9. Rev 2.1 appends §15 (Future Invariant & Server Alignment Note: QA advisories Q-1..Q-4; no wire change).
 **Branch:** to be cut from `main` @ `81427d2` on acceptance.
 **Baseline (re-derived this session):** clean tree, `main` @ `81427d2`, all five mandatory
 gates exit-0 — `cargo check --all-targets` (under `RUSTFLAGS="-D warnings"`), `cargo clippy
@@ -444,3 +444,46 @@ results, mirror-checklist status.)_
 
 _(to be filled by the Verifier lane: S4 clean-clone re-run, mutation-probe adjudication,
 mirror confirmation, DoD 1-8 check, merge authorization.)_
+
+## 15. Future Invariant & Server Alignment Note (Rev 2.1 - 2026-11-05)
+
+Recorded from the Pre-Implementation QA Audit
+(`docs/audit/2026-11-05-step-7-protocol-spec-qa-audit.md`, Verifier `psi-ginger`,
+APPROVED at `e32f481`). These four advisories clarify the §8.4 mirror
+obligations only: no byte, size, opcode, or golden in §8 changes
+(§8.4.3); editing any golden in §8.3 still requires a WO revision.
+
+- **Q-1 - NPCPOS `kind` is opaque and server-defined.** The §8.4.2 duty
+  "`kind`/`mode` known-or-refuse" is scoped to `OrderKind` (0/1/2, §8.2/D3)
+  and `ChatMode` (§8.2) only. `REQUEST_NPCPOS`'s `kind: u16` carries no
+  enumerated valid set in this WO - the legacy `siKind` semantics were never
+  extracted (§3.3, inbound 5207 "not extracted") - so it is an
+  **opaque `u16`: the client may send any value; the server treats it as
+  server-defined (own range check or pass-through) and must not assume a shared
+  enum with the client**. Neither endpoint may invent a "known set" the other
+  does not hold - that asymmetry is the one desync Q-1 exists to prevent.
+- **Q-2 - Server refusals are unobservable by the client.** For map-bounds
+  violations, `village >= village_count`, unknown `kind`/`mode`, non-UTF-8 text,
+  and chat over `MAX_CHAT_BYTES`: the client has no receive path for any such
+  signal (§6 admits no inbound opcode beyond 241), so **any server refusal
+  behavior - silent drop, disconnect, or internal error handling - is
+  conformant**, and no finding will be raised against the server for choosing
+  one. Refusals stay refusals, never truncation, on both encode paths (D6),
+  independent of server behavior.
+- **Q-3 - The 241 broadcast scope is server-internal.** The client is
+  report-only (D8/T11: `DispatchOutcome::Ordered` never writes `WorldChar`;
+  position truth stays opcode 200). The legacy emission mechanism
+  (`SendNeighbourMsg`, `char-order.cpp:118-119`) is the semantic reference for
+  *why* 241 exists, but the actual interest set (radius/cell/all-in-map) is
+  **server-defined logic the client does not model, observe, or depend on** -
+  no client test may pin it.
+- **Q-4 - `char_unique` `u32` (§8.2) vs `i32` (§8.4/code) is notation
+  only.** The wire representation is **4 bytes little-endian either way** (the
+  repo parses with `i32_at` / `i32::from_le_bytes`, `entry.rs:252`); the two
+  types are bit-identical for every valid id, and both endpoints read and write
+  the same 4 bytes. No endpoint may treat sign or width as a contract
+  difference.
+
+Status: advisory only - Phase 1 may proceed unchanged. Q-1 must remain in force
+when the `goonzu-rs` mirror checklist (§8.4) is signed off (DoD item 7);
+Q-2 through Q-4 may be folded into any future WO touch.

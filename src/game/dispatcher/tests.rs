@@ -17,12 +17,19 @@
 // (`game.rs:426`, `game.rs:1500`), built with independent byte math
 // rather than by any function under test. The opcode-6 expectations reuse
 // the Step 4.4 field table (`char_info`, QC'd) with a local record builder.
+//
+// Step 7 Phase 2 (WO §10 T8-T12): the 241 order echo — two-stage gate,
+// unknown-kind refusal by name, the target triple, report-only. F-07 as
+// always: goldens H/I are the frozen §8.3 literals; the task descriptor's
+// Attack echo (char 1001) is a separate test hand-built from the §8.2
+// layout, because §8.3-I is SitDown and stays frozen (§15).
 use super::*;
 use crate::game::char_info::{
     MAKECHARTYPE_NPC, MAKECHARTYPE_PC, MAKE_CHAR_INFO_COMMON_PAYLOAD_LEN,
     MAKE_CHAR_INFO_PAYLOAD_LEN,
 };
 use crate::game::login::PLAYER_NAME_LEN;
+use crate::game::test_support::frame;
 use crate::protocol::header::HEADER_SIZE;
 
 /// The local avatar tests adopt: the Step 4.5-4.7 `CharClient` with values
@@ -974,4 +981,329 @@ fn every_parser_checks_its_opcode_before_any_length() {
             cmd: RESPONSE_LOGOUT,
         }
     ));
+}
+
+// ---------------------------------------------------------------------
+// Step 7 Phase 2 — opcode 241 order echo (WO §10 T8-T12).
+// ---------------------------------------------------------------------
+
+// T8 goldens — WO §8.3-H/I, frozen literals (F-07: hand-placed here, never
+// derived from the parser). Frame bytes are composed with the shared
+// plaintext `frame` builder (`game/test_support.rs`), which encodes the
+// 5-byte header contract — neither the parser nor the builder is its own
+// expectation.
+#[test]
+fn golden_h_move_and_i_sitdown_parse_from_the_frozen_frames() {
+    // §7 file plan: the opcode lives in both module homes — one number,
+    // pinned equal so the two can never drift.
+    assert_eq!(
+        RESPONSE_ORDER,
+        crate::game::action::RESPONSE_ORDER,
+        "§7 — dispatcher::RESPONSE_ORDER == action::RESPONSE_ORDER"
+    );
+    assert_eq!(
+        RESPONSE_ORDER, 241,
+        "MsgType.h:290 — GAMEMSG_RESPONSE_USERORDER (D1: opcode identity retained)"
+    );
+
+    // Golden H — Move, char 12345, x=100, y=200 (§8.3-H).
+    let h_payload = [0x39, 0x30, 0x00, 0x00, 0x00, 0x64, 0x00, 0xC8, 0x00];
+    assert_eq!(
+        frame(RESPONSE_ORDER, &h_payload),
+        [0x0E, 0x00, 0x00, 0xF1, 0x00, 0x39, 0x30, 0x00, 0x00, 0x00, 0x64, 0x00, 0xC8, 0x00,],
+        "§8.3-H frame: usSize 14, ucChk 0, cmd 241 = 0x00F1"
+    );
+    let h = parse_response_order(RESPONSE_ORDER, &h_payload).expect("golden H parses");
+    assert_eq!(
+        h.char_unique, 12345,
+        "§8.3-H char_unique 12345 = 0x00003039 LE (Q-4: 4 LE bytes)"
+    );
+    assert_eq!(
+        h.order,
+        Order::Move { x: 100, y: 200 },
+        "§8.3-H kind 00, x = 0x0064 LE, y = 0x00C8 LE"
+    );
+
+    // Golden I — SitDown, char 12345 (§8.3-I).
+    let i_payload = [0x39, 0x30, 0x00, 0x00, 0x02];
+    assert_eq!(
+        frame(RESPONSE_ORDER, &i_payload),
+        [0x0A, 0x00, 0x00, 0xF1, 0x00, 0x39, 0x30, 0x00, 0x00, 0x02],
+        "§8.3-I frame: usSize 10, cmd 241 = 0x00F1"
+    );
+    let i = parse_response_order(RESPONSE_ORDER, &i_payload).expect("golden I parses");
+    assert_eq!(i.char_unique, 12345, "§8.3-I char_unique 12345");
+    assert_eq!(
+        i.order,
+        Order::SitDown,
+        "§8.3-I kind 02 — the tag is the whole variant payload (D3)"
+    );
+
+    // Both dispatch as reports (D8): parse, resolve, report — nothing else.
+    // 12345 is absent from this state, so both resolve Unmatched.
+    let mut state = in_world_state();
+    assert_eq!(
+        state.dispatch(RESPONSE_ORDER, &h_payload).unwrap(),
+        DispatchOutcome::Ordered {
+            char_unique: 12345,
+            target: ApplyTarget::Unmatched,
+            order: Order::Move { x: 100, y: 200 },
+        },
+        "golden H dispatched"
+    );
+    assert_eq!(
+        state.dispatch(RESPONSE_ORDER, &i_payload).unwrap(),
+        DispatchOutcome::Ordered {
+            char_unique: 12345,
+            target: ApplyTarget::Unmatched,
+            order: Order::SitDown,
+        },
+        "golden I dispatched"
+    );
+}
+
+// The task descriptor's Attack-echo case (char 1001, target 12345) is NOT
+// golden I — frozen §8.3-I is SitDown (§15: editing a golden requires a
+// WO revision) — so it is asserted against the §8.2 layout instead:
+// `char_unique u32 | kind 1 | target_char u32`, hand-built byte by byte.
+#[test]
+fn an_attack_echo_parses_from_the_section_8_2_layout() {
+    let payload = [0xE9, 0x03, 0x00, 0x00, 0x01, 0x39, 0x30, 0x00, 0x00];
+    let parsed = parse_response_order(RESPONSE_ORDER, &payload).expect("attack echo parses");
+    assert_eq!(
+        parsed.char_unique, 1001,
+        "§8.2 char_unique u32 — 1001 = 0x03E9 LE"
+    );
+    assert_eq!(
+        parsed.order,
+        Order::Attack { target_char: 12345 },
+        "§8.2 kind 1 + target_char u32 — 12345 = 0x00003039 LE"
+    );
+
+    let mut state = in_world_state();
+    assert_eq!(
+        state.dispatch(RESPONSE_ORDER, &payload).unwrap(),
+        DispatchOutcome::Ordered {
+            char_unique: 1001,
+            target: ApplyTarget::Unmatched,
+            order: Order::Attack { target_char: 12345 },
+        },
+        "the echo reports; 1001 is unknown to this state (D8 report-only)"
+    );
+}
+
+// T8 — the two-stage gate's length refusals, by name (D8, §8.3 refusal
+// fixtures): stage 1 guards the 5-byte prefix, stage 2 the kind's exact
+// length, and the opcode gate still precedes both.
+#[test]
+fn the_two_stage_length_gates_refuse_by_name() {
+    // Stage 1: 4 bytes cannot hold char_unique + kind.
+    let err = parse_response_order(RESPONSE_ORDER, &[0x39, 0x30, 0x00, 0x00]).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            DispatchError::Truncated {
+                opcode: RESPONSE_ORDER,
+                expected: 5,
+                got: 4,
+            }
+        ),
+        "expected Truncated {{ expected: 5, got: 4 }}, got {err:?}"
+    );
+
+    // Stage 2 short: Move needs exactly 9.
+    let mut move8 = [0u8; 8];
+    move8[..4].copy_from_slice(&12345_i32.to_le_bytes());
+    move8[4] = 0; // kind Move
+    let err = parse_response_order(RESPONSE_ORDER, &move8).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            DispatchError::Truncated {
+                opcode: RESPONSE_ORDER,
+                expected: 9,
+                got: 8,
+            }
+        ),
+        "expected Truncated {{ expected: 9, got: 8 }}, got {err:?}"
+    );
+
+    // Stage 2 long: Move needs exactly 9.
+    let mut move10 = [0u8; 10];
+    move10[..4].copy_from_slice(&12345_i32.to_le_bytes());
+    move10[4] = 0;
+    let err = parse_response_order(RESPONSE_ORDER, &move10).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            DispatchError::TrailingBytes {
+                opcode: RESPONSE_ORDER,
+                expected: 9,
+                got: 10,
+            }
+        ),
+        "expected TrailingBytes {{ expected: 9, got: 10 }}, got {err:?}"
+    );
+
+    // Stage 2 long: SitDown needs exactly 5 — a 6th byte is refused too.
+    let mut sit6 = [0u8; 6];
+    sit6[..4].copy_from_slice(&12345_i32.to_le_bytes());
+    sit6[4] = 2;
+    let err = parse_response_order(RESPONSE_ORDER, &sit6).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            DispatchError::TrailingBytes {
+                opcode: RESPONSE_ORDER,
+                expected: 5,
+                got: 6,
+            }
+        ),
+        "expected TrailingBytes {{ expected: 5, got: 6 }}, got {err:?}"
+    );
+
+    // The opcode gate still precedes every length gate (the file's
+    // convention, `every_parser_checks_its_opcode_before_any_length`).
+    let err = parse_response_order(RESPONSE_CHAT, &[]).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            DispatchError::UnexpectedOpcode {
+                expected: RESPONSE_ORDER,
+                cmd: RESPONSE_CHAT,
+            }
+        ),
+        "expected UnexpectedOpcode {{ expected: 241, cmd: 118 }}, got {err:?}"
+    );
+}
+
+// T9 — an unknown kind refuses by name BEFORE any length pass (D3/D8): at
+// both lengths a known kind would gate, the kind is what gets reported.
+#[test]
+fn an_unknown_order_kind_refuses_before_any_length_pass() {
+    // 5 bytes: stage 1 passes; a length-first gate would say Truncated{9}.
+    let short = [0x01, 0x00, 0x00, 0x00, 200];
+    let err = parse_response_order(RESPONSE_ORDER, &short).unwrap_err();
+    assert!(
+        matches!(err, DispatchError::UnknownOrderKind { kind: 200 }),
+        "expected UnknownOrderKind {{ kind: 200 }}, got {err:?}"
+    );
+
+    // 10 bytes: stage 2 for a known kind would say TrailingBytes{9}; the
+    // reserved kind still wins — no length pass has run yet.
+    let long = [0x01, 0x00, 0x00, 0x00, 200, 0, 0, 0, 0, 0];
+    let err = parse_response_order(RESPONSE_ORDER, &long).unwrap_err();
+    assert!(
+        matches!(err, DispatchError::UnknownOrderKind { kind: 200 }),
+        "expected UnknownOrderKind {{ kind: 200 }}, got {err:?}"
+    );
+
+    // The dispatch arm surfaces the same refusal and touches nothing.
+    let mut state = in_world_state();
+    let before = state.clone();
+    let err = state.dispatch(RESPONSE_ORDER, &short).unwrap_err();
+    assert!(
+        matches!(err, DispatchError::UnknownOrderKind { kind: 200 }),
+        "expected UnknownOrderKind {{ kind: 200 }} through dispatch, got {err:?}"
+    );
+    assert_eq!(state, before, "a refused echo leaves the state identical");
+}
+
+// T10 — the target resolution triple, reported read-only
+// (`Client-SystemNPC.cpp:546-553`): self unique -> Local, table id ->
+// Nearby, unknown -> Unmatched — never an error (the 200/215 convention).
+#[test]
+fn an_order_echo_resolves_the_target_triple() {
+    let mut state = in_world_state(); // local avatar = 7
+    state
+        .dispatch(RESPONSE_LOGINMANY, &pc_record(42, 12, 777, 11, 22, 3, 4))
+        .unwrap(); // the nearby table gains 42
+
+    // char_unique LE + kind + the variant's tail (§8.2), by hand.
+    let echo = |char_unique: i32, kind: u8, tail: &[u8]| {
+        let mut body = char_unique.to_le_bytes().to_vec();
+        body.push(kind);
+        body.extend_from_slice(tail);
+        body
+    };
+
+    let outcome = state.dispatch(RESPONSE_ORDER, &echo(7, 2, &[])).unwrap();
+    assert_eq!(
+        outcome,
+        DispatchOutcome::Ordered {
+            char_unique: 7,
+            target: ApplyTarget::Local,
+            order: Order::SitDown,
+        },
+        "the local unique resolves Local"
+    );
+
+    let outcome = state.dispatch(RESPONSE_ORDER, &echo(42, 2, &[])).unwrap();
+    assert_eq!(
+        outcome,
+        DispatchOutcome::Ordered {
+            char_unique: 42,
+            target: ApplyTarget::Nearby,
+            order: Order::SitDown,
+        },
+        "a table id resolves Nearby"
+    );
+
+    let outcome = state.dispatch(RESPONSE_ORDER, &echo(9999, 2, &[])).unwrap();
+    assert_eq!(
+        outcome,
+        DispatchOutcome::Ordered {
+            char_unique: 9999,
+            target: ApplyTarget::Unmatched,
+            order: Order::SitDown,
+        },
+        "an unknown id resolves Unmatched — reported, never an error"
+    );
+}
+
+// T11 — report-only: the whole DispatcherState (local avatar, LocalDelta,
+// WorldChar table) is bit-identical before and after every kind of echo,
+// and a Move echo naming the local avatar does not move it — position
+// authority is opcode 200 alone (D8, WO §3.2).
+#[test]
+fn an_order_echo_never_writes_state() {
+    let mut state = in_world_state();
+    state
+        .dispatch(RESPONSE_LOGINMANY, &pc_record(42, 12, 777, 11, 22, 3, 4))
+        .unwrap(); // a non-empty table to protect
+    let before = state.clone();
+
+    // Golden H's Move naming an absent character (12345)…
+    let absent_move = [0x39, 0x30, 0x00, 0x00, 0x00, 0x64, 0x00, 0xC8, 0x00];
+    // …a Move naming the LOCAL avatar (it would move the avatar if 241
+    // wrote)…
+    let mut local_move = [0u8; 9];
+    local_move[..4].copy_from_slice(&7_i32.to_le_bytes());
+    local_move[4] = 0;
+    local_move[5..].copy_from_slice(&[0x64, 0x00, 0xC8, 0x00]);
+    // …and a SitDown naming the nearby entry (42).
+    let mut nearby_sit = [0u8; 5];
+    nearby_sit[..4].copy_from_slice(&42_i32.to_le_bytes());
+    nearby_sit[4] = 2;
+
+    for payload in [&absent_move[..], &local_move[..], &nearby_sit[..]] {
+        let outcome = state.dispatch(RESPONSE_ORDER, payload).unwrap();
+        assert!(
+            matches!(outcome, DispatchOutcome::Ordered { .. }),
+            "each echo reports, got {outcome:?}"
+        );
+    }
+
+    assert_eq!(
+        state, before,
+        "T11 — the whole DispatcherState is bit-identical: no WorldChar, \
+         no LocalDelta, no local-avatar write"
+    );
+    let local = state.local_char().unwrap();
+    assert_eq!(
+        (local.x, local.y),
+        (10, 20),
+        "the Move echo did not move the avatar — position authority stays \
+         opcode 200 (WO §3.2, T11)"
+    );
 }

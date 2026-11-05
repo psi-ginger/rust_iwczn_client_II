@@ -1,18 +1,21 @@
 //! README Step 5, items 2-3 — the message dispatcher: the inbound router for
-//! the five in-world opcodes (`README.md:104-108`) and the delta reflection
-//! into the character state (`README.md:109`).
+//! the in-world opcodes (`README.md:104-108`) and the delta reflection
+//! into the character state (`README.md:109`). Step 7 (WO §8) adds the
+//! report-only order echo 241: six opcodes in scope, five of which write.
 //!
 //! Step 4.5-4.7 delivered the *entry* conversation and the local
 //! [`CharClient`]; this module delivers what runs after entry: every inbound
 //! frame whose opcode is in scope is length-gated and parsed at its literal
 //! offsets, and the resulting deltas are applied to a per-connection
-//! [`DispatcherState`] that models the legacy's `CR[]` avatar table for these
-//! five frames. It is a pure state machine — no sockets, no timers; the
+//! [`DispatcherState`] that models the legacy's `CR[]` avatar table for the
+//! five state-writing frames (the 241 echo reports through
+//! [`DispatchOutcome::Ordered`] without writing, D8). It is a pure state
+//! machine — no sockets, no timers; the
 //! non-blocking pump that will feed it is Step 5.1's [`crate::client::
 //! event_loop`], whose handler receives each already-decifered
 //! [`crate::net::codec::Frame`].
 //!
-//! # The five opcodes and where each body length comes from
+//! # The in-scope opcodes and where each body length comes from
 //!
 //! | Opcode | Legacy message | Body | Size authority |
 //! |---|---|---|---|
@@ -21,13 +24,15 @@
 //! | 118 | `GAMEMSG_RESPONSE_CHAT` | 20 fixed bytes + the transmitted name/text region | the constructor's own `siDataSize` arithmetic (`MsgType-System.h:1139-1158`) |
 //! | 200 | `GAMEMSG_RESPONSE_CHARUPDATE` | 24 | `sizeof(cltBasicCharUpdateInfo)` at the default `/Zp8` (`CommonLogic.h:383-410`, framed at `Server.cpp:1688`) — source-derived, see the caveat below |
 //! | 215 | `GAMEMSG_RESPONSE_PERSON_IP` | 72 | binary-authoritative (`game.rs:426` `PERSON_IP_LEN = 8 + 64`, measured frame 77 = 5 + 72, `game.rs:1500`) |
+//! | 241 | `GAMEMSG_RESPONSE_USERORDER` (Step 7) | 9 (Move/Attack) / 5 (SitDown) | the lean layout of `docs/agents/WO-step7-in-world-actions.md` §8.2, goldens frozen at §8.3-H/I |
 //!
 //! The opcode values are the legacy enum's (`MsgType.h:28` LOGINMANY = 6,
 //! `:36` LOGOUT = 11, `:87` CHAT = 118, `:220` CHARUPDATE = 200, `:251-252`
-//! PERSON_IP 214/215) and the port's own table (`opcodes_game.rs:25/35/89/
-//! 221/251`). The router rows that send the client to these handlers are
-//! `Client-Message.cpp:248` (215), `:309` (6), `:310` (11), `:330` (200) and
-//! `:807` (118).
+//! PERSON_IP 214/215, `:290` RESPONSE_USERORDER 241) and the port's own
+//! table (`opcodes_game.rs:25/35/89/221/251`). The router rows that send
+//! the client to the five shipped handlers are `Client-Message.cpp:248`
+//! (215), `:309` (6), `:310` (11), `:330` (200) and `:807` (118); 241 is
+//! the server's neighbour echo of an order (`char-order.cpp:118`).
 //!
 //! # What each parser enforces, and on whose authority
 //!
@@ -93,6 +98,14 @@
 //! replaces the target's whole parameta box (`clIP.Set`,
 //! `Client-Person-BigInfo.cpp:243`).
 //!
+//! **Opcode 241 — order echo (Step 7, D8).** The inbound twin of the
+//! outbound order (WO §8): `char_unique u32` + `kind u8` + the variant's
+//! fields — 9 bytes for Move/Attack, 5 for SitDown (§8.2). Two-stage gate:
+//! the 5-byte prefix first, then the kind (a reserved kind refuses as
+//! [`DispatchError::UnknownOrderKind`] *before* any length pass), then the
+//! kind's exact length. It reports through [`DispatchOutcome::Ordered`] and
+//! writes nothing — authoritative position stays opcode 200 (WO §3.2).
+//!
 //! # How deltas are reflected (item 3)
 //!
 //! The legacy keeps one avatar object per character (`CR[id]`, self in
@@ -135,6 +148,9 @@
 //! - 118 mutates nothing — the legacy pushes into chat dialogs and the
 //!   overhead chat painter only (`Client-System.cpp:1468-1597`) — so the
 //!   parsed [`ChatMessage`] *is* the outcome.
+//! - 241 mutates nothing either — it is the neighbour echo of intent
+//!   (`char-order.cpp:118`, WO §8.4.4) — so the parsed [`ResponseOrder`]
+//!   plus the resolved [`ApplyTarget`] *are* the outcome.
 //!
 //! Unknown targets for 200/215 are dropped exactly as the legacy drops them
 //! (`charid <= 0` return, `Client-Person-BigInfo.cpp:1169`; `IsValidID`
@@ -148,12 +164,13 @@
 //! apart from both builder and parser. Length gates are proven in both
 //! directions and proven to fire **before** any field is read and before any
 //! state is touched — refused frames leave the state bit-identical.
+use super::action::Order;
 use super::char_info::{
     parse_make_char_info_many, CharInfoError, MakeCharInfo, RESPONSE_LOGINMANY,
 };
 use super::gate::GateViolation;
 use super::world_entry::CharClient;
-use crate::protocol::bytes::{cstr_lossy as cstring_lossy, i16_at, i32_at, i64_at};
+use crate::protocol::bytes::{cstr_lossy as cstring_lossy, i16_at, i32_at, i64_at, u16_at, u32_at};
 use std::collections::BTreeMap;
 
 /// `GAMEMSG_RESPONSE_LOGOUT` (`MsgType.h:36`, `opcodes_game.rs:35`).
@@ -164,6 +181,10 @@ pub const RESPONSE_CHAT: u16 = 118;
 pub const RESPONSE_CHARUPDATE: u16 = 200;
 /// `GAMEMSG_RESPONSE_PERSON_IP` (`MsgType.h:252`, `opcodes_game.rs:251`).
 pub const RESPONSE_PERSON_IP: u16 = 215;
+/// `GAMEMSG_RESPONSE_USERORDER` (`MsgType.h:290`) — Step 7's inbound order
+/// echo (WO §8.2/D1). Pinned equal to `super::action::RESPONSE_ORDER` by
+/// the Phase 2 suite: one number, two module homes (§7 file plan).
+pub const RESPONSE_ORDER: u16 = 241;
 
 /// `sizeof(SI32)` — the bare-`SI32` body of the two-argument `cltMsg`
 /// (`MsgType.h:2977-2983`).
@@ -189,6 +210,18 @@ pub const CHAR_UPDATE_PAYLOAD_LEN: usize = 24;
 /// `sizeof(cltGameMsgResponse_IP)` — binary-authoritative
 /// (`game.rs:426`: `8 + 64`; frame 77 = 5 + 72 at `game.rs:1500`).
 pub const PERSON_IP_PAYLOAD_LEN: usize = 72;
+
+/// The 241 stage-1 prefix (D8): `char_unique u32 | kind u8` — the smallest
+/// body that can name an order at all (WO §8.2).
+pub const ORDER_PREFIX_LEN: usize = 5;
+
+/// The exact body length of a `Move`/`Attack` echo (D8 stage 2, WO §8.2:
+/// 9 B) — `prefix | x u16 y u16` / `prefix | target_char u32`.
+pub const ORDER_MOVE_ATTACK_LEN: usize = 9;
+
+/// The exact body length of a `SitDown` echo (D8 stage 2, WO §8.2: 5 B) —
+/// the prefix alone; the kind tag is the whole variant payload (D3).
+pub const ORDER_SITDOWN_LEN: usize = 5;
 
 /// Why a frame in scope was refused.
 ///
@@ -255,6 +288,14 @@ pub enum DispatchError {
         /// `siDataSize - CHAT_FIXED_LEN`: the bytes actually transmitted for
         /// name + text + NUL.
         region: usize,
+    },
+    /// A 241 body carried a `kind` outside `OrderKind` 0/1/2 (D3/D8) —
+    /// refused by name **before** any length pass, so a reserved kind can
+    /// never surface as a length complaint (WO §8.3 refusal fixtures).
+    #[error("RESPONSE_USERORDER carries unknown order kind {kind} (OrderKind 0/1/2, D3)")]
+    UnknownOrderKind {
+        /// The kind byte at offset 4.
+        kind: u8,
     },
     /// The opcode-6 walk failed — the Step 4.4 parser's strictness, surfaced
     /// unchanged (non-player record, partial record, empty body).
@@ -611,7 +652,82 @@ pub fn parse_logout(cmd: u16, payload: &[u8]) -> Result<Logout, DispatchError> {
     })
 }
 
-/// Where a 200/215 delta landed — the legacy's target resolution, reported.
+/// One parsed `GAMEMSG_RESPONSE_USERORDER` (241) — report-only (D8): the
+/// echo of an order, parsed whole or not at all.
+///
+/// | Offset | Field |
+/// |---|---|
+/// | 0..4 | [`char_unique`](Self::char_unique) — §8.2 writes `u32`, read as `i32` (Q-4: notation only) |
+/// | 4 | kind tag: `0 Move`, `1 Attack`, `2 SitDown` (§8.2/D3) |
+/// | 5.. | the variant's fields: `x u16, y u16` / `target_char u32` / ∅ |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResponseOrder {
+    /// The echoing character's unique — the same 4 little-endian bytes
+    /// either way (Q-4); `i32` matches this module's key space.
+    pub char_unique: i32,
+    /// The echoed order, variant-tagged (D3).
+    pub order: Order,
+}
+
+/// Parses a 241 body under the two-stage gate (D8): stage 1 the opcode and
+/// the [`ORDER_PREFIX_LEN`] prefix, then the kind — a reserved kind refuses
+/// as [`DispatchError::UnknownOrderKind`] **before** any length pass — then
+/// stage 2's exact per-kind length through the shared `gate_frame` (whose
+/// opcode check re-passes harmlessly: it was checked first here).
+///
+/// # Errors
+///
+/// [`DispatchError::UnexpectedOpcode`] for any other cmd (the opcode gate
+/// precedes every length gate, the file's convention);
+/// [`DispatchError::Truncated`] when the prefix is short or a known kind's
+/// body is short; [`DispatchError::UnknownOrderKind`] for a kind outside
+/// 0/1/2 (D3/D8); [`DispatchError::TrailingBytes`] for a body longer than
+/// the kind's exact length.
+pub fn parse_response_order(cmd: u16, payload: &[u8]) -> Result<ResponseOrder, DispatchError> {
+    if cmd != RESPONSE_ORDER {
+        return Err(DispatchError::UnexpectedOpcode {
+            expected: RESPONSE_ORDER,
+            cmd,
+        });
+    }
+    // Stage 1 (D8): char_unique (4) + kind (1), before the kind is read.
+    if payload.len() < ORDER_PREFIX_LEN {
+        return Err(DispatchError::Truncated {
+            opcode: RESPONSE_ORDER,
+            expected: ORDER_PREFIX_LEN,
+            got: payload.len(),
+        });
+    }
+    // The kind picks the stage-2 length; a reserved kind refuses here, so a
+    // short body with a bad kind reports the kind, never a length (D3/D8).
+    let kind = payload[4];
+    let expected_len = match kind {
+        0 | 1 => ORDER_MOVE_ATTACK_LEN, // Move | Attack, both 9 B (§8.2; tags pinned by T1)
+        2 => ORDER_SITDOWN_LEN,
+        other => return Err(DispatchError::UnknownOrderKind { kind: other }),
+    };
+    // Stage 2: the shared opcode + exact-length gate. Every field read
+    // below is in bounds because this passed.
+    gate_frame(cmd, RESPONSE_ORDER, expected_len, payload)?;
+    let order = match kind {
+        0 => Order::Move {
+            x: u16_at(payload, 5),
+            y: u16_at(payload, 7),
+        },
+        1 => Order::Attack {
+            target_char: u32_at(payload, 5),
+        },
+        _ => Order::SitDown, // kind 2 — 0/1 handled, the rest refused above
+    };
+    Ok(ResponseOrder {
+        char_unique: i32_at(payload, 0),
+        order,
+    })
+}
+
+/// Where a 200/215 delta — or a 241 order echo — landed: the legacy's
+/// target resolution, reported. Opcode 241 reuses the triple read-only
+/// (`Client-SystemNPC.cpp:546-553`, D8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplyTarget {
     /// The local avatar: `charunique == MyCharUnique`
@@ -632,9 +748,9 @@ pub enum ApplyTarget {
 /// What one dispatched frame did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DispatchOutcome {
-    /// The opcode is not one of the five in scope. Not an error: the legacy
+    /// The opcode is not one of the six in scope. Not an error: the legacy
     /// `ClientMessageMap` routes hundreds of opcodes
-    /// (`Client-Message.cpp`); this dispatcher owns five of them and claims
+    /// (`Client-Message.cpp`); this dispatcher owns six of them and claims
     /// nothing about the rest.
     Unhandled {
         /// The opcode that arrived.
@@ -668,6 +784,17 @@ pub enum DispatchOutcome {
         char_unique: i32,
         /// Where it landed.
         target: ApplyTarget,
+    },
+    /// A 241 order echo — **report-only**: no local or `WorldChar` write;
+    /// position authority stays opcode 200 (D8/T11, WO §3.2).
+    Ordered {
+        /// The echoing character's unique.
+        char_unique: i32,
+        /// Where the echo resolved — the legacy triple, read-only
+        /// (`Client-SystemNPC.cpp:546-553`).
+        target: ApplyTarget,
+        /// The echoed order (D3).
+        order: Order,
     },
 }
 
@@ -860,8 +987,8 @@ impl DispatcherState {
     /// # Errors
     ///
     /// As the individual [`parse_chat`] / [`parse_char_update`] /
-    /// [`parse_person_ip`] / [`parse_logout`] parsers, and
-    /// [`DispatchError::CharInfo`] for the opcode-6 walk.
+    /// [`parse_person_ip`] / [`parse_logout`] / [`parse_response_order`]
+    /// parsers, and [`DispatchError::CharInfo`] for the opcode-6 walk.
     pub fn dispatch(&mut self, cmd: u16, payload: &[u8]) -> Result<DispatchOutcome, DispatchError> {
         match cmd {
             RESPONSE_LOGINMANY => {
@@ -881,6 +1008,24 @@ impl DispatcherState {
             RESPONSE_PERSON_IP => {
                 let ip = parse_person_ip(cmd, payload)?;
                 Ok(self.apply_person_ip(ip))
+            }
+            RESPONSE_ORDER => {
+                let echo = parse_response_order(cmd, payload)?;
+                // Report-only (D8): resolve the target read-only through
+                // the legacy triple (`Client-SystemNPC.cpp:546-553`) and
+                // write nothing — position truth stays opcode 200 (§3.2).
+                let target = if echo.char_unique == self.my_char_unique {
+                    ApplyTarget::Local
+                } else if self.nearby.contains_key(&echo.char_unique) {
+                    ApplyTarget::Nearby
+                } else {
+                    ApplyTarget::Unmatched
+                };
+                Ok(DispatchOutcome::Ordered {
+                    char_unique: echo.char_unique,
+                    target,
+                    order: echo.order,
+                })
             }
             other => Ok(DispatchOutcome::Unhandled { cmd: other }),
         }

@@ -178,8 +178,16 @@ clarifications:
 
 | Step | Title | Work order | Status |
 |:---:|:---|:---|:---|
-| 7.1 | GoonZu Asset File Formats — sprite (SPR/MPR) + map + palette + archive decoders | `docs/agents/WO-7.1.md` | `PENDING` |
-| 7.2 | Windowing & 2D render loop — window creation, backbuffer, present path | `docs/agents/WO-7.2.md` (to be authored) | `PENDING` |
+| 7.1 | GoonZu Asset File Formats — sprite (SPR/MPR) + map + palette + archive decoders | `docs/agents/WO-7.1.md` | `PASSED` (mirror; Verifier @ `2c0964e`) |
+| 7.2 | Windowing & 2D render loop — window creation, backbuffer, present path | `docs/agents/WO-7.2.md` | `PASSED` (mirror; Verifier @ `4005fcd`) |
+| 7.3 | In-world actions & modern protocol spec — outbound encoders + inbound 241 report-only echo | `docs/agents/WO-step7-in-world-actions.md` (Rev 2.1) | `PASSED` (mirror; Verifier @ `eb54f55`) |
+| 7.4 | Driver & event-loop action wiring — command channel → `send_order`/`send_chat`; `DispatchOutcome::Ordered` report-only consumption | `docs/agents/WO-7.4.md` (to be authored) | `PENDING` |
+
+> **2026-11-05 scoping note (Custodian/Scribe, under directive):** steps 7.3–7.4 extend this
+> phase into the in-world protocol and client wiring (driver/event loop). They inherit every
+> item above but are not asset steps: each WO states its own `src/**` write guard (7.4's is
+> `src/client/driver.rs` + `src/client/event_loop.rs` + tests). Authoritative status lives in
+> `TASK_MATRIX.md`; the Status column here is a Verifier-set mirror only.
 
 Status for these rows is tracked in `TASK_MATRIX.md` (Phase III tracker) and is set by the
 Verifier only, per S3. Additional steps (7.3+) are appended here by the Custodian/Scribe when

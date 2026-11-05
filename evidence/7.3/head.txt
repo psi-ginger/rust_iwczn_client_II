@@ -1,0 +1,6 @@
+repo: rust_iwczn_client_II
+SHA: 2436a547ca8bd994f899edb3022176b786513784
+subject: docs(qc): Step 7 in-world actions - FF merge accepted, new baseline 352/352
+tree: 0e3e8fa79890fad9e78489456ce5f5ea6fd6e0f0
+porcelain: CLEAN
+captured_utc: 2026-11-05T14:14:57Z

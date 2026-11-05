@@ -19,7 +19,11 @@
 //! - README Step 5, items 2—3: [`dispatcher`], the inbound router for the
 //!   five in-world opcodes (6, 11, 118, 200, 215) and the delta reflection
 //!   into the character state.
+//! - Step 7 (WO §4a): [`action`], the outbound in-world action encoders —
+//!   orders, chat and system requests in the modern lean payloads (§8),
+//!   byte-pinned to the pre-computed §8.3 goldens.
 
+pub mod action;
 pub mod char_info;
 pub mod dispatcher;
 pub mod entry;

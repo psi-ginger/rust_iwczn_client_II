@@ -255,6 +255,12 @@ async fn frames_are_delivered_while_tickers_keep_firing() {
             match ev {
                 LoopEvent::Frame(_) => frames += 1,
                 LoopEvent::Ticked { .. } => ticks += 1,
+                // WO-7.4 §2.2-3: `run` wires no command channel (D2), so a
+                // command event is impossible here — fail loudly if one
+                // ever arrives.
+                LoopEvent::Command(_) => {
+                    panic!("run wires no command channel, so LoopEvent::Command is impossible")
+                }
             }
             if frames >= 1 && ticks >= 3 {
                 Ok(Flow::Break)
@@ -572,4 +578,173 @@ async fn frames_buffered_before_a_clean_close_are_delivered_before_eof() {
         vec![&[0x01][..], &[0x02, 0x02][..], &[0x03, 0x03, 0x03][..]],
         "all three buffered frames, in order and byte-exact, before EOF ends the loop"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Step 7.4 (WO-7.4 §9) — the command channel's three loop invariants, T1-T3.
+// Same harness posture as the 5.1 suite above: paused clock, `dial()`,
+// loopback-only (F-01), handler records compared against WO literals (F-07).
+// ---------------------------------------------------------------------------
+
+use crate::client::commands::channel;
+use crate::game::action::{ChatMode, Order};
+
+// T1 — queued commands reach the handler **in order, payload-exact**, and
+// the loop keeps running afterwards (at least one ticker fire) before the
+// handler breaks: the channel never pre-empts the loop's own cadence (D1).
+#[tokio::test(start_paused = true)]
+async fn queued_commands_reach_the_handler_and_the_loop_keeps_running() {
+    let (listener, addr) = local_listener().await;
+    let _silent = tokio::spawn(async move {
+        let (_stream, _addr) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    });
+
+    // Both commands are queued before the loop starts and every sender is
+    // dropped, so the arm drains them and then disables itself (D3).
+    let (sender, receiver) = channel();
+    sender
+        .send(ClientCommand::Order(Order::Move { x: 100, y: 200 }))
+        .expect("queue the move");
+    sender
+        .send(ClientCommand::Chat {
+            mode: ChatMode::Town,
+            text: "hi".to_owned(),
+        })
+        .expect("queue the chat");
+    drop(sender);
+
+    let mut link = dial(addr).await;
+    let tickers = [Ticker::new("hb", Duration::from_millis(25))];
+    let mut seen: Vec<ClientCommand> = Vec::new();
+    let mut last_fired = 0u64;
+    run_with_commands(
+        &mut link,
+        &tickers,
+        &Shutdown::new(),
+        Some(receiver),
+        async |_link, ev| -> Result<Flow, Infallible> {
+            match ev {
+                LoopEvent::Command(command) => seen.push(command),
+                LoopEvent::Ticked { fired, .. } => last_fired = fired,
+                LoopEvent::Frame(_) => {}
+            }
+            if seen.len() == 2 && last_fired >= 1 {
+                Ok(Flow::Break)
+            } else {
+                Ok(Flow::Continue)
+            }
+        },
+    )
+    .await
+    .expect("loop");
+
+    assert_eq!(
+        seen,
+        vec![
+            ClientCommand::Order(Order::Move { x: 100, y: 200 }),
+            ClientCommand::Chat {
+                mode: ChatMode::Town,
+                text: "hi".to_owned(),
+            },
+        ],
+        "the two queued commands must arrive in order, payload-exact (WO-7.4 §9/T1)"
+    );
+    assert!(
+        last_fired >= 1,
+        "the loop must keep running after the commands, got {last_fired} ticker fires"
+    );
+}
+
+// T2 — every sender dropped before the loop starts: the session runs to
+// three ticker fires and returns `Ok` (D3). Fails if a closed channel ends
+// the loop early (0 fires) or errors.
+#[tokio::test(start_paused = true)]
+async fn dropping_every_sender_never_stops_the_loop() {
+    let (listener, addr) = local_listener().await;
+    let _silent = tokio::spawn(async move {
+        let (_stream, _addr) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    });
+
+    let (sender, receiver) = channel();
+    drop(sender); // every sender is gone before the loop ever polls the arm
+
+    let mut link = dial(addr).await;
+    let tickers = [Ticker::new("hb", Duration::from_millis(25))];
+    let mut last_fired = 0u64;
+    let result = run_with_commands(
+        &mut link,
+        &tickers,
+        &Shutdown::new(),
+        Some(receiver),
+        async |_link, ev| -> Result<Flow, Infallible> {
+            if let LoopEvent::Ticked { fired, .. } = ev {
+                last_fired = fired;
+                if fired >= 3 {
+                    return Ok(Flow::Break);
+                }
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "a closed command channel must never stop or error the loop (D3): {result:?}"
+    );
+    assert_eq!(
+        last_fired, 3,
+        "the loop must run to three ticker fires with the channel closed"
+    );
+}
+
+// T3 — a handler `Err` raised while handling `LoopEvent::Command` surfaces
+// as `LoopError::Handler` (not `LoopError::Link`, not swallowed): the
+// command path propagates exactly like the tick and frame paths (D4's
+// event-loop half).
+#[tokio::test(start_paused = true)]
+async fn a_handler_error_on_the_command_path_stops_the_loop() {
+    let (listener, addr) = local_listener().await;
+    let _silent = tokio::spawn(async move {
+        let (_stream, _addr) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    });
+
+    let (sender, receiver) = channel();
+    sender
+        .send(ClientCommand::Order(Order::SitDown))
+        .expect("queue the order");
+    drop(sender);
+
+    let mut link = dial(addr).await;
+    let tickers = [Ticker::new("hb", Duration::from_millis(25))];
+    let mut commands_seen = 0u32;
+    let result = run_with_commands(
+        &mut link,
+        &tickers,
+        &Shutdown::new(),
+        Some(receiver),
+        async |_link, ev| -> Result<Flow, Boom> {
+            if matches!(ev, LoopEvent::Command(_)) {
+                commands_seen += 1;
+                return Err(Boom);
+            }
+            Ok(Flow::Continue)
+        },
+    )
+    .await;
+
+    assert_eq!(
+        commands_seen, 1,
+        "the loop must stop at the first command error — no further events"
+    );
+    match result {
+        Err(LoopError::Handler(Boom)) => {}
+        other => panic!(
+            "a handler Err on the command path must surface as \
+             LoopError::Handler with the original error, got {other:?}"
+        ),
+    }
 }

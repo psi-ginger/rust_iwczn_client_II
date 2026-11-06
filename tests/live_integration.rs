@@ -272,6 +272,13 @@ async fn live_event_loop_idles_cleanly_and_ticks() {
                     frames += 1;
                     eprintln!("[live] unexpected inbound frame cmd={:#06x}", f.cmd_id());
                 }
+                // WO-7.4 F-7.4-01: `run` wires no command channel (D2), so a
+                // command event is impossible here — added because this
+                // match is exhaustive and §2.2-4 missed the site; the arm
+                // fails loudly rather than pretending to handle input.
+                LoopEvent::Command(_) => {
+                    panic!("run wires no command channel, so LoopEvent::Command is impossible")
+                }
             }
             Ok(Flow::Continue)
         },

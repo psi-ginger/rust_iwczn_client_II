@@ -42,8 +42,10 @@ use tokio::task::JoinHandle;
 
 use goonzu_client::auth::login::LoginError;
 use goonzu_client::auth::world_list::WorldListError;
+use goonzu_client::client::commands::{channel, ClientCommand};
 use goonzu_client::client::driver::{self, DriverConfig, DriverError, DriverOutcome, Stage};
 use goonzu_client::client::teardown::Shutdown;
+use goonzu_client::game::action::{ChatMode, Order, REQUEST_CHAT};
 use goonzu_client::game::entry::GameError;
 use goonzu_client::game::world_entry::WorldEntryError;
 
@@ -52,13 +54,13 @@ use frames::{
     make_char_record, mutated_worldlist_response, negative_village_struct_payload, person_ip_body,
     roster_entry, select_char_payload, server_info_payload, village_request_payload,
     village_struct_payload, worldinfo_entry, Dir, Entry, Leg, Mutation, Transcript,
-    CHAR_LIST_PAYLOAD_LEN, CHAR_UNIQUE, CHAR_UPDATE_PAYLOAD_LEN, HEARTBEAT_WIRE,
-    MAKE_CHAR_PAYLOAD_LEN, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST, OP_CHARUPDATE, OP_CHAT,
-    OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_LOGINMANY, OP_LOGOUT, OP_MAKE_CHAR, OP_PERSON_IP,
-    OP_REQUEST_LOGIN, OP_REQUEST_NOTICE, OP_REQUEST_WORLDLIST, OP_RESPONSE_LOGIN,
-    OP_RESPONSE_NOTICE, OP_RESPONSE_WORLDLIST, OP_SELECTCHAR, OP_SERVERINFO, OP_VILLAGESTRUCT_REQ,
-    OP_VILLAGESTRUCT_RES, PERSON_IP_PAYLOAD_LEN, ROSTER_SLOTS, SECRETKEY_WIRE, VILLAGE_REF,
-    WORLDINFO_LEN,
+    CHAR_LIST_PAYLOAD_LEN, CHAR_UNIQUE, CHAR_UPDATE_PAYLOAD_LEN, CHAT_TOWN_WIRE, HEARTBEAT_WIRE,
+    MAKE_CHAR_PAYLOAD_LEN, MOVE_COMMAND_WIRE, NEARBY_UNIQUE, OCCUPIED_SLOT, OP_CHARLIST,
+    OP_CHARUPDATE, OP_CHAT, OP_CLIENTCHARUNIQUE, OP_GAME_LOGIN, OP_LOGINMANY, OP_LOGOUT,
+    OP_MAKE_CHAR, OP_PERSON_IP, OP_REQUEST_LOGIN, OP_REQUEST_NOTICE, OP_REQUEST_WORLDLIST,
+    OP_RESPONSE_LOGIN, OP_RESPONSE_NOTICE, OP_RESPONSE_WORLDLIST, OP_SELECTCHAR, OP_SERVERINFO,
+    OP_VILLAGESTRUCT_REQ, OP_VILLAGESTRUCT_RES, ORDER_ECHO_241_WIRE, PERSON_IP_PAYLOAD_LEN,
+    ROSTER_SLOTS, SECRETKEY_WIRE, VILLAGE_REF, WORLDINFO_LEN,
 };
 use front_double::{run_front_double, FrontReport};
 use game_double::{run_game_double_with, GameReport};
@@ -108,6 +110,22 @@ async fn run_driver(cfg: DriverConfig) -> Result<DriverOutcome, DriverError> {
     tokio::time::timeout(DRIVER_TIME_BUDGET, driver::run(&cfg, &shutdown))
         .await
         .expect("the driver run must finish inside its budget")
+}
+
+/// Step 7.4: [`run_driver`] through `driver::run_with_commands` — the
+/// command channel wired into the in-world loop (WO-7.4 §7.3). Same budget,
+/// same inline posture; the caller owns the sender half.
+async fn run_driver_with_commands(
+    cfg: DriverConfig,
+    commands: goonzu_client::client::commands::CommandReceiver,
+) -> Result<DriverOutcome, DriverError> {
+    let shutdown = Shutdown::new();
+    tokio::time::timeout(
+        DRIVER_TIME_BUDGET,
+        driver::run_with_commands(&cfg, &shutdown, commands),
+    )
+    .await
+    .expect("the driver run must finish inside its budget")
 }
 
 /// Spawns the front double: its own task, its own budget, its own report.
@@ -1131,5 +1149,339 @@ async fn a_negative_village_answer_is_refused_at_the_in_world_stage() {
                 && entry.plain == frame(OP_VILLAGESTRUCT_RES, &negative_village_struct_payload())
         }),
         "the harness must have observed the negative village frame it sent"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Step 7.4 (WO-7.4 §9) — the command channel's three end-to-end invariants,
+// T6-T8. Same harness posture as the 6.2 conversation above: both doubles
+// spawned first, the driver run inline on the test's current-thread runtime,
+// expectations from the §8 goldens and `expected_conversation` only (F-07).
+// ---------------------------------------------------------------------------
+
+/// T6 (WO-7.4 §9) — two commands queued **before** the session starts travel
+/// the wire byte-exact: **G1** (Move, x=100 y=200) then **G2** (Town chat
+/// `"hi"`), both `Dir::C2S`, in queue order, against the §8 goldens — and the
+/// session then tears down cleanly (`Stage::TornDown`, no corruption).
+///
+/// The `Tail::Commands` tail replaces the default one because that tail
+/// asserts the first in-world C2S frame is a heartbeat
+/// (`game_double.rs:403-415`); here the two command frames arrive instead.
+#[tokio::test]
+async fn queued_commands_travel_the_wire_byte_exact() {
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 2,
+            reply: Vec::new(),
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    // Both commands are queued before the run; the sender is dropped, so the
+    // arm drains them and then disables itself (D3) — the session ends with
+    // the channel already closed and unaffected by that.
+    let (sender, receiver) = channel();
+    sender
+        .send(ClientCommand::Order(Order::Move { x: 100, y: 200 }))
+        .expect("queue the move");
+    sender
+        .send(ClientCommand::Chat {
+            mode: ChatMode::Town,
+            text: "hi".to_owned(),
+        })
+        .expect("queue the town chat");
+    drop(sender);
+
+    let outcome = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect("the command session must complete cleanly");
+    assert_eq!(
+        outcome.stage,
+        Stage::TornDown,
+        "the server-side FIN after the commands must end at TornDown"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete as in every happy path"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        !game_report.saw_corruption,
+        "no frame on the game leg may arrive short or fail its integrity check"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "both commands fly within the first milliseconds — long before the \
+         10 s heartbeat tick"
+    );
+
+    // The byte-exact conversation: everything a plain session exchanges, then
+    // G1 and G2 as the two C2S frames, in queue order (WO-7.4 §8).
+    let mut expected = frames::expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC);
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::C2S,
+        plain: MOVE_COMMAND_WIRE.to_vec(),
+        wire_len: MOVE_COMMAND_WIRE.len(),
+    });
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::C2S,
+        plain: CHAT_TOWN_WIRE.to_vec(),
+        wire_len: CHAT_TOWN_WIRE.len(),
+    });
+    assert_eq!(
+        transcript.snapshot(),
+        expected,
+        "the queued commands must reach the wire byte-exact, in order: G1 \
+         (Move) then G2 (Town chat)"
+    );
+}
+
+/// T7 (WO-7.4 §9, D4) — an empty chat command is refused by the frozen
+/// `send_chat` **before a single byte is written**: the driver surfaces it as
+/// `DriverError::Refused { stage: InWorld }` whose detail carries the frozen
+/// `ActionError::EmptyChat` Display (`action.rs:175`), no opcode-117 frame
+/// ever reaches the transcript, and the double observes the client's own
+/// close with zero heartbeats — the session died long before the 10 s tick.
+#[tokio::test]
+async fn an_empty_chat_command_refuses_the_session_without_a_frame() {
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    // The double waits for the one command frame the client would write —
+    // which never arrives; the refusing client's close ends that read as
+    // EOF (`closed_early`).
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 1,
+            reply: Vec::new(),
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    let (sender, receiver) = channel();
+    sender
+        .send(ClientCommand::Chat {
+            mode: ChatMode::Normal,
+            text: String::new(),
+        })
+        .expect("queue the empty chat");
+    drop(sender);
+
+    let err = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect_err("an empty chat must refuse the session");
+    match &err {
+        DriverError::Refused { stage, detail } => {
+            assert_eq!(
+                *stage,
+                Stage::InWorld,
+                "the refusal must be attributed to the in-world stage"
+            );
+            assert!(
+                detail.contains("chat text is empty"),
+                "the detail must carry the frozen ActionError::EmptyChat \
+                 Display (action.rs:175); got: {detail}"
+            );
+        }
+        other => panic!(
+            "expected DriverError::Refused {{ stage: Stage::InWorld, \
+             detail }}, got {other:?}"
+        ),
+    }
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg completed before the refusal"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        game_report.closed_early,
+        "the refusing client must drop the game link while the double waits \
+         for the command frame"
+    );
+    assert!(
+        !game_report.saw_corruption,
+        "the refusal must be a clean close, not a broken frame"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "the session died long before the 10 s heartbeat tick"
+    );
+
+    // No opcode-117 frame anywhere on the transcript (WO-7.4 §9/T7) — and
+    // since the client sent nothing at all, the transcript is exactly the
+    // conversation up to the in-world set.
+    let snapshot = transcript.snapshot();
+    let chat_requests = snapshot
+        .iter()
+        .filter(|entry| {
+            entry.dir == Dir::C2S
+                && entry.plain.len() >= 5
+                && u16::from_le_bytes([entry.plain[3], entry.plain[4]]) == REQUEST_CHAT
+        })
+        .count();
+    assert_eq!(
+        chat_requests, 0,
+        "an empty chat must never put a REQUEST_CHAT (117) frame on the wire"
+    );
+    assert_eq!(
+        snapshot,
+        frames::expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC),
+        "the refusing client must have sent nothing beyond the normal \
+         conversation"
+    );
+}
+
+/// T8 (WO-7.4 §9, D5) — the 241 echo is a **report**, not a dispatch: the
+/// driver logs the dedicated `in-world order echo reported` record naming the
+/// session's own unique and the `Local` target, and the dispatcher stays
+/// untouched — the second opcode-200 written *after* the echo still resolves
+/// to `Local`. The transcript is byte-exact: the normal conversation, G1 out,
+/// then G3 (echo) and G4 (delta) in; clean teardown.
+#[tokio::test]
+async fn an_order_echo_is_reported_and_the_next_delta_stays_local() {
+    let capture = Capture::default();
+    let _guard = tracing::subscriber::set_default(debug_capture_subscriber(capture.clone()));
+    let transcript = Arc::new(Transcript::new());
+
+    // G4: the harness's own stimulus — byte-identical to the 200 the
+    // in-world set already writes (`frames.rs:850`); the load-bearing claim
+    // is the log record, not its bytes (WO-7.4 §8).
+    let g4 = frame(OP_CHARUPDATE, &char_update_body(CHAR_UNIQUE as i16));
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    // The double reads the one Move command, answers with the 241 echo (G3)
+    // followed by the second 200 (G4), then FINs — the clean server-side
+    // close the happy paths end with.
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 1,
+            reply: vec![ORDER_ECHO_241_WIRE.to_vec(), g4.clone()],
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    let (sender, receiver) = channel();
+    sender
+        .send(ClientCommand::Order(Order::Move { x: 100, y: 200 }))
+        .expect("queue the move");
+    drop(sender);
+
+    let outcome = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect("the echo session must complete cleanly");
+    assert_eq!(
+        outcome.stage,
+        Stage::TornDown,
+        "the server-side FIN after the echo must end at TornDown"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete as in every happy path"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        !game_report.saw_corruption,
+        "no frame on the game leg may arrive short or fail its integrity check"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "the echo exchange completes well before the 10 s heartbeat tick"
+    );
+
+    // The byte-exact conversation: the normal one, G1 out (C2S), then G3 and
+    // G4 in (S2C) — the §8 goldens in travel order.
+    let mut expected = frames::expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC);
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::C2S,
+        plain: MOVE_COMMAND_WIRE.to_vec(),
+        wire_len: MOVE_COMMAND_WIRE.len(),
+    });
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::S2C,
+        plain: ORDER_ECHO_241_WIRE.to_vec(),
+        wire_len: ORDER_ECHO_241_WIRE.len(),
+    });
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::S2C,
+        plain: g4.clone(),
+        wire_len: g4.len(),
+    });
+    assert_eq!(
+        transcript.snapshot(),
+        expected,
+        "the echo session must travel byte-exact: G1 out, then G3 and G4 in"
+    );
+
+    let logs = {
+        let guard = capture.0.lock().expect("capture lock");
+        String::from_utf8_lossy(&guard).into_owned()
+    };
+
+    // The dedicated echo record (D5): one line, naming the echoing unique
+    // and the local target.
+    let echo_line = logs
+        .lines()
+        .find(|line| line.contains("in-world order echo reported"))
+        .expect(
+            "the 241 echo must be reported by its dedicated record, not the \
+             blanket dispatch record (D5)",
+        );
+    assert!(
+        echo_line.contains(&format!("char_unique={CHAR_UNIQUE}")),
+        "the echo record must name the echoing unique; got: {echo_line}"
+    );
+    assert!(
+        echo_line.contains("target=Local"),
+        "the echo must resolve to the local avatar; got: {echo_line}"
+    );
+
+    // The **last** Applied record — the G4 delta written after the echo —
+    // must occur after the echo record: the Ordered consumption is
+    // report-only and did not poison the dispatcher, so the next delta still
+    // resolves Local.
+    let applied = format!(
+        "opcode={OP_CHARUPDATE} outcome=Applied {{ char_unique: {CHAR_UNIQUE}, \
+         target: Local }}"
+    );
+    let last_applied_at = logs
+        .rfind(&applied)
+        .expect("the G4 delta must be reported through the blanket record");
+    let echo_at = logs.find(echo_line).expect("the echo line is in the log");
+    assert!(
+        last_applied_at > echo_at,
+        "the opcode-200 after the echo must still resolve Local — the echo \
+         was report-only; log:\n{logs}"
     );
 }

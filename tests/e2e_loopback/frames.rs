@@ -925,6 +925,41 @@ pub(crate) const MALFORMED_SHORT_WIRE: [u8; 5] = [0x03, 0x00, 0x00, 0x64, 0x00];
 pub(crate) const MALFORMED_OVERSIZE_WIRE: [u8; 5] = [0xE1, 0xFD, 0x00, 0x64, 0x00];
 
 // ---------------------------------------------------------------------------
+// Step 7.4 (WO-7.4 §8) — the three wire goldens for the command channel.
+// F-07: hand-placed literals with their § provenance; a golden is never
+// regenerated from the encoder under test, and
+// `WO-step7-in-world-actions.md` §8.3 (frozen) is cited as the origin of
+// each layout. G4 (the second opcode-200 stimulus) is this harness's own
+// `frame(OP_CHARUPDATE, &char_update_body(CHAR_UNIQUE as i16))` fixture —
+// its provenance is the fixture itself, and T8's load-bearing claim is the
+// log record, not its bytes.
+// ---------------------------------------------------------------------------
+
+/// **G1** — an outbound `REQUEST_ORDER` (240) Move, x=100, y=200, as it
+/// sits on the wire (C2S plaintext image): `usSize` 10 LE, `ucChk` 0,
+/// `usCmd` 240 = 0x00F0 LE, payload `kind 00 | 64 00 | C8 00` —
+/// WO-7.4 §8 **G1** ← `WO-step7-in-world-actions.md` §8.3-**A** (frozen).
+pub(crate) const MOVE_COMMAND_WIRE: [u8; 10] =
+    [0x0A, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x64, 0x00, 0xC8, 0x00];
+
+/// **G2** — an outbound `REQUEST_CHAT` (117), `ChatMode::Town` (03) + the
+/// UTF-8 text `"hi"` (68 69): `usSize` 8 = 6 + 2 LE, `ucChk` 0, `usCmd`
+/// 117 = 0x0075 LE — mode byte then text, no `siDataSize`, no NUL —
+/// WO-7.4 §8 **G2** ← §8.3-**D** layout with mode `03`
+/// (`ChatMode::Town`, `action.rs:149`).
+pub(crate) const CHAT_TOWN_WIRE: [u8; 8] = [0x08, 0x00, 0x00, 0x75, 0x00, 0x03, 0x68, 0x69];
+
+/// **G3** — an inbound `RESPONSE_ORDER` (241) echo of the Move, char
+/// unique 4242 = 0x1092 → LE `92 10 00 00` (hand-computed: 4096 + 146),
+/// kind `00` Move, x=100, y=200: `usSize` 14 LE, `ucChk` 0, `usCmd`
+/// 241 = 0x00F1 LE — WO-7.4 §8 **G3** ← §8.3-**H** layout (9-byte
+/// payload: `char_unique` i32 LE, `kind` u8, `x` u16 LE, `y` u16 LE)
+/// with `CHAR_UNIQUE = 4242` (`frames.rs:411`).
+pub(crate) const ORDER_ECHO_241_WIRE: [u8; 14] = [
+    0x0E, 0x00, 0x00, 0xF1, 0x00, 0x92, 0x10, 0x00, 0x00, 0x00, 0x64, 0x00, 0xC8, 0x00,
+];
+
+// ---------------------------------------------------------------------------
 // The byte-source's own pin-down: the two assumptions the doubles build on
 // that live *outside* this file's literals — the SECRETKEY frame's header
 // arithmetic and the link cipher's fixed keys — are asserted here so they

@@ -104,6 +104,19 @@ pub(crate) enum Tail {
     /// live, so the Ctrl+C claim is deterministic), notify the test's seam,
     /// then drain to the client's close (R4).
     CtrlCSeam(Arc<Notify>),
+    /// Step 7.4 (WO-7.4 §9): read `expect` queued command frames — each
+    /// recorded into the transcript for the root's byte-exact assertion —
+    /// then write `reply` frames (S2C) in order and FIN, the clean
+    /// server-side close the happy paths end with. A session that refuses
+    /// before writing (T7) surfaces as EOF with fewer than `expect` frames
+    /// and `closed_early` set; heartbeats stay 0 on every path because the
+    /// conversation ends long before the 10 s tick.
+    Commands {
+        /// How many C2S command frames the tail must read before replying.
+        expect: usize,
+        /// S2C frames written after the commands, in order, then FIN.
+        reply: Vec<Vec<u8>>,
+    },
 }
 
 /// Step 4 (G-7): the SERVERINFO hold — a **sequenced** stand-in for a
@@ -424,6 +437,18 @@ pub(crate) async fn run_game_double_gated(
         Tail::CtrlCSeam(seam) => {
             ctrl_c_seam_tail(stream, session, seam, &mut report).await;
         }
+        Tail::Commands { expect, reply } => {
+            commands_tail(
+                stream,
+                link,
+                session,
+                expect,
+                reply,
+                transcript,
+                &mut report,
+            )
+            .await;
+        }
     }
     report
 }
@@ -649,6 +674,65 @@ async fn ctrl_c_seam_tail(
     }
     seam.notify_one();
     drain_to_eof(&mut stream, &mut session, report).await;
+}
+
+/// Step 7.4's tail (WO-7.4 §9, [`Tail::Commands`]): read the queued command
+/// frames — each recorded byte-exactly into the transcript, which the root
+/// asserts against the §8 goldens (G1/G2, C2S) — then write `reply` in
+/// order (G3 + the G4 stimulus for T8) and FIN, the clean server-side close
+/// the happy paths end with (`WO-6.2` §5.4).
+///
+/// A session that refuses before writing (T7's empty chat) closes with fewer
+/// than `expect` frames: that EOF is recorded as `closed_early` and the
+/// conversation ends without a reply — never a hang, because the client's
+/// own close is what the read observes.
+async fn commands_tail(
+    mut stream: tokio::net::TcpStream,
+    mut link: Cipher,
+    mut session: Cipher,
+    expect: usize,
+    reply: Vec<Vec<u8>>,
+    transcript: &Transcript,
+    report: &mut GameReport,
+) {
+    let mut got = 0usize;
+    while got < expect {
+        match read_ciphered(&mut stream, &mut session).await {
+            ReadOutcome::Frame { wire, plain } => {
+                let is_heartbeat =
+                    plain.len() == 5 && u16::from_le_bytes([plain[3], plain[4]]) == OP_HEARTBEAT;
+                transcript.push(Leg::Game, Dir::C2S, plain, wire.len());
+                report.frames_received += 1;
+                if is_heartbeat {
+                    // Not a command frame: count it and keep waiting for the
+                    // queued commands. Healthy 7.4 sessions end long before
+                    // the 10 s tick, so this stays 0 — T7's assertion that
+                    // the refusal happened before any heartbeat.
+                    report.heartbeats += 1;
+                    continue;
+                }
+                got += 1;
+            }
+            ReadOutcome::Eof => {
+                report.closed_early = true;
+                return;
+            }
+            ReadOutcome::Corrupt => {
+                report.saw_corruption = true;
+                return;
+            }
+        }
+    }
+    for plain in reply {
+        let wire = encode_link(&mut link, &plain);
+        stream.write_all(&wire).await.expect("command reply write");
+        transcript.push(Leg::Game, Dir::S2C, plain, wire.len());
+        report.frames_sent += 1;
+    }
+    // The server-side close: dropping the stream sends FIN, which the
+    // driver's in-world loop surfaces as Cause::ServerDisconnect and a
+    // clean teardown (`event_loop.rs` Wake::Closed, WO-6.2 §5.4).
+    drop(stream);
 }
 
 /// Reads the client's remaining in-world frames (heartbeats only, asserted

@@ -516,8 +516,63 @@ A Step 7.4 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(to be filled at delivery: branch, delivery SHA, gate table with exact counts from `test.log`,
-the three disclosed-edit hunks as applied, probe results 5/5, baseline before/after.)_
+- **Branch:** `step/7.4-driver-action-wiring` (cut from `origin/main` @ `c7717c1`), delivery SHA
+  `b72ec33` — implementation only; this note lands as a follow-up docs commit on the same branch.
+- **Baseline:** 352 → **360** (+8: T1-T3 `event_loop/tests.rs`, T4-T5 `commands/tests.rs`,
+  T6-T8 `e2e_loopback.rs`).
+
+**Gates at the delivery SHA (and re-run post-probe on the pristine tree):**
+
+| Gate | Command | Result |
+|---|---|---|
+| 1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | exit 0 |
+| 2 | `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| 3 | `cargo fmt --check` | exit 0 — 0 diffs |
+| 4 | `cargo doc --no-deps` | exit 0 — 0 warnings |
+| 5 | `cargo test` | exit 0 — **360 passed / 0 failed** (324 lib + 11 fixtures + 25 e2e) |
+
+T1-T8 all present and green, run individually as well as in the full suite:
+`queued_commands_reach_the_handler_and_the_loop_keeps_running`,
+`dropping_every_sender_never_stops_the_loop`,
+`a_handler_error_on_the_command_path_stops_the_loop`,
+`sending_after_the_receiver_is_gone_reports_closed`,
+`a_send_gate_failure_is_reported_as_an_action_send_error`,
+`queued_commands_travel_the_wire_byte_exact`,
+`an_empty_chat_command_refuses_the_session_without_a_frame`,
+`an_order_echo_is_reported_and_the_next_delta_stays_local` — each `1 passed; 0 failed`.
+
+**§2.2 disclosed edits, as applied:**
+
+1. `driver/tests.rs:603` locator renamed `run_with_shutdown(` → `event_loop::run_with_commands(`
+   — **deviation from the §2.2-1 literal:** written with the `event_loop::` module path, because
+   the bare `run_with_commands(` matches the driver's own `pub async fn run_with_commands`
+   *definition* before the adoption site, defeating the locator's purpose. Same position
+   semantics (adoption still precedes the loop).
+2. `driver/tests.rs` watcher-seam call appends `, None` — rustfmt forces the 4th argument to
+   reflow the call to multi-line (unavoidable under `fmt` 0-diffs); position semantics unchanged.
+3. `event_loop/tests.rs` `frames_are_delivered_while_tickers_keep_firing` gains the
+   `LoopEvent::Command(_) => panic!(…)` arm (file diff: 175 insertions, 0 deletions).
+
+**Finding F-7.4-01 (user-approved, disclosed):** `tests/live_integration.rs:263` is a **second**
+exhaustive `LoopEvent` match that §2.2-4 missed (the file is READ-ONLY in §6). One
+`LoopEvent::Command(_) => panic!(…)` arm with an F-7.4-01 comment was added; without it `E0004`
+(non-exhaustive match) fails every gate. Forced hunk, called out in the `b72ec33` commit body and
+here. Write guard otherwise holds: only §6 rows 2-12 changed; `src/game/**`, matrix,
+CONTRIBUTING, README and the legacy tree untouched.
+
+**§12 mutation probes: 5/5** — each: one semantic break → named test fails at **exit 101** →
+`git checkout --` → `git status --porcelain` clean → full gate re-run green at 360:
+
+| # | Mutation | Named test | Failure observed |
+|---:|---|---|---|
+| 1 | `command_wait` Some arm → `std::future::pending().await` | T1 (+T6) | T1 exit 101: `seen == []` (empty); T6 exit 101: double budget `Elapsed` + driver `ConnectionReset` |
+| 2 | `execute` chat arm forced to `send_chat(link, ChatMode::Normal, text)` | T6 | exit 101: transcript mismatch — mode byte `01` on the wire vs golden G2's `03` (byte-exact left/right dump) |
+| 3 | `Ordered` arm merged into the blanket dispatch record | T8 | exit 101: `the 241 echo must be reported by its dedicated record, not the blanket dispatch record (D5)` |
+| 4 | `Wake::CommandsClosed => return Ok(())` | T2 | exit 101: `left: 0, right: 3` ticker fires (loop stopped at channel close, D3 violated) |
+| 5 | handler Command arm swallows via `warn!(…)` + continue | T7 | exit 101 (~30 s): `expect_err` got `Stage { InWorld, ConnectionReset }` instead of `Refused { InWorld }` — no refusal, D4 violated |
+
+Post-probe full gate re-run on the restored tree: all five gates exit 0, `cargo test` = **360**
+(324 + 11 + 25), porcelain clean.
 
 ### Verdict - Verifier
 

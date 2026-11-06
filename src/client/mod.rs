@@ -12,7 +12,11 @@
 //!   flavour that honours the flag.
 //! - Step 6.1: [`driver`], the end-to-end orchestrator that runs the whole
 //!   session in one process — front handshake through in-world and teardown.
+//! - Step 7.4: [`commands`], the in-world command channel — an input layer
+//!   (later step) queues [`commands::ClientCommand`]s and the loop sends
+//!   them on the player's behalf, consumed on the loop task itself.
 
+pub mod commands;
 pub mod driver;
 pub mod event_loop;
 pub mod heartbeat;

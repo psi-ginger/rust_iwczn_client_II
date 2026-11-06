@@ -11,6 +11,15 @@
 //! ([`crate::client::heartbeat::send_heartbeat`]). See "Why the handler is
 //! async" below.
 //!
+//! As of Step 7.4 the loop also takes an **optional command channel**
+//! ([`run_with_commands`], `WO-7.4` §7.2): a queued
+//! [`ClientCommand`] becomes a
+//! [`LoopEvent::Command`] dispatched to the same handler on the same task
+//! (one writer, D1), and a channel whose senders are all gone merely
+//! disables the arm for the rest of the session — never stops and never
+//! spins the loop (D3). [`run`] and [`run_with_shutdown`] wire `None` and
+//! are behaviourally unchanged (D2).
+//!
 //! # The defect this replaces (legacy → port)
 //!
 //! The legacy client pumps the network once per frame from a Win32 message
@@ -159,6 +168,7 @@
 //! compare against those literals.
 
 use super::teardown::{Cause, Shutdown};
+use crate::client::commands::{ClientCommand, CommandReceiver};
 use crate::game::entry::{GameError, GameLink};
 use crate::net::codec::Frame;
 use std::ops::AsyncFnMut;
@@ -213,6 +223,12 @@ pub enum LoopEvent {
         /// That ticker's fire ordinal, starting at 1.
         fired: u64,
     },
+    /// A queued player command from [`crate::client::commands`] — Step 7.4.
+    ///
+    /// Only ever delivered by [`run_with_commands`] with a wired channel;
+    /// [`run`] and [`run_with_shutdown`] pass `None`, so this event is
+    /// unreachable there (D2).
+    Command(ClientCommand),
 }
 
 /// What the handler asks the loop to do next.
@@ -254,6 +270,11 @@ enum Wake {
     Failed(GameError),
     /// At least one ticker deadline was reached.
     Ticks,
+    /// A queued player command arrived (Step 7.4, D1).
+    Command(ClientCommand),
+    /// Every command sender was dropped: the arm disables itself for the
+    /// rest of the session (D3) — the loop keeps running.
+    CommandsClosed,
 }
 
 /// One ticker's runtime state: when it next fires and how many times it has.
@@ -274,6 +295,22 @@ async fn ticker_wait(deadline: Option<Instant>) {
         // No ticker: this branch never resolves, leaving the read as the only
         // live branch.
         None => std::future::pending::<()>().await,
+    }
+}
+
+/// Waits for the next queued command, or forever when no channel is wired.
+///
+/// A single future for the command arm, so the `select!` needs one branch
+/// regardless of whether a channel exists. `None` (D2: [`run`] and
+/// [`run_with_shutdown`] wire no channel) answers `pending()`, so those
+/// entries behave exactly as they did before Step 7.4 — one permanently
+/// pending arm, no ordering, timing or behaviour change.
+async fn command_wait(commands: &mut Option<CommandReceiver>) -> Option<ClientCommand> {
+    match commands {
+        Some(receiver) => receiver.recv().await,
+        // D2/D3: no channel wired — this arm never resolves, so `run` and
+        // `run_with_shutdown` behave exactly as they do today.
+        None => std::future::pending().await,
     }
 }
 
@@ -340,6 +377,10 @@ where
 /// [`Cause::ServerDisconnect`] for any shutdown still unclaimed at teardown
 /// time.
 ///
+/// Step 7.4: this entry is now a thin delegation to [`run_with_commands`]
+/// with **no command channel** (`None`, D2) — its signature and behaviour
+/// are unchanged, and the command arm stays permanently pending.
+///
 /// # Errors
 ///
 /// As [`run`].
@@ -347,6 +388,42 @@ pub async fn run_with_shutdown<F, E>(
     link: &mut GameLink,
     tickers: &[Ticker],
     shutdown: &Shutdown,
+    handler: F,
+) -> Result<(), LoopError<E>>
+where
+    F: AsyncFnMut(&mut GameLink, LoopEvent) -> Result<Flow, E>,
+    E: std::error::Error + 'static,
+{
+    run_with_commands(link, tickers, shutdown, None, handler).await
+}
+
+/// [`run_with_shutdown`] with an optional command channel wired in — Step
+/// 7.4 (`WO-7.4` §7.2).
+///
+/// The body is [`run_with_shutdown`]'s loop verbatim plus one `select!` arm
+/// and two `Wake` arms (D1-D3):
+///
+/// - **One writer, same task.** A ready command yields
+///   [`LoopEvent::Command`] and `handler` awaits
+///   [`ClientCommand::execute`](crate::client::commands::ClientCommand::execute)
+///   on the very `&mut GameLink` the loop owns — no second task ever holds
+///   the link (the link cipher ticks once per encoded frame).
+/// - **A closed channel disables the arm; it never stops and never spins
+///   the loop (D3).** Every sender dropped turns the arm into `Wake::
+///   CommandsClosed`, which sets `commands = None` — from then on the arm
+///   is `pending()` forever. Dropping the input layer must not kill a
+///   session, and a pending arm is not a resolved arm (no busy-poll).
+///
+/// # Errors
+///
+/// As [`run`]; plus the closed-arm semantics: a closed command channel is
+/// **not** an error (D3) — the loop keeps running until EOF, failure, a
+/// handler error, or [`Flow::Break`].
+pub async fn run_with_commands<F, E>(
+    link: &mut GameLink,
+    tickers: &[Ticker],
+    shutdown: &Shutdown,
+    mut commands: Option<CommandReceiver>,
     mut handler: F,
 ) -> Result<(), LoopError<E>>
 where
@@ -394,6 +471,13 @@ where
                 }
             }
             _ = ticker_wait(earliest) => Wake::Ticks,
+            // Step 7.4 (D1): one arm per channel; `command_wait` is
+            // `pending()` for `None`, so entries without a channel keep
+            // their exact pre-7.4 behaviour (D2).
+            cmd = command_wait(&mut commands) => match cmd {
+                Some(command) => Wake::Command(command),
+                None => Wake::CommandsClosed,
+            },
         };
 
         match wake {
@@ -445,6 +529,22 @@ where
                     }
                 }
             }
+            // Step 7.4 (D1): the command rides the loop task's own `&mut
+            // link` — no second writer, so the cipher counter cannot race.
+            Wake::Command(command) => {
+                let flow = handler(link, LoopEvent::Command(command))
+                    .await
+                    .map_err(LoopError::Handler)?;
+                if flow == Flow::Break {
+                    return Ok(());
+                }
+            }
+            // D3: disable the arm for the rest of the session; the loop
+            // keeps running (dropping the input layer must not kill a
+            // session) and never busy-polls (a pending arm is not a
+            // resolved arm). The `&mut commands` borrow held by the
+            // `select!` statement ended with that statement.
+            Wake::CommandsClosed => commands = None,
         }
     }
 }

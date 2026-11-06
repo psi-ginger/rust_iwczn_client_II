@@ -51,13 +51,15 @@ use crate::auth::login::{parse_login_response, request_login, FrontAuth};
 use crate::auth::world_list::{
     parse_notice, request_notice, request_worldlist, WorldList, RESPONSE_NOTICE, RESPONSE_WORLDLIST,
 };
-use crate::client::event_loop::{run_with_shutdown, Flow, LoopError, LoopEvent};
+use crate::client::commands::CommandReceiver;
+use crate::client::event_loop::{Flow, LoopError, LoopEvent};
 use crate::client::heartbeat::{heartbeat_ticker, is_heartbeat, send_heartbeat};
 use crate::client::teardown::{spawn_ctrl_c_watcher, terminate, Cause, Shutdown, TaskTracker};
+use crate::game::action::ActionError;
 use crate::game::char_info::{
     parse_char_list_entry, CharListEntry, CHAR_SLOTS, RESPONSE_CHARLIST, RESPONSE_LOGIN,
 };
-use crate::game::dispatcher::{DispatchError, DispatcherState};
+use crate::game::dispatcher::{DispatchError, DispatchOutcome, DispatcherState};
 use crate::game::entry::{ClientCharUnique, GameError, GameLink};
 use crate::game::login::request_game_login;
 use crate::game::world_entry::{
@@ -456,10 +458,30 @@ pub struct DriverOutcome {
 /// failing stage and the owning step's error, and [`DriverError::Refused`] when a
 /// protocol or state condition stops the flow without an underlying error.
 pub async fn run(cfg: &DriverConfig, shutdown: &Shutdown) -> Result<DriverOutcome, DriverError> {
-    run_with_watcher(cfg, shutdown, spawn_ctrl_c_watcher).await
+    run_with_watcher(cfg, shutdown, spawn_ctrl_c_watcher, None).await
 }
 
-/// [`run`] with the watcher factory injected.
+/// Step 7.4: [`run`] with a command channel wired into the in-world loop
+/// (`WO-7.4` §7.3).
+///
+/// The receiver is threaded through the private chain untouched and handed
+/// to the event loop's [`run_with_commands`](crate::client::event_loop::run_with_commands)
+/// at the in-world stage; every stage before it behaves exactly as [`run`]
+/// (D2).
+///
+/// # Errors
+///
+/// As [`run`].
+pub async fn run_with_commands(
+    cfg: &DriverConfig,
+    shutdown: &Shutdown,
+    commands: CommandReceiver,
+) -> Result<DriverOutcome, DriverError> {
+    run_with_watcher(cfg, shutdown, spawn_ctrl_c_watcher, Some(commands)).await
+}
+
+/// [`run`] with the watcher factory injected, and with the optional Step
+/// 7.4 command channel passed through to [`flow`] (`None` for [`run`]).
 ///
 /// The seam exists because §6.3 demands a test for the Ctrl+C path and a real
 /// console event would signal cargo's console group along with ours: the test
@@ -470,6 +492,7 @@ async fn run_with_watcher(
     cfg: &DriverConfig,
     shutdown: &Shutdown,
     spawn_watcher: impl FnOnce(Shutdown, &TaskTracker) -> JoinHandle<Option<Cause>>,
+    commands: Option<CommandReceiver>,
 ) -> Result<DriverOutcome, DriverError> {
     cfg.validate()?;
 
@@ -477,7 +500,7 @@ async fn run_with_watcher(
     let watcher = spawn_watcher(shutdown.clone(), &tracker);
 
     let mut game: Option<GameLink> = None;
-    let outcome = flow(cfg, shutdown, &mut game).await;
+    let outcome = flow(cfg, shutdown, &mut game, commands).await;
 
     // Released before teardown: the watcher waits for a signal that may never
     // come, and a drain must never be held open by it. `terminate` then sees an
@@ -593,14 +616,16 @@ async fn front_phase(
 /// The stages themselves — now three phases in order: [`front_phase`], then
 /// [`game_phase`], which ends in [`in_world_phase`]. `game` is filled in as
 /// soon as the game link exists so [`run`] can tear it down on every error
-/// path below.
+/// path below. `commands` is the Step 7.4 channel, passed through untouched
+/// to the in-world stage (it never reaches the front or game legs).
 async fn flow(
     cfg: &DriverConfig,
     shutdown: &Shutdown,
     game: &mut Option<GameLink>,
+    commands: Option<CommandReceiver>,
 ) -> Result<DriverOutcome, DriverError> {
     let (auth, worlds) = front_phase(cfg, shutdown).await?;
-    game_phase(cfg, shutdown, &auth, worlds, game).await
+    game_phase(cfg, shutdown, &auth, worlds, game, commands).await
 }
 
 /// The game leg of the session — dial the game service, the handshake, the
@@ -620,7 +645,8 @@ async fn flow(
 /// `auth` and `worlds` are [`front_phase`]'s results, handed in rather than
 /// re-derived; `game` is filled in as soon as the game link exists so
 /// [`run`] can tear it down on every error path below — exactly where `flow`
-/// filled it before this extraction.
+/// filled it before this extraction. `commands` (Step 7.4) is passed through
+/// untouched to [`in_world_phase`].
 ///
 /// # Errors
 ///
@@ -632,6 +658,7 @@ async fn game_phase(
     auth: &FrontAuth,
     worlds: usize,
     game: &mut Option<GameLink>,
+    commands: Option<CommandReceiver>,
 ) -> Result<DriverOutcome, DriverError> {
     let link = GameLink::connect(cfg.game)
         .await
@@ -722,11 +749,12 @@ async fn game_phase(
     }
     check_shutdown(shutdown, Stage::InWorld)?;
 
-    in_world_phase(cfg, shutdown, &unique, worlds, char_client, game).await
+    in_world_phase(cfg, shutdown, &unique, worlds, char_client, game, commands).await
 }
 
-/// A handler failure inside the in-world loop: either the dispatcher or the
-/// heartbeat, both of which must stop the session rather than be swallowed.
+/// A handler failure inside the in-world loop: the dispatcher, the heartbeat,
+/// or (Step 7.4) a queued player command — all three must stop the session
+/// rather than be swallowed.
 #[derive(Debug, thiserror::Error)]
 enum InWorldError {
     /// A dispatcher parser refused a frame.
@@ -735,11 +763,16 @@ enum InWorldError {
     /// The heartbeat could not be written.
     #[error(transparent)]
     Heartbeat(#[from] GameError),
+    /// A queued player command could not be encoded or sent (D4).
+    #[error(transparent)]
+    Action(#[from] ActionError),
 }
 
 /// The in-world leg of the session — the world-entry dispatcher, then the
 /// Step 5.1 loop with its 5.2 heartbeat and 5.4 dispatch, then the session
-/// outcome.
+/// outcome. `commands` (Step 7.4) is handed to the event loop's
+/// `run_with_commands`, where the queued player commands ride the loop
+/// task's own link (D1).
 ///
 /// Extracted **verbatim** from `game_phase` (Step 5, T-1e): every statement,
 /// stage gate, tracing record and citation moved unchanged; only the
@@ -766,24 +799,57 @@ async fn in_world_phase(
     worlds: usize,
     char_client: CharClient,
     game: &mut Option<GameLink>,
+    commands: Option<CommandReceiver>,
 ) -> Result<DriverOutcome, DriverError> {
     let mut dispatcher = DispatcherState::new(i32::from(char_client.char_unique));
     dispatcher.adopt_local(&char_client);
 
     let link = game_link_mut(game, Stage::InWorld)?;
-    let loop_result = run_with_shutdown(
+    // Called by full path: this module's own new `run_with_commands` would
+    // collide with the event loop's by name (WO-7.4 §2.2-4).
+    let loop_result = crate::client::event_loop::run_with_commands(
         link,
         &[heartbeat_ticker()],
         shutdown,
+        commands,
         async |link, event| -> Result<Flow, InWorldError> {
+            // Handler order (D8): heartbeat → Command → Frame; the dispatch
+            // record stays last.
             if is_heartbeat(&event) {
                 send_heartbeat(link).await?;
                 debug!("heartbeat sent");
                 return Ok(Flow::Continue);
             }
+            if let LoopEvent::Command(command) = &event {
+                command.execute(link).await?; // -> InWorldError::Action (D4)
+                return Ok(Flow::Continue);
+            }
             if let LoopEvent::Frame(frame) = &event {
                 let outcome = dispatcher.dispatch(frame.cmd(), frame.payload())?;
-                debug!(opcode = frame.cmd(), ?outcome, "in-world frame dispatched");
+                match &outcome {
+                    // D5: a 241 echo is a report, not a dispatch record —
+                    // and never a state write (position authority stays
+                    // opcode 200, WO-7.3 D8/T11).
+                    DispatchOutcome::Ordered {
+                        char_unique,
+                        target,
+                        ..
+                    } => {
+                        debug!(char_unique, ?target, "in-world order echo reported");
+                    }
+                    // The blanket arm is byte-identical to the pre-7.4
+                    // record: the e2e record test and the soak counters
+                    // assert its exact fields and message string. Explicit,
+                    // non-wildcard, so a future `DispatchOutcome` variant
+                    // forces a conscious decision at this site (D5).
+                    DispatchOutcome::Unhandled { .. }
+                    | DispatchOutcome::Chat(_)
+                    | DispatchOutcome::Entered { .. }
+                    | DispatchOutcome::Removed { .. }
+                    | DispatchOutcome::Applied { .. } => {
+                        debug!(opcode = frame.cmd(), ?outcome, "in-world frame dispatched");
+                    }
+                }
             }
             Ok(Flow::Continue)
         },

@@ -1,0 +1,47 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\DK2\AppData\Local\Temp\opencode\clone_s6)
+warning: field `inner` is never read
+  --> src\client\commands.rs:77:5
+   |
+75 | pub struct CommandReceiver {
+   |            --------------- field in this struct
+76 |     /// The tokio unbounded receiver behind the newtype.
+77 |     inner: tokio::sync::mpsc::UnboundedReceiver<ClientCommand>,
+   |     ^^^^^
+   |
+   = note: `CommandReceiver` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `recv` is never used
+  --> src\client\commands.rs:82:25
+   |
+80 | impl CommandReceiver {
+   | -------------------- method in this implementation
+81 |     /// `Some(command)`, or `None` once every sender is gone (D3).
+82 |     pub(crate) async fn recv(&mut self) -> Option<ClientCommand> {
+   |                         ^^^^
+
+warning: `goonzu_client` (lib) generated 2 warnings
+warning: `goonzu_client` (lib test) generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.62s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-389dee795ddcb436.exe)
+
+running 1 test
+test client::event_loop::tests::queued_commands_reach_the_handler_and_the_loop_keeps_running ... FAILED
+
+failures:
+
+---- client::event_loop::tests::queued_commands_reach_the_handler_and_the_loop_keeps_running stdout ----
+
+thread 'client::event_loop::tests::queued_commands_reach_the_handler_and_the_loop_keeps_running' (6620) panicked at src\client\event_loop\tests.rs:642:5:
+assertion `left == right` failed: the two queued commands must arrive in order, payload-exact (WO-7.4 §9/T1)
+  left: []
+ right: [Order(Move { x: 100, y: 200 }), Chat { mode: Town, text: "hi" }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    client::event_loop::tests::queued_commands_reach_the_handler_and_the_loop_keeps_running
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

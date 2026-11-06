@@ -1,0 +1,37 @@
+# WO-7.4 S6 write-guard confirmation - git diff main..b72ec33 (delivery SHA)
+# captured: 2026-11-06T04:20:18Z
+
+## git diff --name-status main..b72ec33
+M	Cargo.toml
+A	src/client/commands.rs
+A	src/client/commands/tests.rs
+M	src/client/driver.rs
+M	src/client/driver/tests.rs
+M	src/client/event_loop.rs
+M	src/client/event_loop/tests.rs
+M	src/client/mod.rs
+M	tests/e2e_loopback.rs
+M	tests/e2e_loopback/frames.rs
+M	tests/e2e_loopback/game_double.rs
+M	tests/live_integration.rs
+
+## git diff --stat main..b72ec33
+ Cargo.toml                        |   4 +-
+ src/client/commands.rs            |  99 +++++++++++
+ src/client/commands/tests.rs      |  85 +++++++++
+ src/client/driver.rs              |  94 ++++++++--
+ src/client/driver/tests.rs        |  35 ++--
+ src/client/event_loop.rs          | 100 +++++++++++
+ src/client/event_loop/tests.rs    | 175 ++++++++++++++++++
+ src/client/mod.rs                 |   4 +
+ tests/e2e_loopback.rs             | 366 +++++++++++++++++++++++++++++++++++++-
+ tests/e2e_loopback/frames.rs      |  35 ++++
+ tests/e2e_loopback/game_double.rs |  84 +++++++++
+ tests/live_integration.rs         |   7 +
+ 12 files changed, 1051 insertions(+), 37 deletions(-)
+
+## S6 row 13 (evidence/7.4/) is Verifier-written at verification - see this directory.
+## Explicitly unchanged (verified via the name-status list above): TASK_MATRIX.md (row 7.4 PENDING),
+## CONTRIBUTING*, README*, src/game/**, src/auth/**, src/net/**, src/main.rs, src/lib.rs,
+## docs/** other than WO-7.4.md, previously committed evidence/**, legacy tree,
+## tests/e2e_loopback/{soak,front_double,robustness}.rs.

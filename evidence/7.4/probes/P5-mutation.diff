@@ -1,0 +1,13 @@
+diff --git a/src/client/driver.rs b/src/client/driver.rs
+index 0755cb7..702160a 100644
+--- a/src/client/driver.rs
++++ b/src/client/driver.rs
+@@ -821,7 +821,7 @@ async fn in_world_phase(
+                 return Ok(Flow::Continue);
+             }
+             if let LoopEvent::Command(command) = &event {
+-                command.execute(link).await?; // -> InWorldError::Action (D4)
++                tracing::warn!(?command, "probe 5: refusal swallowed");
+                 return Ok(Flow::Continue);
+             }
+             if let LoopEvent::Frame(frame) = &event {

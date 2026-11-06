@@ -1,0 +1,25 @@
+diff --git a/src/client/driver.rs b/src/client/driver.rs
+index 0755cb7..aa7c75a 100644
+--- a/src/client/driver.rs
++++ b/src/client/driver.rs
+@@ -830,19 +830,13 @@ async fn in_world_phase(
+                     // D5: a 241 echo is a report, not a dispatch record —
+                     // and never a state write (position authority stays
+                     // opcode 200, WO-7.3 D8/T11).
+-                    DispatchOutcome::Ordered {
+-                        char_unique,
+-                        target,
+-                        ..
+-                    } => {
+-                        debug!(char_unique, ?target, "in-world order echo reported");
+-                    }
+                     // The blanket arm is byte-identical to the pre-7.4
+                     // record: the e2e record test and the soak counters
+                     // assert its exact fields and message string. Explicit,
+                     // non-wildcard, so a future `DispatchOutcome` variant
+                     // forces a conscious decision at this site (D5).
+                     DispatchOutcome::Unhandled { .. }
++                    | DispatchOutcome::Ordered { .. }
+                     | DispatchOutcome::Chat(_)
+                     | DispatchOutcome::Entered { .. }
+                     | DispatchOutcome::Removed { .. }

@@ -521,5 +521,47 @@ the three disclosed-edit hunks as applied, probe results 5/5, baseline before/af
 
 ### Verdict - Verifier
 
-_(to be filled at verification: S4 clone SHA, five gate exits, 360-from-`test.log` copy,
-write-guard diff, disclosed-edit diff, probe summary, `evidence/7.4/` bundle reference.)_
+- **S4 clone:** clean clone, detached at delivery SHA `b72ec33e8f13d5b0493292d1a10a1a2edb4db227`
+  (tree `42dac1e25117b9fe150e7f5f23628a8239e4dddb`, parent `c7717c1` = `origin/main`); porcelain
+  CLEAN before/after every gate and probe. Branch tip `46f3b8d` = this SHA + the docs-only §14
+  delivery note (`src/`, `tests/`, `Cargo.*` byte-identical), so these gates characterize the tip.
+- **Gates (run twice — at the delivery SHA, and re-run on the pristine tree after the probes):**
+  `RUSTFLAGS=-D warnings cargo check --all-targets` exit 0 · `cargo clippy --all-targets -- -D warnings`
+  exit 0 · `cargo fmt --check` exit 0 (0 diffs) · `cargo doc --no-deps` exit 0 (0 warnings) ·
+  `cargo test` exit 0 — both runs `check=0 clippy=0 fmt=0 doc=0 test=0`.
+- **360 from `test.log`:** **360 passed / 0 failed** — 324 lib (1 ignored) + 11 `asset_fixtures` +
+  25 `e2e_loopback`; `live_integration` 4 ignored; baseline 352 → 360 (+8 = T1–T8). T1–T8 present
+  and green in the full suite. Copy target for the matrix `Tests Baseline` cell: **360**.
+- **Write guard (§6):** `evidence/7.4/write-guard.txt` — changed files = exactly §6 rows 1–12 plus
+  the READ-ONLY `tests/live_integration.rs` (F-7.4-01); `src/game|auth|net|main|lib`, `TASK_MATRIX.md`
+  (row 7.4 still `PENDING`), `CONTRIBUTING*`, `README`, other `docs/**`, previously committed
+  `evidence/**`, legacy tree and `soak`/`front_double`/`robustness` untouched.
+- **Disclosed edits:** `evidence/7.4/disclosed-edits.diff` — exactly the three §2.2 hunks
+  (`driver/tests.rs`: `, None` + rustfmt reflow and the locator rename to `event_loop::run_with_commands(`;
+  `event_loop/tests.rs`: one `LoopEvent::Command` arm, 175+/0−) plus F-7.4-01 (`live_integration.rs`,
+  7+/0− — panic arm only; the match is exhaustive over the new variant, so E0004 otherwise).
+  Both deviations justified (bare `run_with_commands(` matches the driver's own `pub fn` at `:475`,
+  before the adoption site `:805`, which would fail `hits[0] < looping`).
+- **Probes:** 5/5 exit **101** with their named tests failing (P1 T1 + P1b T6, P2 T6, P3 T8, P4 T2,
+  P5 T7), `git checkout --` restore + CLEAN porcelain after each, then the full gate set green at
+  360 — `evidence/7.4/mutation-probes.md` (raw mutation diffs, failing outputs, restore states in
+  `evidence/7.4/probes/`; post-probe gates in `evidence/7.4/postprobe/`).
+- **F-07:** G1 = frozen `WO-step7-in-world-actions.md` §8.3-A verbatim; G2 = §8.3-D layout;
+  G3 = §8.3-H layout (`CHAR_UNIQUE=4242` = `0x1092` → `92 10 00 00`, hand-checked); G4 = harness
+  fixture — all hand-placed in `frames.rs`, never regenerated from the encoder under test.
+- **Bundle:** `evidence/7.4/` — `head/check/clippy/fmt/test/doc/env/summary/mutation-probes` +
+  `write-guard.txt` + `disclosed-edits.diff` + `gate-exits.txt` + raw `probes/` and `postprobe/`
+  artifacts, `SHA256SUMS` (44 entries) over the committed LF bytes (6.3 L-2; re-verified: every
+  hash equals the bytes git stores for that path).
+- **Live (§13.8, evidence only):** ngrok 4/4 (`live_front_handshake_extracts_secret_key`,
+  `live_game_handshake_decodes_the_link_cipher`, `live_event_loop_idles_cleanly_and_ticks`,
+  `live_heartbeat_keeps_the_connection_up_over_60s`) + 70.01 s soak — never a gate.
+- **DoD §13:** items 1–8 all satisfied. **Verdict: PASSED.** Matrix row 7.4 `PENDING` → `PASSED`
+  and this bundle's commit are the Verifier's `docs(qc)` governance step (pending direction);
+  `TASK_MATRIX.md` deliberately untouched in this working tree.
+- **Governance execution (2026-11-06, direction received — supersedes "pending direction"
+  above):** the row flip and this verdict land together in the `docs(qc)` commit staging
+  `evidence/7.4/` — row 7.4 `PENDING` → `PASSED` at **360/360**, the F-7.4-01 lesson recorded
+  in `CONTRIBUTING.md`, and the `CONTRIBUTING_PHASE3.md` 7.4 mirror cell synced. Branch
+  `step/7.4-driver-action-wiring` (`b72ec33` → `46f3b8d`) remains unmerged; merge to main
+  pending Custodian direction.

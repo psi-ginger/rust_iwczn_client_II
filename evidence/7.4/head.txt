@@ -1,0 +1,8 @@
+repo: rust_iwczn_client_II
+SHA: b72ec33e8f13d5b0493292d1a10a1a2edb4db227
+tree: 42dac1e25117b9fe150e7f5f23628a8239e4dddb
+parent: c7717c12d85e9d22157e9a5f5a8d9a23b0773aea (= origin/main, branch cut point)
+branch: step/7.4-driver-action-wiring (tip 46f3b8d379ad7c3b89529b2281a6009bf5293201 = this SHA + docs-only S14 delivery note)
+subject: step7.4: driver & event-loop action wiring - commands channel (D1-D7): event_loop::run_with_commands + Wake::Command/CommandsClosed, driver::run_with_commands wiring ClientCommand to send_order/send_chat, InWorldError::Action (D4), report-only Ordered record (D5); tests T1-T8, 352 -> 360, 5 gates green
+clone: S4 clean clone, detached at the delivery SHA, porcelain CLEAN before/after every gate and probe
+captured_utc: 2026-11-06T03:44:08Z (gate run; stamp repeated in env.txt)

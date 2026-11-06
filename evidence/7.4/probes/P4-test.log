@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\DK2\AppData\Local\Temp\opencode\clone_s6)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.72s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-389dee795ddcb436.exe)
+
+running 1 test
+test client::event_loop::tests::dropping_every_sender_never_stops_the_loop ... FAILED
+
+failures:
+
+---- client::event_loop::tests::dropping_every_sender_never_stops_the_loop stdout ----
+
+thread 'client::event_loop::tests::dropping_every_sender_never_stops_the_loop' (6716) panicked at src\client\event_loop\tests.rs:697:5:
+assertion `left == right` failed: the loop must run to three ticker fires with the channel closed
+  left: 0
+ right: 3
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    client::event_loop::tests::dropping_every_sender_never_stops_the_loop
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

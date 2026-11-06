@@ -1,0 +1,25 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\DK2\AppData\Local\Temp\opencode\clone_s6)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.25s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-3e275d2b184c8fda.exe)
+
+running 1 test
+test an_empty_chat_command_refuses_the_session_without_a_frame ... FAILED
+
+failures:
+
+---- an_empty_chat_command_refuses_the_session_without_a_frame stdout ----
+
+thread 'an_empty_chat_command_refuses_the_session_without_a_frame' (2052) panicked at tests\e2e_loopback.rs:192:10:
+the game double must finish inside its budget: Elapsed(())
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'an_empty_chat_command_refuses_the_session_without_a_frame' (2052) panicked at tests\e2e_loopback.rs:1304:18:
+expected DriverError::Refused { stage: Stage::InWorld, detail }, got Stage { stage: InWorld, source: Session(Io(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." })) }
+
+
+failures:
+    an_empty_chat_command_refuses_the_session_without_a_frame
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 24 filtered out; finished in 30.02s
+
+error: test failed, to rerun pass `--test e2e_loopback`

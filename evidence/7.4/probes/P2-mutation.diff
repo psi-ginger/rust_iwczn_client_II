@@ -1,0 +1,13 @@
+diff --git a/src/client/commands.rs b/src/client/commands.rs
+index 4d56291..deccc03 100644
+--- a/src/client/commands.rs
++++ b/src/client/commands.rs
+@@ -37,7 +37,7 @@ impl ClientCommand {
+     pub async fn execute(&self, link: &mut GameLink) -> Result<(), ActionError> {
+         match self {
+             ClientCommand::Order(order) => send_order(link, order).await?,
+-            ClientCommand::Chat { mode, text } => send_chat(link, *mode, text).await?,
++            ClientCommand::Chat { text, .. } => send_chat(link, ChatMode::Normal, text).await?,
+         }
+         Ok(())
+     }

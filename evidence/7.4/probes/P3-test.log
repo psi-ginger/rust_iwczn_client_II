@@ -1,0 +1,22 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\DK2\AppData\Local\Temp\opencode\clone_s6)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.54s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-3e275d2b184c8fda.exe)
+
+running 1 test
+test an_order_echo_is_reported_and_the_next_delta_stays_local ... FAILED
+
+failures:
+
+---- an_order_echo_is_reported_and_the_next_delta_stays_local stdout ----
+
+thread 'an_order_echo_is_reported_and_the_next_delta_stays_local' (6628) panicked at tests\e2e_loopback.rs:1457:10:
+the 241 echo must be reported by its dedicated record, not the blanket dispatch record (D5)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    an_order_echo_is_reported_and_the_next_delta_stays_local
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test e2e_loopback`

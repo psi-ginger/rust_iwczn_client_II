@@ -1,0 +1,13 @@
+diff --git a/src/client/event_loop.rs b/src/client/event_loop.rs
+index 8b3cf34..94cd887 100644
+--- a/src/client/event_loop.rs
++++ b/src/client/event_loop.rs
+@@ -544,7 +544,7 @@ where
+             // session) and never busy-polls (a pending arm is not a
+             // resolved arm). The `&mut commands` borrow held by the
+             // `select!` statement ended with that statement.
+-            Wake::CommandsClosed => commands = None,
++            Wake::CommandsClosed => return Ok(()),
+         }
+     }
+ }

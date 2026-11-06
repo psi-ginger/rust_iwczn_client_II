@@ -1,0 +1,47 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\DK2\AppData\Local\Temp\opencode\clone_s6)
+warning: field `inner` is never read
+  --> src\client\commands.rs:77:5
+   |
+75 | pub struct CommandReceiver {
+   |            --------------- field in this struct
+76 |     /// The tokio unbounded receiver behind the newtype.
+77 |     inner: tokio::sync::mpsc::UnboundedReceiver<ClientCommand>,
+   |     ^^^^^
+   |
+   = note: `CommandReceiver` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `recv` is never used
+  --> src\client\commands.rs:82:25
+   |
+80 | impl CommandReceiver {
+   | -------------------- method in this implementation
+81 |     /// `Some(command)`, or `None` once every sender is gone (D3).
+82 |     pub(crate) async fn recv(&mut self) -> Option<ClientCommand> {
+   |                         ^^^^
+
+warning: `goonzu_client` (lib) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.16s
+     Running tests\e2e_loopback.rs (target\debug\deps\e2e_loopback-3e275d2b184c8fda.exe)
+
+running 1 test
+test queued_commands_travel_the_wire_byte_exact ... FAILED
+
+failures:
+
+---- queued_commands_travel_the_wire_byte_exact stdout ----
+
+thread 'queued_commands_travel_the_wire_byte_exact' (3204) panicked at tests\e2e_loopback.rs:192:10:
+the game double must finish inside its budget: Elapsed(())
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'queued_commands_travel_the_wire_byte_exact' (3204) panicked at tests\e2e_loopback.rs:1205:10:
+the command session must complete cleanly: Stage { stage: InWorld, source: Session(Io(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." })) }
+
+
+failures:
+    queued_commands_travel_the_wire_byte_exact
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 24 filtered out; finished in 30.02s
+
+error: test failed, to rerun pass `--test e2e_loopback`

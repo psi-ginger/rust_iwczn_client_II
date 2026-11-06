@@ -1,0 +1,13 @@
+diff --git a/src/client/event_loop.rs b/src/client/event_loop.rs
+index 8b3cf34..7de3d6c 100644
+--- a/src/client/event_loop.rs
++++ b/src/client/event_loop.rs
+@@ -307,7 +307,7 @@ async fn ticker_wait(deadline: Option<Instant>) {
+ /// pending arm, no ordering, timing or behaviour change.
+ async fn command_wait(commands: &mut Option<CommandReceiver>) -> Option<ClientCommand> {
+     match commands {
+-        Some(receiver) => receiver.recv().await,
++        Some(_receiver) => std::future::pending().await,
+         // D2/D3: no channel wired — this arm never resolves, so `run` and
+         // `run_with_shutdown` behave exactly as they do today.
+         None => std::future::pending().await,

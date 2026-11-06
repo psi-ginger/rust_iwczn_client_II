@@ -219,3 +219,17 @@ byte stream rather than the server (P3-7). Phase III was opened 2026-10-29 by th
 the signed-off Phase II baseline (`origin/main` @ `606da1a`); its first work order is
 `docs/agents/WO-7.1.md`. As in Phase 2, a step's scope and acceptance are defined in
 `CONTRIBUTING_PHASE3.md` (or a work order citing it) *before* it is implemented.
+
+### Lessons learned (recorded by the Verifier lane; binding on subsequent steps)
+
+- **F-7.4-01 (Step 7.4, 2026-11-06): adding a variant to an enum that other files match
+  exhaustively forces edits outside the write guard.** The new `LoopEvent::Command` variant
+  broke the exhaustive `LoopEvent` match in `tests/live_integration.rs` — a READ-ONLY file under
+  WO-7.4's write guard — which would otherwise fail to compile (E0004). The accepted fix was
+  minimal, loud and disclosed: a 7-line panic arm marking the variant impossible under `run`
+  (7 insertions / 0 deletions, test logic unaltered), recorded in `evidence/7.4/disclosed-edits.diff`
+  and in `docs/agents/WO-7.4.md` §2.2/§14. **Rule for subsequent WOs:** before adding a variant to
+  any enum, grep the whole tree (`src/**` *and* `tests/**`) for exhaustive matches on that type;
+  if a forced arm would land outside your write guard, keep it to a loud impossible/panic arm,
+  never alter test logic, and disclose it as a §2.2-style disclosed edit with its diff in
+  `evidence/` — never a silent edit, never a gate failure.

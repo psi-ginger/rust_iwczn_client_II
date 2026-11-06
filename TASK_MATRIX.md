@@ -4,7 +4,7 @@
 > **READ BEFORE EXECUTING:**
 > 1. Check the tables below first. Find the **FIRST** step with status `PENDING`.
 > 2. Implement **ONLY THAT STEP**. Do not touch or jump to future steps.
-> 3. Read the exact scope and acceptance criteria in `CONTRIBUTING.md` (Steps 1.1–5.4), `CONTRIBUTING_PHASE2.md` (Steps 6.1–6.3), or `CONTRIBUTING_PHASE3.md` (Step 7.1+).
+> 3. Read the exact scope and acceptance criteria in `CONTRIBUTING.md` (Steps 1.1–5.4), `CONTRIBUTING_PHASE2.md` (Steps 6.1–6.3), `CONTRIBUTING_PHASE3.md` (Step 7.1+), or `CONTRIBUTING_PHASE4.md` (Step 8.0+).
 > 4. Status updates and verification ticks are strictly audited and managed by the QC Lead.
 
 ---
@@ -120,4 +120,41 @@ verdict, and every `Tests Baseline` number must be copyable from a log in that r
 > 3200/3200 px) and the twin `monarch.pal` (768 B, identical SHA-256 prefix `574E44B1A8AFC1AE`);
 > all map/archive fixtures are **synthetic by necessity** (no real `.Map`/`.Mpr`/`.sz`/`.mz`
 > exists in the tree) and are governed by `CONTRIBUTING_PHASE3.md` P3-4.
+
+---
+
+## Progress Tracker (Phase IV — governed by `CONTRIBUTING_PHASE4.md`)
+
+Scope, acceptance criteria, the charter decisions (P4-C1 zero-queue direct feed, P4-C2 the
+parity line, P4-C3 the ≤ 16 ms / < 50 ms latency budget, P4-C4 headless gates) and the Phase
+IV verification gates live in `CONTRIBUTING_PHASE4.md`. No row may be implemented before its
+work order exists (definition-before-implementation, inherited). Lane ownership and separation
+of duty are as in `CONTRIBUTING_PHASE2.md` "Multi-agent execution model" plus the Phase IV
+clarifications; an implementer never writes this table. Status stays `PENDING` until the
+Verifier records a verdict, and every `Tests Baseline` number must be copyable from a log in
+that row's `evidence/` directory (no handwritten numbers).
+
+| Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
+| :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
+| **8.0** | Input Core — `InputEvent`/`Intent`, keybind table, validation (zero-queue direct feed into `CommandSender`) | `PENDING` | — | 360/360 + est. 10–14 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.0.md` | `evidence/8.0/` |
+| **8.1** | Mouse — `screen_to_tile` inverse (round-trip vs `draw_center_xy`) + click-to-move / target selection | `PENDING` | — | est. +16–20 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.1.md` (to author at opening) | `evidence/8.1/` |
+| **8.2** | Keyboard / Hotkeys — Enter (chat focus/flush), Insert (sit toggle, frozen `Order::SitDown`), Escape (close/cancel) | `PENDING` | — | est. +12–16 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.2.md` (to author at opening) | `evidence/8.2/` |
+| **8.3** | Driver Wiring — `wm_to_input` decode arms in `window.rs` → translator → `CommandSender` (pump thread); `src/client/**` untouched | `PENDING` | — | est. +12–16 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.3.md` (to author at opening) | `evidence/8.3/` |
+| **8.4** | Live Acceptance — moving, chatting, interacting + input→wire latency evidence (≤ 16 ms / < 50 ms per P4-C3) | `PENDING` | — | est. +4–8 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.4.md` (to author at opening) | `evidence/8.4/` (live = evidence, never a gate) |
+
+> **2026-11-06 Phase IV kickoff (compact; Scribe lane under directive):** opened by the
+> Custodian's **Phase IV Charter v0.2 sign-off** with the **Q5 correction** (latency budget
+> **≤ 16 ms** input-to-wire / strictly sub-tick **< 50 ms** — the draft's 200 ms was rejected
+> for high-speed combat), on the signed-off Phase III baseline `origin/main` @ **`0458e95`**
+> (32/32 rows repo-wide, five gates re-run green this session at **360/360** = 324 lib +
+> 11 asset_fixtures + 25 e2e; final sign-off `docs/audit/2026-11-06-phase-3-final-sign-off-report.md`
+> §9 authorizes the fresh charter). Architecture as approved: **direct feed**
+> `InputEvent → Intent → ClientCommand → CommandSender::send` into the shipped 7.4 receiving
+> half, **no intermediate queue** (legacy `cltKeyManager`/`key.cpp` cap-50/coalescing explicitly
+> not ported). Charter decisions: **Q1** `src/input/` top-level; **Q2** frozen `Order::SitDown`
+> (240 kind-2, server-side toggle — no `GAMEMSG_REQUEST_SITDOWN`); **Q3** minimal chat line
+> buffer, no widget port; **Q4** fixed camera anchor `GetScreenRX/RY = 0` (`Client.cpp:1005`);
+> **Q5** ≤ 16 ms / < 50 ms. `CONTRIBUTING_PHASE4.md` and `docs/agents/WO-8.0.md` authored in
+> the Scribe lane under directive (this commit); rows 8.0–8.4 open `PENDING` —
+> definition-before-implementation.
 

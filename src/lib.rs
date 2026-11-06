@@ -27,11 +27,13 @@
 //! bounded drain; `client::driver` (Step 6.1, `CONTRIBUTING_PHASE2.md`) the
 //! end-to-end orchestrator that runs the whole session above as one
 //! conversation.
+//! `input` (Step 8.0, Phase IV `CONTRIBUTING_PHASE4.md`) the zero-queue direct-feed input core: `InputEvent` → `Intent` → `ClientCommand` plus the keybind table and pre-enqueue validation.
 
 pub mod auth;
 pub mod client;
 pub mod game;
 pub mod graphics;
+pub mod input;
 pub mod net;
 pub mod protocol;
 

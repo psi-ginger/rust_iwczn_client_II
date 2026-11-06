@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\CatsHome\AppData\Local\Temp\opencode\s4-8.0)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.41s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 1 test
+test input::tests::chat_flush_uses_the_declared_default_mode ... FAILED
+
+failures:
+
+---- input::tests::chat_flush_uses_the_declared_default_mode stdout ----
+
+thread 'input::tests::chat_flush_uses_the_declared_default_mode' (25764) panicked at src\input\tests.rs:385:5:
+assertion `left == right` failed: E11/D5: the declared default travels uncoerced
+  left: Chat { mode: Secret, text: "hi" }
+ right: Chat { mode: Normal, text: "hi" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    input::tests::chat_flush_uses_the_declared_default_mode
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 335 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

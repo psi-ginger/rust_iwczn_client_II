@@ -1,0 +1,17 @@
+diff --git a/src/input/keybinds.rs b/src/input/keybinds.rs
+index a60739e..dee4fdd 100644
+--- a/src/input/keybinds.rs
++++ b/src/input/keybinds.rs
+@@ -28,12 +28,6 @@ pub const VK_ESCAPE: u32 = 0x1B;
+ /// checked first, so no event of any kind is seen before the world is up
+ /// (D4, E7).
+ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+-    // D4: the in-world guard replaces the legacy `GetFrame() > 40` warm-up
+-    // gate (`mainfunction.cpp:221,236,254,288,302,1367`) — one boolean,
+-    // checked first for every event (E7).
+-    if !ui.in_world {
+-        return None;
+-    }
+     match event {
+         InputEvent::KeyDown { vk } => match vk {
+             VK_RETURN => {

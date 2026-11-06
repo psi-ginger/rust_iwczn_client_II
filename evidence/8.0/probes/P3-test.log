@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\CatsHome\AppData\Local\Temp\opencode\s4-8.0)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.54s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 1 test
+test input::tests::unknown_and_unbound_input_is_discarded_without_panic ... FAILED
+
+failures:
+
+---- input::tests::unknown_and_unbound_input_is_discarded_without_panic stdout ----
+
+thread 'input::tests::unknown_and_unbound_input_is_discarded_without_panic' (26068) panicked at src\input\tests.rs:150:9:
+assertion `left == right` failed: E6: KeyDown { vk: 112 } must be discarded without panic
+  left: Some(SitToggle)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    input::tests::unknown_and_unbound_input_is_discarded_without_panic
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 335 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

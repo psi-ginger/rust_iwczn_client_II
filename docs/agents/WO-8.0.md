@@ -501,6 +501,66 @@ Post-probe full gate re-run on the restored tree: all five gates exit 0, `cargo 
 
 ### Verdict - Verifier
 
-_(appended at verification: S4 clone SHA, five gates × 2 runs, `Tests Baseline` copy target,
-write-guard + zero-queue + F-7.4-01 evidence paths, probes 4/4, F-07 confirmation, bundle
-manifest, DoD §13 items 1–8, verdict and matrix direction)_
+- **S4 clone:** clean clone, detached at delivery SHA `fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600`
+  (tree `30f9bfc22085897e7287c277f5fb38ea73582b88`, parent `d1a5267` = `origin/main`); origin tip
+  verified via `git ls-remote` = branch tip `89b9a9d` (this SHA + the docs-only §14 delivery note,
+  `src/`, `tests/`, `Cargo.*` byte-identical), so these gates characterize the tip. Porcelain
+  CLEAN before/after every gate and probe; HEAD unchanged at `fc1a7c7` after the probe cycle.
+- **Gates (run twice — at the delivery SHA, and re-run on the pristine tree after the probes):**
+  `RUSTFLAGS=-D warnings cargo check --all-targets` exit 0 · `cargo clippy --all-targets --
+  -D warnings` exit 0 · `cargo fmt --check` exit 0 (0 diffs, 0-byte log) · `cargo doc --no-deps`
+  exit 0 (0 warnings) · `cargo test` exit 0 — both runs `check=0 clippy=0 fmt=0 doc=0 test=0`
+  (`evidence/8.0/gate-exits.txt`, `evidence/8.0/postprobe/gate-exits.txt`). Run 1 was from a
+  fresh clone `target/` (no cache doubt); run 1 logs = `evidence/8.0/*.log`.
+- **371 from `test.log`:** **371 passed / 0 failed** — 335 lib (1 ignored) + 11 `asset_fixtures` +
+  25 `e2e_loopback`; `live_integration` 4 ignored; baseline 360 → 371 (+11 = T1–T11, all lib).
+  T1–T11 present and green in the full suite (names enumerated via `cargo test --lib -- --list`).
+  Copy target for the matrix `Tests Baseline` cell: **371**.
+- **Write guard (§6):** `evidence/8.0/write-guard.txt` — delivery diff = exactly the six new
+  `src/input/**` files plus the two-line `src/lib.rs` edit (7 files, **690 insertions, 0
+  deletions**); forbidden-path grep (client/game/graphics/auth/net/protocol, `tests/`, `Cargo.*`,
+  matrix, contributing, README, `GoonZu_Source`, other `docs/`) = none; only pre-existing file
+  touched is `src/lib.rs` (§6 row 8, verbatim diff in `f7401-precheck.txt` §D). `TASK_MATRIX.md`
+  (row 8.0 still `PENDING`), `CONTRIBUTING*`, `README` and legacy tree untouched.
+- **Zero-queue audit + F-8.0-01 adjudication:** `evidence/8.0/zero-queue-grep.txt` — the literal
+  §11 pattern returns **5 matches, all §7 contract text delivered verbatim** (`event.rs:6` §7.1's
+  mandated `cltKey` doc citation; `intent.rs:28/:40/:48` the §7.2-mandated `String` type and
+  `Default` sketch — bare `ring` substring-matches `String`; `tests.rs:259` T9's empty-line
+  stimulus). Machinery subset `VecDeque|coalesc|MAX_KEY` = **0 matches**; word-bounded variant
+  leaves only the §7.1 citation. **F-8.0-01 UPHELD as a spec-internal WO inconsistency, not a
+  delivery defect:** §11's grep is unsatisfiable while §7's contract is delivered verbatim
+  (§1 write guard forbids editing contract text — the implementer disclosed instead of editing,
+  correctly). DoD 13.7's intent (no queue machinery in `src/input/**`) holds on the machinery
+  subset; recommend the Custodian word-bound the pattern in a future WO revision.
+- **F-7.4-01 pre-check:** `evidence/8.0/f7401-precheck.txt` — whole-tree grep over
+  `InputEvent`/`Intent` at baseline `d1a5267` **empty**; at delivery confined to `src/input/**`
+  (`keybinds.rs`, `validate.rs`, `tests.rs`). No pre-existing test modified (no forced hunks
+  anywhere — unlike 7.4 there are no disclosed source edits).
+- **Probes: 4/4 exit 101** with their named tests failing and exact assertions recorded
+  (P1 T9 `E10: a 256-byte line is refused, never truncated` — `Some(Chat{255×x})` vs `None`;
+  P2 T6 `E7: KeyDown { vk: 13 } before in_world must be discarded` — `Some(ChatFocus)` vs
+  `None`; P3 T5 `E6: KeyDown { vk: 112 } must be discarded without panic` — `Some(SitToggle)`
+  vs `None`; P4 T11 `E11/D5: the declared default travels uncoerced` — `Secret` vs `Normal`),
+  `git checkout --` restore + 0-byte porcelain after each, then the full gate set green at 371 —
+  `evidence/8.0/mutation-probes.md` (raw mutation diffs, failing outputs, exit codes and restore
+  states in `evidence/8.0/probes/`; post-probe gates in `evidence/8.0/postprobe/`). Each probe
+  was executed twice — working-tree audit pass and S4 clone — with identical results.
+- **F-07:** all 29 assertion messages in `src/input/tests.rs` cite their §8 E-row (E1–E12 fully
+  covered); every E-row's provenance verified against frozen/legacy source — `MAX_CHAT_BYTES=255`
+  (`action.rs:53` exact), refuse-never-clamp (`action.rs:198-214` exact), legacy
+  `mainfunction.cpp:208/:1202/:1218/:1229/:1304` and `GetFrame() > 40` at `:221,236,254,288,302,1367`
+  all verbatim; `ChatMode::Normal = 1` and `Order::Move { u16, u16 }` confirmed (WO prose cites
+  `action.rs:148`/`:87-94`, actual `:145`/`:80-85` — line drift in the WO, constants correct;
+  noted, not a traceability failure). No expectation read back from the code under test.
+- **D7/P4-C3 structural:** no `.await` in the enqueue path (the only `.await`s under
+  `src/input/**` are T7/T10's test-side receiver drains); no intermediate storage of any kind
+  between `InputEvent` and `CommandSender::send`; T10 green with its margin documented
+  (batch-of-100 in one 16 ms frame ≈ 1/100 per-event budget, ≥10× headroom). No new crates
+  (`Cargo.toml`/`Cargo.lock` 0 diff lines), no new opcodes, no wire-byte changes; no
+  window/Win32/network in any gate test (P4-C4); no live run as a gate.
+- **Bundle:** `evidence/8.0/` — 37 files: `head/check/clippy/fmt/test/doc/env/gate-exits/
+  summary/mutation-probes/zero-queue-grep/f7401-precheck/write-guard` + raw `probes/` (16) +
+  `postprobe/` (8), `SHA256SUMS` (37 entries) over the committed LF bytes (6.3 L-2 lesson).
+- **DoD §13:** items 1–8 all satisfied. **Verdict: PASSED.** Matrix row 8.0 `PENDING` → `PASSED`
+  at **371/371** and this bundle's commit are the Verifier's `docs(qc)` governance step (pending
+  Custodian direction); `TASK_MATRIX.md` deliberately untouched in this working tree.

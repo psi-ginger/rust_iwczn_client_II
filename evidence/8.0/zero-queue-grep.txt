@@ -1,0 +1,105 @@
+Zero-queue audit - WO-8.0 section 11 / CONTRIBUTING_PHASE4 gate 4 (P4-C1)
+S4 clone HEAD: fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600   captured: 2026-11-07 00:07:16 +07:00
+
+### (1) section-11 pattern exactly as written in the WO (no -r)
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -inE "VecDeque|ring|coalesc|MAX_KEY|cltKey" src/input/
+/usr/bin/grep: src/input/: Is a directory
+result: 2  (exit 2)
+
+### (2) same pattern with -r (GNU grep refuses a bare directory operand) - the disclosed F-8.0-01 result
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "VecDeque|ring|coalesc|MAX_KEY|cltKey" src/input/
+src/input/event.rs:6:/// Pure data: no HWND, no FFI, `Copy` — the legacy `cltKey`'s payload without
+src/input/intent.rs:28:        line: String,
+src/input/intent.rs:40:/// `chat_open: false`, `line: String::new()` (§7.2).
+src/input/intent.rs:48:    pub line: String,
+src/input/tests.rs:259:            line: String::new()
+result: 0  (exit 0)
+
+### (3) machinery subset VecDeque|coalesc|MAX_KEY - queue/ring/cap/coalescing TYPES, must be empty
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "VecDeque|coalesc|MAX_KEY" src/input/
+(no output)
+result: 1  (exit 1 = NO MATCH / empty result)
+
+### (4) word-bounded ring (whole word only)
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "\bring\b" src/input/
+(no output)
+result: 1  (exit 1 = NO MATCH / empty result)
+
+### (5) collection tokens anywhere in src/input/ (tests included)
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "\bVec\b|VecDeque|HashMap|HashSet|BTreeMap|std::collections" src/input/
+src/input/tests.rs:323:    let mut script = Vec::with_capacity(100);
+result: 0  (exit 0)
+
+### (6) collection tokens in the FIVE PRODUCTION files - must be empty
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "\bVec\b|VecDeque|HashMap|HashSet|BTreeMap|std::collections|with_capacity" src/input/mod.rs src/input/event.rs src/input/intent.rs src/input/keybinds.rs src/input/validate.rs
+(no output)
+result: 1  (exit 1 = NO MATCH / empty result)
+
+### (7) async/await/tokio tokens in the five PRODUCTION files (incl. doc prose)
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "\.await|async|tokio" src/input/mod.rs src/input/event.rs src/input/intent.rs src/input/keybinds.rs src/input/validate.rs
+src/input/mod.rs:12://! kind**: the tokio unbounded mpsc behind
+src/input/mod.rs:16://! clamps (D3, WO-7.4 D4). The budget is structural — no `.await`
+result: 0  (exit 0)
+
+### (8) async CODE in the five PRODUCTION files (async fn / tokio test attr) - must be empty
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "async\s+fn|#\[tokio" src/input/mod.rs src/input/event.rs src/input/intent.rs src/input/keybinds.rs src/input/validate.rs
+(no output)
+result: 1  (exit 1 = NO MATCH / empty result)
+
+### (9) async test harness in src/input/ (test-side receiver consumption)
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "#\[tokio::test\]|async fn|recv\(\)\.await" src/input/
+src/input/tests.rs:194:#[tokio::test]
+src/input/tests.rs:195:async fn move_streams_never_enqueue_a_command() {
+src/input/tests.rs:218:        receiver.recv().await.is_none(),
+src/input/tests.rs:310:#[tokio::test]
+src/input/tests.rs:311:async fn the_enqueue_path_stays_within_the_16ms_frame_budget() {
+src/input/tests.rs:367:    while receiver.recv().await.is_some() {
+result: 0  (exit 0)
+
+### (10) legacy port check cltKey|cltKeyManager|key.cpp inside src/input/
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -rinE "cltKey|cltKeyManager|key\.cpp" src/input/
+src/input/event.rs:6:/// Pure data: no HWND, no FFI, `Copy` — the legacy `cltKey`'s payload without
+result: 0  (exit 0)
+
+### (11) contract cross-references in the WO text itself - why the literal pattern cannot be empty
+cmd: "C:\Program Files\Git\usr\bin\grep.exe" -nE "cltKey|ring|coalesc|MAX_KEY" docs/agents/WO-8.0.md
+26:- **Lanes:** Implementer → Verifier + **Adversary (mandatory)** — every load-bearing claim here
+95:| Queue machinery (`cltKey`/`cltKeyManager` cap 50, coalescing) | `Client/Key/key.h:5,11,59`, `key.cpp:18,44` — **explicitly not ported** (P4-C1) |
+118:  `CommandSender::send` is one synchronous call chain per event. No `VecDeque`, no ring, no
+119:  capacity constant, no coalescing, no "temporary" buffer anywhere in `src/input/**` — the
+148:  `translate` returns `None` for it. This — plus OS-level `WM_MOUSEMOVE` coalescing — is why
+149:  the legacy `key.cpp:18` coalescing problem cannot arise and must not be ported (P4-C1).
+153:- **No queue machinery of any kind** (P4-C1): no `cltKeyManager`/`cltKey`/cap-50/coalescing/
+159:- No chat rendering/widget framework (Q3), no camera scroll (Q4), no arrow-key bindings
+161:- No `in_world` production wiring (8.3) — `UiState.in_world` is set by tests here and by the
+162:  pump wiring later.
+184:## 7. API & wiring spec (the shared contract)
+190:/// Pure data: no HWND, no FFI, `Copy` — the legacy `cltKey`'s payload without
+226:    SendChat { line: String },
+242:    pub line: String,
+245:impl Default for UiState { /* in_world: false, chat_open: false, line: String::new() */ }
+344:| **T7** | `move_streams_never_enqueue_a_command` — E8: 1 000 `Move` events through `translate` → 1 000 `None`, zero intents, zero `CommandSender::send` calls (D8: why no coalescing exists) | `src/input/tests.rs` | unit |
+356:- Any queue/ring/capacity/coalescing structure in `src/input/**` — including a "temporary"
+357:  buffer between `translate` and `send` (D1/P4-C1); any port of `cltKey`/`cltKeyManager`/
+368:  `in_world` production wiring (8.3's job), live-server runs promoted to gates.
+379:- **Zero-queue audit:** `grep -inE 'VecDeque|ring|coalesc|MAX_KEY|cltKey' src/input/` → no
+result: 0  (exit 0)
+
+### interpretation (Verifier)
+- (2) reproduces the disclosed five hits: event.rs:6 is the section 7.1 MANDATED doc citation of
+  the legacy cltKey payload (WO line 190 mandates that exact line - see (11)); intent.rs:28 /
+  intent.rs:48 / intent.rs:40 / tests.rs:259 are the substring 'ring' inside the primitive type
+  name String and String::new(). Both classes are contract text, not queue machinery.
+- (3) machinery subset: ZERO. (4) whole-word 'ring': ZERO (the delivery note's phrasing that a
+  word-bounded variant 'leaves only the cltKey citation' is imprecise - plain bring matches
+  nothing; the cltKey citation survives only via the cltKey alternation. Immaterial, recorded).
+- (6) no collection type in any production file; (5) single hit tests.rs:323
+  'Vec::with_capacity(100)' is T10's harness building the scripted input list before the
+  measured section - test data, not a buffer between translate and send.
+- (7)(8): the only production async/await hits are two module doc lines (mod.rs:12 prose about
+  the 7.4 tokio mpsc it plugs into, mod.rs:16 stating there is NO .await in the path); (8) is
+  empty - zero async code in production. (9): the only async code is two #[tokio::test]
+  harnesses (T7, T10) that RECEIVE from the frozen 7.4 channel to count enqueued commands.
+- P4-C1 zero-queue and the D7 structural claim (no await/buffer between InputEvent and
+  CommandSender::send) HOLD. The literal section-11 grep is unsatisfiable against the
+  section-7 contract text: adjudicated as finding F-8.0-01, Verifier verdict in section 14.

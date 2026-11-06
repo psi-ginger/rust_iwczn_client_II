@@ -501,6 +501,81 @@ Post-probe full gate re-run on the restored tree: all five gates exit 0, `cargo 
 
 ### Verdict - Verifier
 
-_(appended at verification: S4 clone SHA, five gates × 2 runs, `Tests Baseline` copy target,
-write-guard + zero-queue + F-7.4-01 evidence paths, probes 4/4, F-07 confirmation, bundle
-manifest, DoD §13 items 1–8, verdict and matrix direction)_
+**Verified 2026-11-07 (Verifier, S4 discipline). Verdict: `PASSED`.**
+
+- **S4 clone:** fresh clone of `git@github.com:psi-ginger/rust_iwczn_client_II.git`, checkout at
+  delivery SHA **`fc1a7c7`** (tree `30f9bfc`); `git status --porcelain` clean before and after every
+  run. Branch tip `89b9a9d` is docs-only — `git diff --name-only fc1a7c7 89b9a9d` = this file alone —
+  so `src/`, `tests/` and `Cargo.*` at the tip are byte-identical to the gated SHA.
+- **Five gates × 2 runs (pre-probe and post-probe) — all exit 0:**
+
+| Run | check (`-D warnings`) | clippy (`-D warnings`) | fmt | doc | test |
+|---:|---:|---:|---:|---:|---|
+| 1 (pre-probe) | 0 | 0 | 0 — 0 bytes | 0 — 0 warnings | 0 — **371 passed / 0 failed** |
+| 2 (post-probe, restored tree) | 0 | 0 | 0 — 0 bytes | 0 — 0 warnings | 0 — **371 passed / 0 failed** |
+
+- **`Tests Baseline` copy target:** **`371/371`** from `evidence/8.0/test.log` — 335 lib +
+  11 `asset_fixtures` + 25 `e2e_loopback`, 5 ignored preserved (1 lib + 4 live), 0 failed. Matrix
+  cell `360/360 + est. 10–14` → **`371/371`**.
+- **Evidence:** `evidence/8.0/` — 19 hashed files + `SHA256SUMS`, manifest verified **19/19** over
+  the committed LF bytes (UTF-8 no-BOM, CR=0, hashed from working bytes = blob bytes, L-2 lesson):
+  the §11 standing set (`head.txt`, `check.log`, `clippy.log`, `fmt.log`, `doc.log`, `test.log`,
+  `env.txt`, `summary.md`, `mutation-probes.md`, `zero-queue-grep.txt`, `f7401-precheck.txt`,
+  `write-guard.txt`) plus `gate-exits.txt` and `postprobe/` (run 2), mirroring the 7.4 layout.
+- **Write guard (DoD 5):** `write-guard.txt` — exactly the seven §6 files (6 NEW `src/input/**` +
+  `src/lib.rs` 2 insertions / 0 deletions); every READ-ONLY class untouched (`src/client|game|
+  graphics|auth|net|protocol`, `src/main.rs`, `tests/**`, `Cargo.*`, `TASK_MATRIX.md`,
+  `CONTRIBUTING*`, `README`, `GoonZu_Source/**`, `docs/**`, existing `evidence/**`); delivered file
+  set == §6 file plan; no pre-existing test modified.
+- **Zero-queue (DoD 7, P4-C1):** `zero-queue-grep.txt` — machinery subset `VecDeque|coalesc|MAX_KEY`
+  **0 matches**, whole-word `\bring\b` **0**, collection tokens in the five production files **0**
+  (only T10's harness `Vec::with_capacity(100)` exists), async code in production **0** (doc prose +
+  the two `#[tokio::test]` harnesses only). D7 structural claim holds: no `.await`/buffer between
+  `InputEvent` and `CommandSender::send`; T10 green with its documented margin.
+- **F-7.4-01 pre-check (DoD 2):** `f7401-precheck.txt` — **EMPTY**: variant-qualified search outside
+  `src/input/**` = 0; the only bare mentions are prose (`src/game/action.rs:6` doc table) and the
+  delivery's own `src/lib.rs:30` doc line. No compiler-forced edit, no disclosed hunks beyond §6.
+- **Probes (DoD 4):** `mutation-probes.md` — **4/4** at exit 101, each failing its named test with
+  the E-row assertion, then `git checkout --` + empty porcelain: P1 `E10` (`Some(Chat{255×"x"})` vs
+  `None`), P2 `E7` (`Some(ChatFocus)` vs `None`), P3 `E6` (`Some(SitToggle)` vs `None`), P4 `E11/D5`
+  (`Chat{mode: Secret}` vs `Chat{mode: Normal}`); post-probe gates green at 371.
+- **F-07:** 43 assertions, 37 E-row citations covering **E1–E12** — every expectation is the WO's
+  frozen §8 text (VK lines from `mainfunction.cpp:1218/1229/1304`, `MAX_CHAT_BYTES` from
+  `action.rs`), never derived from the code under test.
+- **Headlessness (DoD 8):** Win32/FFI tokens appear only in two doc lines asserting their absence;
+  network tokens 0; `unsafe` 0; `Cargo.toml` untouched (no new crates), no `protocol/**` change (no
+  new opcodes), no live run as a gate.
+
+**F-8.0-01 — adjudicated, NON-BLOCKING (a §11 prose/pattern defect, not a delivery defect):** the
+literal audit command `grep -inE 'VecDeque|ring|coalesc|MAX_KEY|cltKey' src/input/` returns 5
+matches and can never return "none" while §7's contract is delivered verbatim — `event.rs:6` is the
+§7.1-*mandated* `cltKey` citation (WO line 190 mandates that exact line), the bare `ring`
+alternation substring-matches the §7.2-mandated `String` type (3 hits) plus T9's `String::new()`
+stimulus; as written the command also needs `-r` (GNU grep refuses a bare directory operand). The
+audit's *intent* — no queue/ring/cap/coalescing machinery (P4-C1) — holds on every machinery probe
+above. **Disposition: the delivered code stands; the §11 grep line is defective and is deferred to
+the Scribe lane** for correction (WO-7.1 §9 precedent: implementer honest, WO left unedited, defect
+recorded rather than silently fixed). Two minor disclosures recorded in `evidence/8.0/summary.md`:
+the delivery note's "word-bounded `\bring\b` leaves only the cltKey citation" is imprecise (plain
+`\bring\b` matches nothing); and the Verifier's own per-probe metadata line was reworded after a
+regex false positive on cargo's `error: test failed` harness marker (raw outputs unmodified — no
+rustc `error[E…]` signature exists in any probe output).
+
+**DoD §13 items 1–8:**
+
+| # | Item | Result |
+|---:|---|---|
+| 1 | Five gates exit 0 at the delivered baseline, fmt 0 diffs, doc 0 warnings, porcelain clean | **PASS** — 371 (335+11+25), both runs |
+| 2 | T1–T11 present and green; no pre-existing test modified | **PASS** — 11/11 in the `input::tests::` run (names listed in `mutation-probes.md`); `tests/**` untouched |
+| 3 | D1–D8 pinned by failing-if-corrected tests or probes | **PASS** — D1: T7+grep · D2: T1–T3 · D3: T8/T9+P1 · D4: T6+P2 · D5: T11+P4 · D6: T4 · D7: T10+no-await grep · D8: T7 |
+| 4 | 4 §12 probes fail their named test at exit 101, pristine restores, green post-probe baseline | **PASS** — 4/4, `mutation-probes.md` + `postprobe/` |
+| 5 | Write guard holds (only §6 files; protected classes untouched) | **PASS** — `write-guard.txt` |
+| 6 | F-07 holds (expectations from §8 E-rows / legacy citations, never the code under test) | **PASS** — E1–E12 all cited |
+| 7 | Zero-queue audit green (§11 grep, no matches) and D7 structural claim holds | **PASS with F-8.0-01 adjudicated** — all machinery greps empty; the literal §11 pattern defect is dispositioned above, non-blocking |
+| 8 | No new crates/opcodes/wire-byte changes; no Win32/network in gate tests; no live run as a gate | **PASS** |
+
+**Verdict: `PASSED`.** Matrix direction (for the Verifier's `docs(qc)` governance commit, on
+Custodian acceptance): row **8.0** → `PASSED`, Verified Commit **`fc1a7c7`** (branch tip `89b9a9d`,
+docs-only §14 delivery note), Tests Baseline **`371/371`**, evidence **`evidence/8.0/`**. Row 8.0
+stays `PENDING` until that acceptance: this block and the bundle are uncommitted at report time —
+no matrix flip and no push executed by this verdict.

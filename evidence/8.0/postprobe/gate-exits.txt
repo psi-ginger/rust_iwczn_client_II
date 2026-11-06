@@ -1,0 +1,9 @@
+Step 8.0 verification - gate exits (run 2, post-probe baseline on the restored pristine tree) - S4 clone @ fc1a7c7
+
+porcelain before run 2: clean (all four section 12 probes restored with git checkout --)
+gate exits: check=0 clippy=0 fmt=0 doc=0 test=0
+fmt.log bytes: 0 (0 diffs)
+doc.log warning lines: 0
+cargo test: 371 passed, 0 failed = 335 lib + 11 asset_fixtures + 25 e2e_loopback
+  (ignored preserved: 1 lib + 4 live_integration = 5)
+git status --porcelain after run 2: clean

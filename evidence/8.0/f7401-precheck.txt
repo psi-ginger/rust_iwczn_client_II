@@ -1,0 +1,185 @@
+F-7.4-01 pre-check - WO-8.0 section 11: no pre-existing exhaustive match over the new enums
+S4 clone HEAD: fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600   captured: 2026-11-07 00:07:16 +07:00
+
+### (1) variant-qualified references OUTSIDE src/input/** (InputEvent::X / Intent::Y in real code) - must be empty
+cmd: git grep -nE "(InputEvent|Intent)::" -- "*.rs" "::(exclude)src/input/*"
+src/input/keybinds.rs:38:        InputEvent::KeyDown { vk } => match vk {
+src/input/keybinds.rs:44:                    Some(Intent::SendChat {
+src/input/keybinds.rs:51:                    Some(Intent::ChatFocus)
+src/input/keybinds.rs:64:                    Some(Intent::CloseDialog)
+src/input/keybinds.rs:74:                    Some(Intent::SitToggle)
+src/input/keybinds.rs:83:        InputEvent::KeyUp { .. } => None,
+src/input/keybinds.rs:84:        InputEvent::CharInput { ch } => {
+src/input/keybinds.rs:96:        InputEvent::Move { .. } | InputEvent::LeftDown { .. } | InputEvent::LeftUp { .. } => None,
+src/input/tests.rs:26:    let first = translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+src/input/tests.rs:29:        Some(Intent::ChatFocus),
+src/input/tests.rs:36:        translate(InputEvent::CharInput { ch: 'h' }, &mut ui),
+src/input/tests.rs:41:        translate(InputEvent::CharInput { ch: 'i' }, &mut ui),
+src/input/tests.rs:47:    let second = translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+src/input/tests.rs:50:        Some(Intent::SendChat {
+src/input/tests.rs:71:        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+src/input/tests.rs:72:        Some(Intent::ChatFocus),
+src/input/tests.rs:75:    translate(InputEvent::CharInput { ch: 'h' }, &mut ui);
+src/input/tests.rs:76:    translate(InputEvent::CharInput { ch: 'i' }, &mut ui);
+src/input/tests.rs:79:    let intent = translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui);
+src/input/tests.rs:96:    let intent = translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui)
+src/input/tests.rs:98:    assert_eq!(intent, Intent::CloseDialog, "E4: the close/cancel signal");
+src/input/tests.rs:122:    let intent = translate(InputEvent::KeyDown { vk: VK_INSERT }, &mut ui)
+src/input/tests.rs:124:    assert_eq!(intent, Intent::SitToggle, "E5: the toggle intent");
+src/input/tests.rs:143:        InputEvent::KeyDown { vk: 0x70 },    // F1 — unbound
+src/input/tests.rs:144:        InputEvent::KeyUp { vk: VK_RETURN }, // releases never fire (§2.2-4)
+src/input/tests.rs:145:        InputEvent::LeftDown { x: 3, y: 4 }, // clicks are 8.1's (D8)
+src/input/tests.rs:146:        InputEvent::LeftUp { x: 3, y: 4 },
+src/input/tests.rs:147:        InputEvent::CharInput { ch: 'x' }, // chat closed: not a typing state
+src/input/tests.rs:170:        InputEvent::Move { x: 10, y: 20 },
+src/input/tests.rs:171:        InputEvent::LeftDown { x: 1, y: 2 },
+src/input/tests.rs:172:        InputEvent::LeftUp { x: 1, y: 2 },
+src/input/tests.rs:173:        InputEvent::KeyDown { vk: VK_RETURN }, // would focus if allowed
+src/input/tests.rs:174:        InputEvent::KeyDown { vk: VK_INSERT }, // would toggle if allowed
+src/input/tests.rs:175:        InputEvent::KeyDown { vk: VK_ESCAPE },
+src/input/tests.rs:176:        InputEvent::KeyUp { vk: VK_RETURN },
+src/input/tests.rs:177:        InputEvent::CharInput { ch: 'a' }, // would type if allowed
+src/input/tests.rs:205:        if let Some(intent) = translate(InputEvent::Move { x: i, y: 999 - i }, &mut ui) {
+src/input/tests.rs:229:            validate(&Intent::MoveTo { x, y }),
+src/input/tests.rs:235:        validate(&Intent::MoveTo { x: 0, y: 0 }),
+src/input/tests.rs:240:        validate(&Intent::MoveTo {
+src/input/tests.rs:258:        validate(&Intent::SendChat {
+src/input/tests.rs:267:    let over_intent = Intent::SendChat { line: over.clone() };
+src/input/tests.rs:275:        Intent::SendChat { line: over },
+src/input/tests.rs:285:    let command = validate(&Intent::SendChat {
+src/input/tests.rs:326:            InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:327:            InputEvent::CharInput { ch: 'h' },
+src/input/tests.rs:328:            InputEvent::CharInput { ch: 'i' },
+src/input/tests.rs:329:            InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:330:            InputEvent::KeyDown { vk: 0x70 }, // F1: unknown, discarded
+src/input/tests.rs:331:            InputEvent::Move { x: 5, y: 7 },  // hover: never enqueues (D8)
+src/input/tests.rs:335:        InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:336:        InputEvent::CharInput { ch: 'h' },
+src/input/tests.rs:337:        InputEvent::CharInput { ch: 'i' },
+src/input/tests.rs:338:        InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:381:    let command = validate(&Intent::SendChat {
+src/input/validate.rs:21:        Intent::MoveTo { x, y } => {
+src/input/validate.rs:26:        Intent::AttackTarget { target_char } => Some(ClientCommand::Order(Order::Attack {
+src/input/validate.rs:31:        Intent::SitToggle => Some(ClientCommand::Order(Order::SitDown)),
+src/input/validate.rs:34:        Intent::SendChat { line } => {
+src/input/validate.rs:47:        Intent::ChatFocus | Intent::CloseDialog => None,
+result: 0  (exit 0)
+
+### (2) bare type-name mentions outside src/input/** (incl. prose) - context shown
+cmd: git grep -nE "\b(InputEvent|Intent)\b" -- "*.rs" "::(exclude)src/input/*"
+src/game/action.rs:6://! | Intent | Const | Opcode | Payload |
+src/input/event.rs:1://! Step 8.0 §7.1 — [`InputEvent`], the raw OS-shaped value type: one input
+src/input/event.rs:9:pub enum InputEvent {
+src/input/intent.rs:1://! Step 8.0 §7.2 — [`Intent`], the middle hop of the two-enum pipeline
+src/input/intent.rs:9:pub enum Intent {
+src/input/keybinds.rs:12:use super::event::InputEvent;
+src/input/keybinds.rs:13:use super::intent::{Intent, UiState};
+src/input/keybinds.rs:30:pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+src/input/keybinds.rs:38:        InputEvent::KeyDown { vk } => match vk {
+src/input/keybinds.rs:44:                    Some(Intent::SendChat {
+src/input/keybinds.rs:51:                    Some(Intent::ChatFocus)
+src/input/keybinds.rs:64:                    Some(Intent::CloseDialog)
+src/input/keybinds.rs:74:                    Some(Intent::SitToggle)
+src/input/keybinds.rs:83:        InputEvent::KeyUp { .. } => None,
+src/input/keybinds.rs:84:        InputEvent::CharInput { ch } => {
+src/input/keybinds.rs:96:        InputEvent::Move { .. } | InputEvent::LeftDown { .. } | InputEvent::LeftUp { .. } => None,
+src/input/mod.rs:5://! InputEvent ──translate(&mut UiState)──▶ Intent ──validate──▶ ClientCommand
+src/input/mod.rs:18://! [`InputEvent`] values directly: no window, no Win32, no network
+src/input/mod.rs:26:pub use event::InputEvent;
+src/input/mod.rs:27:pub use intent::{Intent, UiState};
+src/input/tests.rs:9:use super::event::InputEvent;
+src/input/tests.rs:10:use super::intent::{Intent, UiState};
+src/input/tests.rs:26:    let first = translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+src/input/tests.rs:29:        Some(Intent::ChatFocus),
+src/input/tests.rs:36:        translate(InputEvent::CharInput { ch: 'h' }, &mut ui),
+src/input/tests.rs:41:        translate(InputEvent::CharInput { ch: 'i' }, &mut ui),
+src/input/tests.rs:47:    let second = translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+src/input/tests.rs:50:        Some(Intent::SendChat {
+src/input/tests.rs:71:        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+src/input/tests.rs:72:        Some(Intent::ChatFocus),
+src/input/tests.rs:75:    translate(InputEvent::CharInput { ch: 'h' }, &mut ui);
+src/input/tests.rs:76:    translate(InputEvent::CharInput { ch: 'i' }, &mut ui);
+src/input/tests.rs:79:    let intent = translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui);
+src/input/tests.rs:96:    let intent = translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui)
+src/input/tests.rs:98:    assert_eq!(intent, Intent::CloseDialog, "E4: the close/cancel signal");
+src/input/tests.rs:122:    let intent = translate(InputEvent::KeyDown { vk: VK_INSERT }, &mut ui)
+src/input/tests.rs:124:    assert_eq!(intent, Intent::SitToggle, "E5: the toggle intent");
+src/input/tests.rs:143:        InputEvent::KeyDown { vk: 0x70 },    // F1 — unbound
+src/input/tests.rs:144:        InputEvent::KeyUp { vk: VK_RETURN }, // releases never fire (§2.2-4)
+src/input/tests.rs:145:        InputEvent::LeftDown { x: 3, y: 4 }, // clicks are 8.1's (D8)
+src/input/tests.rs:146:        InputEvent::LeftUp { x: 3, y: 4 },
+src/input/tests.rs:147:        InputEvent::CharInput { ch: 'x' }, // chat closed: not a typing state
+src/input/tests.rs:170:        InputEvent::Move { x: 10, y: 20 },
+src/input/tests.rs:171:        InputEvent::LeftDown { x: 1, y: 2 },
+src/input/tests.rs:172:        InputEvent::LeftUp { x: 1, y: 2 },
+src/input/tests.rs:173:        InputEvent::KeyDown { vk: VK_RETURN }, // would focus if allowed
+src/input/tests.rs:174:        InputEvent::KeyDown { vk: VK_INSERT }, // would toggle if allowed
+src/input/tests.rs:175:        InputEvent::KeyDown { vk: VK_ESCAPE },
+src/input/tests.rs:176:        InputEvent::KeyUp { vk: VK_RETURN },
+src/input/tests.rs:177:        InputEvent::CharInput { ch: 'a' }, // would type if allowed
+src/input/tests.rs:205:        if let Some(intent) = translate(InputEvent::Move { x: i, y: 999 - i }, &mut ui) {
+src/input/tests.rs:229:            validate(&Intent::MoveTo { x, y }),
+src/input/tests.rs:235:        validate(&Intent::MoveTo { x: 0, y: 0 }),
+src/input/tests.rs:240:        validate(&Intent::MoveTo {
+src/input/tests.rs:258:        validate(&Intent::SendChat {
+src/input/tests.rs:267:    let over_intent = Intent::SendChat { line: over.clone() };
+src/input/tests.rs:275:        Intent::SendChat { line: over },
+src/input/tests.rs:285:    let command = validate(&Intent::SendChat {
+src/input/tests.rs:326:            InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:327:            InputEvent::CharInput { ch: 'h' },
+src/input/tests.rs:328:            InputEvent::CharInput { ch: 'i' },
+src/input/tests.rs:329:            InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:330:            InputEvent::KeyDown { vk: 0x70 }, // F1: unknown, discarded
+src/input/tests.rs:331:            InputEvent::Move { x: 5, y: 7 },  // hover: never enqueues (D8)
+src/input/tests.rs:335:        InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:336:        InputEvent::CharInput { ch: 'h' },
+src/input/tests.rs:337:        InputEvent::CharInput { ch: 'i' },
+src/input/tests.rs:338:        InputEvent::KeyDown { vk: VK_RETURN },
+src/input/tests.rs:381:    let command = validate(&Intent::SendChat {
+src/input/tests.rs:405:fn feed(event: InputEvent, ui: &mut UiState, sender: &CommandSender) -> Option<ClientCommand> {
+src/input/validate.rs:10:use super::intent::Intent;
+src/input/validate.rs:14:/// Intent → wire-level command, or `None` = typed refusal before enqueue (D3).
+src/input/validate.rs:16:pub fn validate(intent: &Intent) -> Option<ClientCommand> {
+src/input/validate.rs:21:        Intent::MoveTo { x, y } => {
+src/input/validate.rs:26:        Intent::AttackTarget { target_char } => Some(ClientCommand::Order(Order::Attack {
+src/input/validate.rs:31:        Intent::SitToggle => Some(ClientCommand::Order(Order::SitDown)),
+src/input/validate.rs:34:        Intent::SendChat { line } => {
+src/input/validate.rs:47:        Intent::ChatFocus | Intent::CloseDialog => None,
+src/lib.rs:30://! `input` (Step 8.0, Phase IV `CONTRIBUTING_PHASE4.md`) the zero-queue direct-feed input core: `InputEvent` → `Intent` → `ClientCommand` plus the keybind table and pre-enqueue validation.
+result: 0  (exit 0)
+
+### (3) numstat of the only modified pre-existing .rs file
+cmd: git diff --numstat d1a5267..fc1a7c7 -- src/lib.rs
+2	0	src/lib.rs
+result: 0  (exit 0)
+
+### (4) full text of that src/lib.rs diff (section 6 row 8 grant)
+cmd: git diff d1a5267..fc1a7c7 -- src/lib.rs
+diff --git a/src/lib.rs b/src/lib.rs
+index 1f2e2d5..402bef1 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -27,11 +27,13 @@
+ //! bounded drain; `client::driver` (Step 6.1, `CONTRIBUTING_PHASE2.md`) the
+ //! end-to-end orchestrator that runs the whole session above as one
+ //! conversation.
++//! `input` (Step 8.0, Phase IV `CONTRIBUTING_PHASE4.md`) the zero-queue direct-feed input core: `InputEvent` → `Intent` → `ClientCommand` plus the keybind table and pre-enqueue validation.
+ 
+ pub mod auth;
+ pub mod client;
+ pub mod game;
+ pub mod graphics;
++pub mod input;
+ pub mod net;
+ pub mod protocol;
+ 
+result: 0  (exit 0)
+
+### conclusion
+(1) is empty: no pre-existing Rust file references an InputEvent or Intent variant, so no
+pre-existing match over either new enum exists and E0004 cannot fire on pre-existing code
+when these enums grow in 8.1/8.2. (2) shows the only two bare-word hits outside the
+delivered subsystem: src/game/action.rs:6 is a prose markdown table header in the frozen
+7.3 doc comment (the word 'Intent' as prose, not a type reference), and src/lib.rs:30 is the
+delivery's own two-line module-doc grant (numstat (3): 2 insertions, 0 deletions).
+F-7.4-01 pre-check: EMPTY - no compiler-forced edit, no disclosed hunks beyond section 6.

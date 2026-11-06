@@ -425,9 +425,79 @@ A Step 8.0 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(appended at delivery: branch, delivery SHA, baseline count from `test.log`, gate table,
-T1–T11 individual runs, disclosed edits/`F-8.0-NN` findings, probe results 4/4 with restore
-states)_
+- **Branch:** `step/8.0-input-core` (cut from `main` @ `d1a5267`), delivery SHA **`fc1a7c7`**
+  — implementation only; this note lands as a follow-up docs commit on the same branch.
+- **Baseline:** 360 → **371** (+11 = T1–T11, all lib; `asset_fixtures` 11 and e2e 25
+  untouched; 1 ignored lib + 4 ignored `live_integration` preserved), counted from `cargo
+  test` output, never from prose.
+
+**Gates at the delivery SHA, and re-run post-probe on the pristine tree (both runs green):**
+
+| Gate | Command | Result |
+|---|---|---|
+| 1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | exit 0 |
+| 2 | `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| 3 | `cargo fmt --check` | exit 0 — 0 diffs |
+| 4 | `cargo doc --no-deps` | exit 0 — 0 warnings |
+| 5 | `cargo test` | exit 0 — **371 passed / 0 failed** (335 lib + 11 fixtures + 25 e2e) |
+
+**T1–T11, each run individually** (`cargo test --lib <name>` → `1 passed; 0 failed`):
+`enter_focuses_chat_then_flushes_the_typed_line`,
+`escape_while_typing_cancels_the_line_without_a_command`,
+`escape_with_chat_closed_emits_close_dialog`,
+`insert_maps_to_the_frozen_sit_down_order`,
+`unknown_and_unbound_input_is_discarded_without_panic`,
+`events_before_the_in_world_guard_are_discarded`,
+`move_streams_never_enqueue_a_command`,
+`move_to_refuses_tiles_outside_the_u16_range`,
+`chat_flush_refuses_empty_and_over_cap_lines_without_clamping`,
+`the_enqueue_path_stays_within_the_16ms_frame_budget`,
+`chat_flush_uses_the_declared_default_mode`.
+
+**Disclosed edits:** none beyond §6 — no pre-existing test was modified (unlike 7.4 there
+are no forced hunks); the whole delivery is the six new `src/input/**` files plus the
+two-line `src/lib.rs` edit (exactly 2 insertions, 0 deletions: one `//!` Phase IV bullet +
+one `pub mod input;` in alphabetical position).
+
+**Findings:**
+
+- **F-8.0-01 (disclosed, never edited — §1 write guard):** WO §11's literal zero-queue
+  pattern `grep -inE 'VecDeque|ring|coalesc|MAX_KEY|cltKey' src/input/` cannot return "no
+  matches" while §7's contract is delivered verbatim: `cltKey` appears in §7.1's mandated
+  doc comment ("the legacy `cltKey`'s payload…", documenting what was *not* ported) and the
+  bare `ring` alternation substring-matches the §7.2-mandated `String` type. Observed: 5
+  matches — `event.rs:6` (the §7.1 citation), `intent.rs:28/:48` (the two mandated
+  `String` fields), `intent.rs:40` (restates §7.2's `Default` sketch), `tests.rs:259`
+  (T9's empty-line stimulus). The audit's *intent* holds: the machinery subset
+  `VecDeque|coalesc|MAX_KEY` has **zero** matches, and the word-bounded variant
+  (`\bring\b`) leaves only the §7.1 `cltKey` citation — no queue/ring/cap/coalescing type
+  exists in `src/input/**` (six pure files, reviewed). Adjudication is the Verifier's.
+- **F-7.4-01 pre-check (§2.2-1):** whole-tree grep at baseline was **empty** for matches
+  over `InputEvent`/`Intent`; after delivery, matches occur only inside `src/input/**`
+  (`keybinds.rs`, `validate.rs`, `tests.rs`) — no other exhaustive match in the tree.
+
+**Implementation notes:** `UiState`'s `Default` is `#[derive(Default)]` with values
+identical to §7.2's sketch (`false`/`false`/empty) — a manual impl risks
+`clippy::derivable_impls` under `-D warnings`; `mod.rs` uses the disambiguated
+`[`validate()`]` intra-doc link (module + re-exported fn share the name — the doc gate
+required it). T10's margin rationale (batch-of-100 inside one frame = ≥10× per-event
+headroom) is in its doc comment; no `.await`/buffer exists between `InputEvent` and
+`CommandSender::send` (D7 structural claim), `Cargo.toml` untouched, no window/Win32/
+network in any gate test (P4-C4), no expectation derived from the code under test (F-07:
+every assertion cites its §8 E-row).
+
+**§12 mutation probes: 4/4** — each: one semantic break → named test fails at **exit 101**
+→ `git checkout --` → `git status --porcelain` clean → full gate re-run green at 371:
+
+| # | Mutation | Named test | Failing assertion observed |
+|---:|---|---|---|
+| 1 | `validate`: over-cap line truncated then `Some(...)` | **T9** | `E10: a 256-byte line is refused, never truncated` — `left: Some(Chat{…255×"x"…})`, `right: None` |
+| 2 | `translate`: the `!in_world → None` guard deleted | **T6** | `E7: KeyDown { vk: 13 } before in_world must be discarded` — `left: Some(ChatFocus)`, `right: None` |
+| 3 | `translate`: unknown-key arm → `Some(SitToggle)` | **T5** | `E6: KeyDown { vk: 112 } must be discarded without panic` — `left: Some(SitToggle)`, `right: None` |
+| 4 | `validate`: `SendChat` forced to `ChatMode::Secret` | **T11** | `E11/D5: the declared default travels uncoerced` — `left: Chat{mode: Secret}`, `right: Chat{mode: Normal}` |
+
+Post-probe full gate re-run on the restored tree: all five gates exit 0, `cargo test` =
+**371** (335 + 11 + 25), porcelain clean.
 
 ### Verdict - Verifier
 

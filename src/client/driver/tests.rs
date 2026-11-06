@@ -431,22 +431,27 @@ async fn a_console_event_stops_the_flow_at_the_next_stage_gate() {
 
     let cfg = valid_config(front);
     let shutdown = Shutdown::new();
-    let error = run_with_watcher(&cfg, &shutdown, {
-        let signal = Arc::clone(&signal);
-        move |shutdown, tracker| {
+    let error = run_with_watcher(
+        &cfg,
+        &shutdown,
+        {
             let signal = Arc::clone(&signal);
-            tracker.spawn(async move {
-                watch_signal(shutdown, move || {
-                    let signal = Arc::clone(&signal);
-                    async move {
-                        signal.notified().await;
-                        Ok(())
-                    }
+            move |shutdown, tracker| {
+                let signal = Arc::clone(&signal);
+                tracker.spawn(async move {
+                    watch_signal(shutdown, move || {
+                        let signal = Arc::clone(&signal);
+                        async move {
+                            signal.notified().await;
+                            Ok(())
+                        }
+                    })
+                    .await
                 })
-                .await
-            })
-        }
-    })
+            }
+        },
+        None,
+    )
     .await
     .expect_err("the console event must stop the session");
 
@@ -595,7 +600,7 @@ fn world_entry_adoption_is_wired_before_the_in_world_loop_starts() {
 
     let looping = lines
         .iter()
-        .position(|line| line.contains("run_with_shutdown("))
+        .position(|line| line.contains("event_loop::run_with_commands("))
         .expect("the in-world loop is started");
     assert!(
         hits[0] < looping,

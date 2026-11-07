@@ -1,0 +1,13 @@
+Step 8.2 verification - gate exits (run 1, pre-probe) - S4 clone @ 937c9ab
+
+gate exits: check=0 clippy=0 fmt=0 doc=0 test=0
+fmt.log bytes: 0 (0 diffs)
+doc.log warning lines: 0
+cargo test: 383 passed, 0 failed = 347 lib + 11 asset_fixtures + 25 e2e_loopback
+  (ignored preserved: 1 lib + 4 live_integration = 5; 0 doc-tests)
+cargo test --lib input::tests: 23 passed, 0 failed (325 filtered out) = T1-T11
+  inherited + T12-T23 appended - see t1-t11-unchanged.txt
+T12-T23 present and green in test.log: 12/12 (name-verified against the run)
+git status --porcelain: clean before and after the run (verifier scratch and logs held
+  outside the tree; no tracked or untracked tree changes during any gate run)
+full result lines: see test.log ("test result:" rows)

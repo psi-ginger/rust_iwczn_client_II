@@ -1,0 +1,11 @@
+S4 clean clone of git@github.com:psi-ginger/rust_iwczn_client_II.git
+checkout: step/8.2-keyboard-hotkeys @ delivery tip 937c9ab (delivery SHA 26c07a7; 937c9ab is the docs-only WO-8.2 section 14 delivery note)
+HEAD: 937c9ab1e6c35456fa0f2748207fa4257960d000
+delivery SHA 26c07a7: 26c07a7b13a38b46be25a945f77c72a022716b28
+merge-base with origin/main (987a3b7 = the Scribe WO-8.2 commit, this branch's cut point; main tip is 987a3b7): 987a3b7845c6bbb4fff230efb7df4074c494343d
+captured: 2026-11-07 12:29:16 +07:00
+
+git log -1:
+937c9ab1e6c35456fa0f2748207fa4257960d000 goonzu-rs <goonzu-rs@localhost> 2026-11-07 10:58:26 +0700 docs(phase4): WO-8.2 section 14 delivery note - branch step/8.2-keyboard-hotkeys, SHA 26c07a7, gates 383/383, probes 4/4
+
+git status --porcelain (before gates): (clean - no output)

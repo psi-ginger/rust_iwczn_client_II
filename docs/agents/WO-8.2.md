@@ -161,7 +161,7 @@ remain unbound) · `docs/agents/WO-8.0.md` (§7/§8/§9 contract this step harde
    filter in `CharInput` (§7.2). The mouse arms (`keybinds.rs:93-96`) are untouched.
 3. `src/input/mod.rs` — one re-export line gains `VK_BACK` (API-surface consistency with the
    three re-exported 8.0 constants).
-4. `src/input/tests.rs` — **append** T12–T23 (§9). T1–T11 remain byte-identical (§10, §13.2).
+4. `src/input/tests.rs` — **append** T28–T39 (§9). T1–T11 remain byte-identical (§10, §13.2).
 5. Twelve tests: baseline **371 → 383** expected (+12, inside the matrix row's est. +12–16;
    the delivered number is copied from `test.log`).
 6. `docs/agents/WO-8.2.md` — this document, committed **before** any code.
@@ -194,11 +194,11 @@ remain unbound) · `docs/agents/WO-8.0.md` (§7/§8/§9 contract this step harde
   6. **`VK_ESCAPE` is deliberately unguarded** (set nothing, check nothing): Escape produces no
      wire command ever (`validate` refuses `CloseDialog`, D2) and its state transitions are
      idempotent — the legacy idiom for exactly this is the `IsCreate()` guard
-     (`NExitDlg.cpp:63`). T3 pins that a lone Escape leaves `UiState` untouched; T14 pins the
+     (`NExitDlg.cpp:63`). T3 pins that a lone Escape leaves `UiState` untouched; T30 pins the
      unguarded repeats. Guarding Escape would break a delivered, signed-off test for zero harm
      reduction (divergence (a), §8).
   7. **`VK_BACK` is deliberately unguarded**: auto-repeat backspace is the correct editing UX
-     (T16 pins it). Editing keys are commands-with-repeat; action keys are
+     (T32 pins it). Editing keys are commands-with-repeat; action keys are
      commands-once-per-press.
   Documented limitation (divergence (e), §8): the window is *single-key consecutive* detection,
   not a full key-state matrix — a second key press or a typed character ends it, so exotic
@@ -257,7 +257,7 @@ remain unbound) · `docs/agents/WO-8.0.md` (§7/§8/§9 contract this step harde
 | 2 | `src/input/intent.rs` | EDIT — `UiState` gains `dialog_open` + `repeat_vk` with docs (§7.1); `Default` derive unchanged (both new fields derive); module/`Intent` docs untouched |
 | 3 | `src/input/keybinds.rs` | EDIT — `VK_BACK` const; D9 guard + bookkeeping; D10 dialog-close arm; D11 `VK_BACK` arm + `CharInput` filter; module-doc divergence note (§7.2) |
 | 4 | `src/input/mod.rs` | EDIT — one re-export line: add `VK_BACK` |
-| 5 | `src/input/tests.rs` | EDIT — **append only** T12–T23 (§9); T1–T11 byte-identical |
+| 5 | `src/input/tests.rs` | EDIT — **append only** T28–T39 (§9); T1–T11 byte-identical |
 | 6 | `evidence/8.2/` | NEW at verification, written by the Verifier only (§11) |
 
 **READ-ONLY:** `src/input/event.rs` and `src/input/validate.rs` (unchanged this step — the
@@ -369,7 +369,7 @@ the open/render direction and the writer of `dialog_open` defer with the dialog 
 with nothing open Escape keeps 8.0's `CloseDialog` signal; (e) the repeat window is
 single-key consecutive detection, not a full key-state matrix (D9 limitation).
 
-## 9. Test invariants (T12–T23) and the baseline
+## 9. Test invariants (T28–T39) and the baseline
 
 Pattern authorities: as WO-8.0 §9 (colocated unit tests, pure-function tables, typed-refusal
 assertions). F-07: expectations from §8 only. All tests build `InputEvent` values directly —
@@ -377,20 +377,20 @@ no window, no Win32, no network (P4-C4). **T1–T11 are not modified** (§10).
 
 | # | Invariant | File | Phase |
 |---|---|---|---|
-| **T12** | `held_insert_fires_once_until_released` — E13: five consecutive `KeyDown INSERT` → exactly **one** `SitToggle` (intents counted; `repeat_vk == Some(VK_INSERT)` after the first), repeats return `None` with `UiState` otherwise untouched; `KeyUp { INSERT }` clears the guard; a fresh `KeyDown INSERT` fires a second `SitToggle` | `src/input/tests.rs` | unit |
-| **T13** | `held_enter_does_not_oscillate_the_chat_line` — E13/E15: `KeyDown RETURN` → `ChatFocus` + `repeat_vk == Some(VK_RETURN)`; three `CharInput '\r'` → line stays `""`, guard **stays set** (filtered chars don't end the window); a repeat `KeyDown RETURN` → `None` and the chat **stays open** (no flush/reopen flicker); `KeyUp { RETURN }` clears; type `'h'`; `KeyDown RETURN` → `SendChat { "h" }` + closed | `src/input/tests.rs` | unit |
-| **T14** | `escape_repeats_are_deliberately_unguarded` — E13-divergence (a)/E4: three consecutive `KeyDown ESCAPE` on a fresh state → three `Some(CloseDialog)`, `UiState` byte-identical after each (T3's identity, generalized) — pinning the *deliberate* non-guard so a future "helpful" Escape guard must revise this WO | `src/input/tests.rs` | unit |
-| **T15** | `backspace_edits_the_chat_line` — E14: open, type `"hi"` → `VK_BACK` → `"h"` → `VK_BACK` → `""` → `VK_BACK` on empty → `""` (no panic, no change); type `'o'`; `KeyDown RETURN` → `SendChat { "o" }` | `src/input/tests.rs` | unit |
-| **T16** | `backspace_autorepeat_is_intentional` — E14/D9.7: open, type `"abc"`, three **consecutive** `KeyDown VK_BACK` (no `KeyUp`) → `""` — editing keys are not latched (deliberate asymmetry vs T12) | `src/input/tests.rs` | unit |
-| **T17** | `control_characters_never_enter_the_chat_line` — E15: open; `CharInput '\r'`/`'\b'`/`'\t'`/`'\u{1}'` → line `""` after each, `None`; then `'é'` + `'世'` → line grows to those chars exactly (`line.len() == 5` bytes) | `src/input/tests.rs` | unit |
-| **T18** | `escape_closes_the_active_dialog` — E16: `dialog_open = true` → `KeyDown ESCAPE` → `Some(CloseDialog)` + `dialog_open = false`; `validate(&CloseDialog) == None` (UI-only, D2); `repeat_vk` untouched (`None`) | `src/input/tests.rs` | unit |
-| **T19** | `chat_cancel_takes_priority_over_the_dialog` — E16: `chat_open` + `dialog_open` both set, line typed → `KeyDown ESCAPE` → `None`, chat closed + line cleared, **`dialog_open` still true** (focused input wins) | `src/input/tests.rs` | unit |
-| **T20** | `dialog_state_does_not_swallow_game_keys` — E17: `dialog_open = true` → `KeyDown INSERT` → `SitToggle` → `validate` → `Order::SitDown`; `KeyDown RETURN` → `ChatFocus` (chat opens; dialog still open) | `src/input/tests.rs` | unit |
-| **T21** | `arrow_keys_remain_unbound` — E18: `KeyDown` and `KeyUp` of `0x25`/`0x26`/`0x27`/`0x28` → `None` each, `UiState` byte-identical (fresh state) | `src/input/tests.rs` | unit |
-| **T22** | `legacy_no_op_keys_are_discarded` — E19: `KeyDown 0x77`/`0x7A`/`0x7B`/`0x5B`/`0x5C` → `None` each, `UiState` byte-identical (fresh state) | `src/input/tests.rs` | unit |
-| **T23** | `the_edited_line_flushes_through_the_full_chain` — E14+E16 integration: through `translate → validate → sender.send` (the §8.0 `feed` helper, reused): open, type `"cat"`, `VK_BACK` → `"ca"`, flush → exactly one `ClientCommand::Chat { mode: Normal, text: "ca" }` enqueued; then `dialog_open` + `KeyDown ESCAPE` → `Some(CloseDialog)` but `validate` refuses → **drains to exactly 1** | `src/input/tests.rs` | unit |
+| **T28** | `held_insert_fires_once_until_released` — E13: five consecutive `KeyDown INSERT` → exactly **one** `SitToggle` (intents counted; `repeat_vk == Some(VK_INSERT)` after the first), repeats return `None` with `UiState` otherwise untouched; `KeyUp { INSERT }` clears the guard; a fresh `KeyDown INSERT` fires a second `SitToggle` | `src/input/tests.rs` | unit |
+| **T29** | `held_enter_does_not_oscillate_the_chat_line` — E13/E15: `KeyDown RETURN` → `ChatFocus` + `repeat_vk == Some(VK_RETURN)`; three `CharInput '\r'` → line stays `""`, guard **stays set** (filtered chars don't end the window); a repeat `KeyDown RETURN` → `None` and the chat **stays open** (no flush/reopen flicker); `KeyUp { RETURN }` clears; type `'h'`; `KeyDown RETURN` → `SendChat { "h" }` + closed | `src/input/tests.rs` | unit |
+| **T30** | `escape_repeats_are_deliberately_unguarded` — E13-divergence (a)/E4: three consecutive `KeyDown ESCAPE` on a fresh state → three `Some(CloseDialog)`, `UiState` byte-identical after each (T3's identity, generalized) — pinning the *deliberate* non-guard so a future "helpful" Escape guard must revise this WO | `src/input/tests.rs` | unit |
+| **T31** | `backspace_edits_the_chat_line` — E14: open, type `"hi"` → `VK_BACK` → `"h"` → `VK_BACK` → `""` → `VK_BACK` on empty → `""` (no panic, no change); type `'o'`; `KeyDown RETURN` → `SendChat { "o" }` | `src/input/tests.rs` | unit |
+| **T32** | `backspace_autorepeat_is_intentional` — E14/D9.7: open, type `"abc"`, three **consecutive** `KeyDown VK_BACK` (no `KeyUp`) → `""` — editing keys are not latched (deliberate asymmetry vs T28) | `src/input/tests.rs` | unit |
+| **T33** | `control_characters_never_enter_the_chat_line` — E15: open; `CharInput '\r'`/`'\b'`/`'\t'`/`'\u{1}'` → line `""` after each, `None`; then `'é'` + `'世'` → line grows to those chars exactly (`line.len() == 5` bytes) | `src/input/tests.rs` | unit |
+| **T34** | `escape_closes_the_active_dialog` — E16: `dialog_open = true` → `KeyDown ESCAPE` → `Some(CloseDialog)` + `dialog_open = false`; `validate(&CloseDialog) == None` (UI-only, D2); `repeat_vk` untouched (`None`) | `src/input/tests.rs` | unit |
+| **T35** | `chat_cancel_takes_priority_over_the_dialog` — E16: `chat_open` + `dialog_open` both set, line typed → `KeyDown ESCAPE` → `None`, chat closed + line cleared, **`dialog_open` still true** (focused input wins) | `src/input/tests.rs` | unit |
+| **T36** | `dialog_state_does_not_swallow_game_keys` — E17: `dialog_open = true` → `KeyDown INSERT` → `SitToggle` → `validate` → `Order::SitDown`; `KeyDown RETURN` → `ChatFocus` (chat opens; dialog still open) | `src/input/tests.rs` | unit |
+| **T37** | `arrow_keys_remain_unbound` — E18: `KeyDown` and `KeyUp` of `0x25`/`0x26`/`0x27`/`0x28` → `None` each, `UiState` byte-identical (fresh state) | `src/input/tests.rs` | unit |
+| **T38** | `legacy_no_op_keys_are_discarded` — E19: `KeyDown 0x77`/`0x7A`/`0x7B`/`0x5B`/`0x5C` → `None` each, `UiState` byte-identical (fresh state) | `src/input/tests.rs` | unit |
+| **T39** | `the_edited_line_flushes_through_the_full_chain` — E14+E16 integration: through `translate → validate → sender.send` (the §8.0 `feed` helper, reused): open, type `"cat"`, `VK_BACK` → `"ca"`, flush → exactly one `ClientCommand::Chat { mode: Normal, text: "ca" }` enqueued; then `dialog_open` + `KeyDown ESCAPE` → `Some(CloseDialog)` but `validate` refuses → **drains to exactly 1** | `src/input/tests.rs` | unit |
 
-**Baseline: 371 → 383 expected** (+12 = T12–T23, all lib tests; `asset_fixtures` 11 and e2e 25
+**Baseline: 371 → 383 expected** (+12 = T28–T39, all lib tests; `asset_fixtures` 11 and e2e 25
 untouched; the 5 ignored tests preserved). The matrix cell is copied from the delivered
 `test.log`, never from this prose. T10's `< 16 ms` batch runs with the guard in place (D9 is
 O(1) — §2.2-7) and is expected green unchanged.
@@ -403,7 +403,7 @@ O(1) — §2.2-7) and is expected green unchanged.
   READ-ONLY file of §6 (the 8.1 parallel lane depends on them) — finding first, P3-6.
 - Any queue/ring/capacity/coalescing structure in `src/input/**` (P4-C1); any new `Intent`/
   `InputEvent` variant (D12, F-7.4-01); new crates (`Cargo.toml` untouched), new opcodes (Q2).
-- Guarding `VK_ESCAPE` or `VK_BACK` (D9.6/D9.7 — T14/T16 pin the deliberate behavior);
+- Guarding `VK_ESCAPE` or `VK_BACK` (D9.6/D9.7 — T30/T32 pin the deliberate behavior);
   binding arrows/F-keys/Win-keys/`VK_DELETE` (E18/E19, §5); opening or rendering dialogs
   (Q3 — `dialog_open` is cleared, never set, by `translate`).
 - Deriving an expectation from `translate`/`validate` under test (F-07) — §8 rows only;
@@ -443,10 +443,10 @@ O(1) — §2.2-7) and is expected green unchanged.
 
 | # | Mutation | Named failing test | Restore |
 |---:|---|---|---|
-| 1 | `translate`: delete the D9.1 block-checks — the `repeat_vk == Some(vk) → None` early-outs in the `VK_RETURN` and `VK_INSERT` arms (auto-repeat flows again) | **T12** (five Insert presses → five `SitToggle`) | `git checkout --` |
-| 2 | `translate`: remove the D11 control filter — `line.push(ch)` unconditionally while chat is open | **T17** (line gains `'\r'`/`'\b'`/`'\t'`) | `git checkout --` |
-| 3 | `translate`: the Escape dialog-close branch forgets `ui.dialog_open = false` (falls through to the plain E4 signal) | **T18** (`dialog_open` still `true`) | `git checkout --` |
-| 4 | `translate`: bind an arrow — `VK_UP` (or the `_` arm before it) returns `Some(Intent::SitToggle)` | **T21** (`KeyDown 0x26` must be discarded) | `git checkout --` |
+| 1 | `translate`: delete the D9.1 block-checks — the `repeat_vk == Some(vk) → None` early-outs in the `VK_RETURN` and `VK_INSERT` arms (auto-repeat flows again) | **T28** (five Insert presses → five `SitToggle`) | `git checkout --` |
+| 2 | `translate`: remove the D11 control filter — `line.push(ch)` unconditionally while chat is open | **T33** (line gains `'\r'`/`'\b'`/`'\t'`) | `git checkout --` |
+| 3 | `translate`: the Escape dialog-close branch forgets `ui.dialog_open = false` (falls through to the plain E4 signal) | **T34** (`dialog_open` still `true`) | `git checkout --` |
+| 4 | `translate`: bind an arrow — `VK_UP` (or the `_` arm before it) returns `Some(Intent::SitToggle)` | **T37** (`KeyDown 0x26` must be discarded) | `git checkout --` |
 
 Each probe: apply one semantic break to the pristine tree, run the named test, record exit 101
 and the failing assertion, restore, verify `git status --porcelain` clean — then re-run the full
@@ -459,9 +459,9 @@ A Step 8.2 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 1. All five mandatory gates exit-0 at the delivered baseline from `test.log` (**383** expected:
    347 lib + 11 fixtures + 25 e2e), `fmt` 0 diffs, `doc` 0 warnings, porcelain clean.
-2. **T1–T11 byte-identical** (only appended T12–T23 in `tests.rs`; `t1-t11-unchanged.txt`
+2. **T1–T11 byte-identical** (only appended T28–T39 in `tests.rs`; `t1-t11-unchanged.txt`
    clean) and all 23 `input::tests` green.
-3. Every decision D9–D12 is pinned by a failing-if-corrected test or probe (T12–T23 +
+3. Every decision D9–D12 is pinned by a failing-if-corrected test or probe (T28–T39 +
    probes 1–4; T10 additionally pins the D9.4 other-key clause and the O(1) latency claim).
 4. All four §12 probes show their named test failing at exit 101, with pristine restores and a
    green post-probe baseline.
@@ -481,12 +481,156 @@ A Step 8.2 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(appended at delivery: branch, delivery SHA, baseline count from `test.log`, gate table,
-T12–T23 individual runs, T1–T11-unchanged proof, disclosed edits/`F-8.2-NN` findings, probe
-results 4/4 with restore states)_
+**Branch:** `step/8.2-keyboard-hotkeys` · **Delivery SHA:** `26c07a7` (parent `987a3b7`, the
+WO commit) · **Delivered:** 2026-11-07 · **Baseline from `test.log`: 383/383** (347 lib +
+11 `asset_fixtures` + 25 `e2e_loopback`; 1 ignored lib + 4 ignored `live_integration` preserved).
+
+**Five gates** (`RUSTFLAGS=-D warnings`, all exit 0, run twice: pre-probe and post-probe
+baseline — identical both times):
+
+| Gate | Result |
+|---|---|
+| `cargo check --all-targets` | exit 0 |
+| `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| `cargo fmt --check` | exit 0, 0 diffs |
+| `cargo doc --no-deps` | exit 0, 0 warnings |
+| `cargo test` | **383/383** (347 + 11 + 25), 0 failed |
+| `cargo test --lib input::tests` | **23/23** (T1–T11 inherited + T28–T39) — matches §9 expected |
+
+**T28–T39 individual runs:** all 12 green in the appended block (counted in the 23/23 above);
+T10's 100-event `< 16 ms` batch green with the D9 guard in place (no margin relaxed).
+
+**T1–T11 byte-identical (DoD 13.2):** `git diff -U0 987a3b7..26c07a7 -- src/input/tests.rs`
+shows exactly one hunk — `@@ -412,0 +413,431 @@` — zero deletions anywhere in the file
+(`NO_DELETIONS`); lines 1–412 untouched.
+
+**Write guard (DoD 13.5):** `git diff --name-only 987a3b7..26c07a7` = the four §6 source
+files only (`intent.rs`, `keybinds.rs`, `mod.rs`, `tests.rs`). `event.rs`, `validate.rs`,
+`src/client/**`, `src/game/**`, `src/lib.rs`, `tests/**`, `Cargo.*`, matrix, contributing,
+README and the legacy tree: **NONE**. Mouse arms byte-identical
+(`InputEvent::Move { .. } | InputEvent::LeftDown { .. } | InputEvent::LeftUp { .. } => None,`
+identical at base and delivery — the 8.1 parallel-lane guarantee).
+
+**F-7.4-01:** `Intent`/`InputEvent` definitions byte-identical to the 8.0 delivery (only
+`UiState` gained two documented fields, as §7.1 specifies).
+
+**Probes 4/4** (each against the committed tree; pristine restore + porcelain clean after
+each; full gate set re-run green at 383 afterwards):
+
+| # | Mutation | Named test | Result |
+|---:|---|---|---|
+| 1 | delete the D9.1 block-checks in `VK_RETURN`/`VK_INSERT` | T28 | **exit 101** — `E13/D9.1: auto-repeat 1 must be discarded, not re-fired` (`left: Some(SitToggle)`), restored, clean |
+| 2 | `line.push(ch)` unconditional (drop `!ch.is_control()`) | T33 | **exit 101** — `E15: the line stays empty after '\r'`, restored, clean |
+| 3 | drop `ui.dialog_open = false` in the Escape close branch | T34 | **exit 101** — `E16/D10: the dialog is closed`, restored, clean |
+| 4 | bind arrow `0x26 => Some(SitToggle)` | T37 | **exit 101** — `E18: arrow KeyDown 0x26 must be discarded` (`left: Some(SitToggle)`), restored, clean |
+
+**Disclosed edits / findings:** none — no `F-8.2-NN` findings, no out-of-plan edits; one
+compile fix during authoring (`'\b'` → `'\x08'`, Rust has no backspace escape — inside the
+appended test block) and five `cargo fmt` line-joins, all at lines ≥ 450 (appended region).
+One process incident: probe 1 was first run against the *uncommitted* tree, and its
+`git checkout --` restore reverted the whole implementation; it was re-applied, gates
+re-verified at 383, committed as `26c07a7`, and **all four probes were then re-run against
+the committed tree** (the table above is the committed-tree run).
 
 ### Verdict - Verifier
 
-_(appended at verification: S4 clone SHA, five gates × 2 runs, `Tests Baseline` copy target,
-write-guard + mouse-arms-unchanged + zero-queue + F-7.4-01 evidence paths, probes 4/4, F-07
-confirmation, bundle manifest, DoD §13 items 1–8, verdict and matrix direction)_
+**Status: PASSED** — formally verified 2026-11-07 (+07:00) on a fresh S4 clean clone of
+`git@github.com:psi-ginger/rust_iwczn_client_II.git` at the delivery tip **`937c9ab`**
+(delivery SHA `26c07a7`, parent/base `987a3b7` = the Scribe WO-8.2 commit; `26c07a7..937c9ab`
+= this WO's section-14 note alone, docs-only — `src/`, `tests/`, `Cargo.*` byte-identical, so
+gating the tip fully characterizes the delivery). All five gates green in **both** runs
+(run 1 pre-probe, run 2 post-probe on the restored pristine tree):
+
+| Gate | Command | Run 1 | Run 2 |
+|---|---|---:|---:|
+| 1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | 0 | 0 |
+| 2 | `cargo clippy --all-targets -- -D warnings` | 0 | 0 |
+| 3 | `cargo fmt --check` | 0 — 0 diffs | 0 — 0 diffs |
+| 4 | `cargo doc --no-deps` | 0 — 0 warnings | 0 — 0 warnings |
+| 5 | `cargo test` | 0 — **383 passed / 0 failed** | 0 — **383 passed / 0 failed** |
+
+**Baseline:** 371 → **383** (+12 = T28–T39, all lib; 347 lib + 11 `asset_fixtures` + 25
+`e2e_loopback`); the 5 ignored tests preserved (1 lib + 4 `live_integration`); 0 doc-tests;
+`cargo test --lib input::tests` = **23/23** (T1–T11 + T28–T39). Matrix `Tests Baseline` copy
+target **383/383**, taken from `test.log` only. `TASK_MATRIX.md` untouched — row 8.2 stays
+`PENDING`: this verdict and `evidence/8.2/` are produced for Custodian acceptance; no matrix
+flip, commit or push is authorized by the verification directive (8.0 round-1 precedent).
+
+**DoD (§13) items 1–8, audited:**
+
+1. Five gates exit-0 at 383 in both runs, fmt 0 diffs, doc 0 warnings, porcelain clean
+   before/after every run — **hold**.
+2. T1–T11 byte-identical: `t1-t11-unchanged.txt` — exactly one hunk `@@ -412,0 +413,431 @@`
+   (pure insertion after line 412), zero deletion lines in the file; all 23 `input::tests`
+   green — **hold**.
+3. D9–D12 each pinned by a failing-if-corrected test or probe: D9 → T28/T29/T30/T32 + probe 1
+   (and T10 for the D9.4 other-key clause + the O(1)/`< 16 ms` claim, green with its margin
+   documented and unrelaxed); D10 → T34/T35/T36 + probe 3; D11 → T31/T32/T33/T39 + probe 2;
+   D12 → `f7401-postcheck.txt` (`Intent`/`InputEvent` byte-identical, `validate` untouched) +
+   T37/T38 + probe 4 — **hold**.
+4. §12 probes **4/4**: each one semantic break → named test FAILED at **exit 101** with the
+   tabled E-row assertion (T28 `E13/D9.1 … left: Some(SitToggle)`; T33 `E15: the line stays
+   empty after '\r'`; T34 `E16/D10: the dialog is closed`; T37 `E18: arrow KeyDown 0x26 …
+   left: Some(SitToggle)`) → `git checkout --` → porcelain CLEAN; post-probe full gate re-run
+   green at 383 — **hold** (transcripts + two disclosed process notes in
+   `evidence/8.2/mutation-probes.md`).
+5. Write guard: `987a3b7..26c07a7` = exactly the four §6 files (519 insertions / 9 deletions,
+   `tests.rs` 431/0); `26c07a7..937c9ab` = this WO only; **mouse arms byte-identical** (13
+   hunks, machine-checked 0 overlaps of old lines 93–96; base line 93 == delivery line 163);
+   `event.rs`/`validate.rs`/`lib.rs`, forbidden paths and the legacy tree all empty — **hold**.
+6. F-07: 104 assertion lines, 120 E-row citations covering **E1–E19** (E1–E12 inherited,
+   E13–E19 new); each E-row traces to a legacy `file:line` or a frozen constant, never the
+   code under test — **hold**.
+7. Zero-queue audit green: both components of the corrected pattern return **0 matches**
+   (machinery subset + word-bounded `ring`, run as `git grep` on the delivery commit; the
+   host's PS/grep backslash quirk and the `cmd /c` `|` blockage are disclosed in
+   `zero-queue-grep.txt`). D1/D7 structural claim holds — production `.await` = 0 (only
+   `mod.rs:16` doc prose), async code only in the two pre-existing 8.0 harnesses plus T39's
+   test body; T10 green with its margin documented — **hold**.
+8. No new crates (`Cargo.*` untouched), no new opcodes, no wire-byte changes, no
+   `Intent`/`InputEvent`/`validate` changes (§13.8; `Intent` enum byte-identical — all three
+   `intent.rs` hunks start at old line ≥ 40, the enum at line 9 precedes every hunk), no
+   window/Win32/network in any gate test (grep over `src/input/**` = 0 matches), no live run
+   as a gate — **hold**.
+
+**Findings:** none — no `F-8.2-NN` findings, no out-of-plan edits (consistent with the
+Implementer's note). Two **verifier process notes**, disclosed in `mutation-probes.md`:
+the first probe-4 attempt was invalid (script array-literal bug dropped the `_ => {` line →
+compile error at exit 101, not a test failure) — detected, restored, re-run cleanly; the
+first probe-1 run produced the intended break with a whitespace-only artifact — re-run for
+the exact 6-deletion diff, with the post-probe gate set re-run after the final probe run.
+
+**Evidence:** `evidence/8.2/` — 21 files (§11 standing set of 14 incl. `t1-t11-unchanged.txt`
+and `f7401-postcheck.txt`, + `gate-exits.txt` + `postprobe/` run 2), `SHA256SUMS` verified
+**20/20** over the delivered LF/no-BOM bytes (6.3 L-2 lesson). Artifacts left **uncommitted**
+on the branch working tree pending Custodian acceptance.
+
+**Integration considerations (Step 8.1 + Step 8.2 → main, sequentially, before Step 8.3):**
+
+- **Lineage / order:** `step/8.1-mouse-move` (tip `cada5ed`) cuts at `449d60f`;
+  `step/8.2-keyboard-hotkeys` (tip `937c9ab`) cuts at `987a3b7` = current `origin/main`.
+  Merge **8.1 first**: main-side `src/**` is unchanged since `449d60f` (both Scribe commits
+  are docs-only), so 8.1's six files merge clean; the one content reconciliation at merge 1
+  is `docs/agents/WO-8.1.md` — both sides *added* it from the `449d60f` base (main/Scribe
+  blob `7f80e36` vs 8.1-branch blob `f5df5b7`) — keep the Scribe definition **and** the
+  delivery note + verdict.
+- **Second merge (8.2):** merge-base with the post-8.1 main is `987a3b7`, and both sides
+  have since touched the four shared files **`src/input/{intent,keybinds,mod,tests}.rs`** —
+  expect conflicts: `tests.rs` certain (both append at the same anchor after line 412);
+  `intent.rs` near-certain (both extend `UiState`); `keybinds.rs`/`mod.rs` may auto-merge if
+  their hunks are disjoint (8.1's click arms sit at old `:93-96`+, 8.2's keyboard hunks at
+  old `:10-89`) — resolve whatever git flags, keeping T1–T11 byte-identical and the mouse
+  arms byte-identical. `WO-8.2.md` should take the 8.2 side automatically (main unchanged
+  since `987a3b7`) unless main moves it meanwhile; `TASK_MATRIX.md` is untouched by both
+  branches — no conflict there.
+- **T-number collision (resolved at the sequential merge):** WO-8.1 numbers its new tests
+  **T12-T27**; this WO's **T12-T23** were renumbered **T28-T39** in the merge commit that
+  brought `step/8.2-keyboard-hotkeys` into `main` (Custodian dual sign-off directive), so
+  every T-number above now matches `tests.rs` as merged - Step 8.3 can cite T-numbers unambiguously.
+- **Test arithmetic:** sequential baselines 371 → **387** → **399** (363 lib + 11 + 25).
+  Re-verify the combined count from `test.log` at the merged tree, never from prose.
+- **After both merges:** run the full five-gate set at the combined **399** before Step 8.3
+  wiring, and re-run the write-guard / F-07 / zero-queue audits against the merged tree if
+  any conflict resolution touched `src/input/**`. Both verdict bundles
+  (`evidence/8.1/`, `evidence/8.2/`) stay uncommitted until Custodian acceptance; the row
+  flips and any push are the governance step that follows.

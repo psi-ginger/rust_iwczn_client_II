@@ -871,3 +871,9 @@ Artifacts left **uncommitted** on the branch working tree pending Custodian acce
 - **After both merges:** run the full five-gate set at the combined **399** before Step 8.3
   wiring, and re-run this bundle's write-guard/F-07/zero-queue audits against the merged tree
   if any conflict resolution touched `src/input/**`.
+
+- **Sequential-merge status (executed under the Custodian dual sign-off directive):**
+  `step/8.1-mouse-move` merged `--no-ff` into `main` first (WO-8.1.md reconciled clean,
+  gates 387/387), then `step/8.2-keyboard-hotkeys` (the four shared files resolved with a
+  unified `UiState`, 8.2's T12-T23 renumbered T28-T39, gates 399/399); the row flips land
+  in the post-merge governance commit that follows the merges.

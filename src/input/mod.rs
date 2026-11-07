@@ -33,7 +33,7 @@ pub mod validate;
 
 pub use event::InputEvent;
 pub use intent::{Intent, UiState};
-pub use keybinds::{translate, VK_ESCAPE, VK_INSERT, VK_RETURN};
+pub use keybinds::{translate, VK_BACK, VK_ESCAPE, VK_INSERT, VK_RETURN};
 pub use screen::{
     is_in_map_area, is_pt_in_map, real_to_tile, screen_to_real, screen_to_tile, MapView,
 };

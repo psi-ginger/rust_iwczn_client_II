@@ -1,0 +1,30 @@
+Zero-queue audit (WO-8.2 section 11, P4-C1 / Phase IV gate 4) - F-8.0-01-disposition pattern
+S4 clone step/8.2-keyboard-hotkeys @ 937c9ab (audited against delivery commit 26c07a7 via git grep)
+captured: 2026-11-07 12:29:16 +07:00
+
+WO section 11 literal command: grep -rinE 'VecDeque|coalesc|MAX_KEY|\bring\b' src/input/
+--- execution note (host quirk, disclosed): this host's PowerShell strips backslashes from ---
+--- native grep arguments (diagnosed: pattern '#\[test\]' returns 0 via PS direct vs 20 via  ---
+--- cmd /c on the same file), and routing the full pattern through cmd /c is blocked by the ---
+--- '|' batch metacharacter (cmd reported "'coalesc' is not recognized as an internal or     ---
+--- external command", exit 255). The audit was therefore run as its two semantically        ---
+--- equivalent components (E-word-boundary '-w ring' == '\bring\b'), both against the        ---
+--- committed tree:                                                        ---
+
+command: git grep -inE 'VecDeque|coalesc|MAX_KEY' 26c07a7 -- src/input/
+--- machinery subset output ---
+
+exit: 1 (1 = no matches, GREEN)
+
+command: git grep -inw 'ring' 26c07a7 -- src/input/   (word-bounded, == the WO's \bring\b)
+--- word-bounded ring output ---
+
+exit: 1 (1 = no matches, GREEN)
+
+command: grep -rinE 'VecDeque|coalesc|MAX_KEY' src/input/   (worktree, PS-direct, no backslash)
+
+exit: 1 (1 = no matches)
+
+Both components of the corrected pattern return zero matches -> audit GREEN. Inventory note:
+UiState's collections are the section-7.1 declared fields (line: String, repeat_vk: Option<u32>,
+dialog_open: bool) - no queue/ring/capacity/coalescing machinery exists in src/input/**.

@@ -1,0 +1,61 @@
+F-7.4-01 post-check (WO-8.2 section 11) - surface stability, no new exhaustive match outside src/input/**
+S4 clone step/8.2-keyboard-hotkeys @ 937c9ab, delivery 26c07a7 (base 987a3b7)
+captured: 2026-11-07 12:29:16 +07:00
+
+(1) InputEvent definitions byte-identical to the 8.0 delivery:
+command: git diff 987a3b7..26c07a7 -- src/input/event.rs
+
+(empty = byte-identical)
+
+(2) Intent enum untouched; only UiState gained fields (section 6 row 2):
+command: git diff 987a3b7..26c07a7 -- src/input/intent.rs
+diff --git a/src/input/intent.rs b/src/input/intent.rs
+index a2c59ad..4d86cf3 100644
+--- a/src/input/intent.rs
++++ b/src/input/intent.rs
+@@ -37,7 +37,8 @@ pub enum Intent {
+ /// owned by the input layer; nothing else mutates it in Phase IV.
+ ///
+ /// `Default` is the pre-world idle state: `in_world: false`,
+-/// `chat_open: false`, `line: String::new()` (┬º7.2).
++/// `chat_open: false`, `line: String::new()`, `dialog_open: false`,
++/// `repeat_vk: None` (WO-8.0 ┬º7.2, WO-8.2 ┬º7.1).
+ #[derive(Debug, Clone, PartialEq, Eq, Default)]
+ pub struct UiState {
+     /// In-world stage reached (8.3 sets it; replaces `GetFrame() > 40`, D4-guard).
+@@ -45,5 +46,16 @@ pub struct UiState {
+     /// Chat line open (Enter toggles).
+     pub chat_open: bool,
+     /// The typed line; cleared on flush and on cancel (Q3: line buffer only).
++    /// Control characters never enter it (8.2 D11); Backspace pops it (D11).
+     pub line: String,
++    /// An active dialog is open (8.2 D10) ΓÇö the close direction of the
++    /// legacy `NEXIT_DLG`/per-dialog Escape contract (`ItemInventory.cpp:1479`).
++    /// Written by tests today and by the future dialog layer (Q3); Escape clears it.
++    pub dialog_open: bool,
++    /// Auto-repeat guard (8.2 D9): the `VK_RETURN`/`VK_INSERT` press not yet
++    /// released. A repeated `KeyDown` of the same key while this is `Some(vk)`
++    /// is an OS auto-repeat and is discarded; cleared by the matching `KeyUp`,
++    /// by a pushed typed character, or by a different key's `KeyDown`.
++    /// `VK_ESCAPE`/`VK_BACK` deliberately never set it (D9.6/D9.7).
++    pub repeat_vk: Option<u32>,
+ }
+
+(hunks touch only the UiState Default-doc line and the UiState struct body - the
+ pub enum Intent { ... } definition is unchanged; both new fields are #[derive(Default)]-
+ compatible, so no existing struct literal or exhaustive match can break)
+
+(3) Delivery touched only 4 files, all inside src/input/** - nothing outside could have
+gained a new exhaustive match:
+command: git diff --name-only 987a3b7..26c07a7
+src/input/intent.rs
+src/input/keybinds.rs
+src/input/mod.rs
+src/input/tests.rs
+
+
+(4) Existing Intent::/InputEvent:: mentions outside src/input (pre-existing, unchanged by
+this delivery - for inventory):
+
+(all such files are pre-existing 7.x/8.0 surfaces; this delivery changed no file outside
+ src/input/**, so their content is byte-identical to the signed-off state)

@@ -1,0 +1,69 @@
+Write-guard confirmation (WO-8.2 section 11 / DoD 13.5)
+S4 clone step/8.2-keyboard-hotkeys @ 937c9ab (delivery 26c07a7, base/cut point 987a3b7)
+captured: 2026-11-07 12:40:44 +07:00
+
+command: git diff --stat 987a3b7..26c07a7   (the four section-6 source files)
+ src/input/intent.rs   |  14 +-
+ src/input/keybinds.rs |  81 +++++++++-
+ src/input/mod.rs      |   2 +-
+ src/input/tests.rs    | 431 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 519 insertions(+), 9 deletions(-)
+
+command: git diff --numstat 987a3b7..26c07a7
+13	1	src/input/intent.rs
+74	7	src/input/keybinds.rs
+1	1	src/input/mod.rs
+431	0	src/input/tests.rs
+
+
+command: git diff --name-status 987a3b7..937c9ab   (adds the docs-only section 14 note)
+M	docs/agents/WO-8.2.md
+M	src/input/intent.rs
+M	src/input/keybinds.rs
+M	src/input/mod.rs
+M	src/input/tests.rs
+
+26c07a7..937c9ab = docs/agents/WO-8.2.md alone (section 14 delivery note; no src movement).
+
+--- mouse arms byte-identical (the 8.1 parallel-lane guarantee): keybinds.rs hunk list, ---
+--- old-side line numbers - NO hunk overlaps the arm region (old lines 93-96) ---
+command: git diff -U0 987a3b7..26c07a7 -- src/input/keybinds.rs | grep '^@@'
+@@ -10,0 +11,8 @@
+@@ -22,0 +31,5 @@ pub const VK_ESCAPE: u32 = 0x1B;
+@@ -27 +40,2 @@ pub const VK_ESCAPE: u32 = 0x1B;
+@@ -39,0 +54,7 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -54,0 +76,4 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -57 +82,2 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -60,0 +87,6 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -67,0 +100,7 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -76,0 +116,10 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -78,2 +127,7 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -82,2 +136,8 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -88 +148,4 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+@@ -89,0 +153,4 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+machine overlap check (old-side range vs 93-96): 0 of 13 hunks overlap old lines 93-96 -> mouse arms BYTE-IDENTICAL
+base line 93 == delivery line 163 (byte-equal, -c case-sensitive compare): True
+  base:     [        InputEvent::Move { .. } | InputEvent::LeftDown { .. } | InputEvent::LeftUp { .. } => None,]
+  delivery: [        InputEvent::Move { .. } | InputEvent::LeftDown { .. } | InputEvent::LeftUp { .. } => None,]
+
+--- READ-ONLY / forbidden paths (all must be empty) ---
+event.rs, validate.rs, src/lib.rs, tests/**, Cargo.toml, Cargo.lock, matrix, contributing,
+README, src/client, src/game, src/graphics, src/auth, src/net, src/protocol, legacy tree:
+
+(end - empty = guard holds)
+
+--- Intent enum untouched (only UiState gained fields; DoD 13.8: no Intent/InputEvent/
+--- validate changes) ---
+command: git diff -U0 987a3b7..26c07a7 -- src/input/intent.rs | grep '^@@'
+@@ -40 +40,2 @@ pub enum Intent {
+@@ -47,0 +49 @@ pub struct UiState {
+@@ -48,0 +51,10 @@ pub struct UiState {
+command: git diff --name-only 987a3b7..26c07a7 -- src/input/validate.rs
+(empty = validate.rs untouched, DoD 13.8)
+
+(all three hunks have OLD-side start >= line 40: hunk 1 is the UiState Default-doc line
+(old 40, between the enum and the struct), hunks 2-3 are inside the struct body.
+'pub enum Intent {' is at line 9; the enum occupies lines 9..~37, entirely BEFORE every
+hunk -> 'pub enum Intent' is byte-identical; only UiState gained fields (section 6 row 2).
+The hunk-header label 'pub enum Intent {' is git's backward function-heuristic, not a hunk
+inside the enum.)

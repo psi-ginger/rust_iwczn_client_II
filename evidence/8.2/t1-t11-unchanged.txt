@@ -1,0 +1,24 @@
+T1-T11 unchanged proof (WO-8.2 section 11 / DoD 13.2)
+S4 clone step/8.2-keyboard-hotkeys @ 937c9ab, delivery 26c07a7 (base 987a3b7)
+captured: 2026-11-07 12:29:16 +07:00
+
+command: git diff -U0 987a3b7..26c07a7 -- src/input/tests.rs   (hunks only)
+--- a/src/input/tests.rs
++++ b/src/input/tests.rs
+@@ -412,0 +413,431 @@ fn feed(event: InputEvent, ui: &mut UiState, sender: &CommandSender) -> Option<C
+
+Exactly one hunk: @@ -412,0 +413,431 @@ - pure insertion after line 412; lines 1-412
+(T1-T11 and the shared helpers) untouched.
+
+command: git diff 987a3b7..26c07a7 -- src/input/tests.rs | count of '^-' deletion lines
+minus-lines (excluding ---): .Count
+NO_DELETIONS - zero hunks in lines 1-412, zero deletions anywhere in the file.
+
+command: git diff --numstat 987a3b7..26c07a7 -- src/input/tests.rs
+431	0	src/input/tests.rs
+
+
+command: cargo test --lib input::tests   (all 23: T1-T11 inherited + T12-T23 appended)
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 325 filtered out; finished in 0.00s
+
+exit 0 - 23 passed / 0 failed / 325 filtered out.

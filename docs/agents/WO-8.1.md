@@ -770,3 +770,104 @@ is T17's assertion as tabled. Post-probe full gate re-run on the restored tree: 
 gates exit 0, `cargo test` = **387** (351 + 11 + 25), porcelain clean.
 
 ### Verdict - Verifier
+
+**Status: PASSED** — formally verified 2026-11-07 (+07:00) on a fresh S4 clean clone of
+`git@github.com:psi-ginger/rust_iwczn_client_II.git` at the delivery tip **`cada5ed`**
+(delivery SHA `f91897e`; `f91897e..cada5ed` = this WO's section-14 note alone, docs-only —
+`src/`, `tests/`, `Cargo.*` byte-identical, so gating the tip fully characterizes the
+delivery). All five gates green in **both** runs (run 1 pre-probe, run 2 post-probe on the
+restored pristine tree):
+
+| Gate | Command | Run 1 | Run 2 |
+|---|---|---:|---:|
+| 1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | 0 | 0 |
+| 2 | `cargo clippy --all-targets -- -D warnings` | 0 | 0 |
+| 3 | `cargo fmt --check` | 0 — 0 diffs | 0 — 0 diffs |
+| 4 | `cargo doc --no-deps` | 0 — 0 warnings | 0 — 0 warnings |
+| 5 | `cargo test` | 0 — **387 passed / 0 failed** | 0 — **387 passed / 0 failed** |
+
+**Baseline:** 371 → **387** (+16 = T12–T27, all lib; 351 lib + 11 `asset_fixtures` + 25
+`e2e_loopback`); the 5 ignored tests preserved (1 lib + 4 `live_integration`); 0 doc-tests.
+Matrix `Tests Baseline` copy target **387/387**, taken from `test.log` only. `TASK_MATRIX.md`
+untouched — row 8.1 stays `PENDING`: this verdict and `evidence/8.1/` are produced for
+Custodian acceptance; no matrix flip, commit or push is authorized by the verification
+directive (8.0 round-1 precedent).
+
+**DoD 1–8 (section 13), audited:**
+
+1. Five gates exit-0 at 387, fmt 0 diffs, doc 0 warnings, porcelain clean before/after every
+   run — **hold**.
+2. T12–T27 all present and green (16/16 name-verified line-by-line in `test.log`); no
+   pre-existing test modified: `tests.rs` numstat **519 insertions / 0 deletions**
+   (additions-only; T1–T11 byte-identical), `event.rs`/`validate.rs` untouched — **hold**.
+3. D9–D16 pinned: D9/§2.2 math → T12–T14 (+probes 1–2); D10 defaults-swallow → T25/T26
+   (T5–T7 untouched); D11 press-only → T25; D12 classification → T20/T21/T22 (+probe 4);
+   D13 selection → T23/T24; D14 off-map refusal → T18; D15 chat/pointer split → T27;
+   D16 zero wire surface → T19/T20 + untouched `Cargo.*`. Charter gate-1 pins green:
+   T12 round-trip (66 pairs = 11 tiles × 3 centers × 2 rects), T13/T14 hand goldens G1–G5
+   asserted against the §2.2 arithmetic (`Map-Client.cpp:185-187` + `MapCommon.cpp:965-966`;
+   G1 `(0+4020)/40 = 100 r20`; G4 `-545/40 → -13`, `-1.875 → -1`), T19 `[0,100,0,100,0]`
+   and T20 `[1,7,0,0,0]` through the frozen `encode_order` — **hold**.
+4. Section 12 probes **4/4**: each one semantic break → named test FAILED at **exit 101**
+   with the tabled E-row assertion → `git checkout --` → porcelain CLEAN; post-probe full
+   gate re-run green at 387 — **hold** (full transcripts: `evidence/8.1/mutation-probes.md`).
+5. Write guard: `449d60f..f91897e` = exactly the six §6 files (786 insertions / 5 deletions —
+   the sanctioned §7 edits: one `intent.rs` Default-doc line + the four `:93-96` placeholder
+   lines); `f91897e..cada5ed` = this WO only; forbidden paths (`src/client|game|graphics|
+   auth|net|protocol`, `tests/**`, `Cargo.*`, matrix, contributing, README, `WO-8.0.md`,
+   legacy tree) empty — **hold**.
+6. F-07: 87 assertion lines, 66 E-row citations covering **E13–E29** (all 17 rows); each
+   E-row traces to a legacy `file:line`, the §2.2 hand arithmetic or a frozen constant —
+   **hold**.
+7. Zero-queue audit: machinery subset `VecDeque|coalesc|MAX_KEY` = **0 matches**
+   (F-8.0-01-corrected pattern); D7 structural claim holds — production `.await` = 0 (only
+   `mod.rs:16` doc prose), the only async code is the two pre-existing `#[tokio::test]`
+   harnesses receiving from the frozen 7.4 channel — and T10 green — **hold** (subject to
+   F-8.1-01 below).
+8. No new crates (`Cargo.toml`/`Cargo.lock` untouched), no new opcodes, no wire-byte changes
+   (byte pins use the frozen `encode_order`), no window/Win32/network in any gate test
+   (grep over `src/input/**`: `unsafe|TcpStream|std::net|tokio::net|UdpSocket|connect(|winapi|
+   extern "C"` = 0 matches; `HWND`/`FFI` only in `event.rs:3/:6` doc lines stating their
+   absence), no live run as a gate — **hold**.
+
+**Findings:**
+
+- **F-8.1-01 (disclosed by the Implementer, never edited — adjudicated NON-BLOCKING):** the
+  §11 literal grep including `cltKey` returns **1** match — `src/input/event.rs:6`, the
+  pre-existing Step 8.0 `//!` citation of the legacy `cltKey` payload (READ-ONLY for this
+  step, last touched by `fc1a7c7`), the same citation already adjudicated under F-8.0-01.
+  The machinery subset has 0 matches; `ui.targets: Vec<CharTarget>` is the §7.2-declared
+  snapshot field, not a queue. No code impact; the §11 pattern note (F-8.0-01 lesson) already
+  records the corrected pattern. Scribe-lane prose correction deferred.
+- **Disclosed gate-forced rewrites vs §7 (verified as stated):** `let Some(view) = ui.view
+  else { return None; }` delivered as `let view = ui.view?;` (clippy `question_mark` under
+  `-D warnings`; same D10 discard) and `pick_target<'a>` delivered with the elided
+  single-input signature (clippy `needless_lifetimes`; elision binds the output to
+  `candidates` either way). Semantics identical, no E-row affected.
+
+**Evidence:** `evidence/8.1/` — 20 files (§11 standing set + `gate-exits.txt` + `postprobe/`
+run 2), `SHA256SUMS` verified **19/19** over the delivered LF/no-BOM bytes (6.3 L-2 lesson).
+Artifacts left **uncommitted** on the branch working tree pending Custodian acceptance.
+
+**Integration considerations (Step 8.1 + Step 8.2 → main, sequentially, before Step 8.3):**
+
+- **Lineage:** merge-base with `origin/main` (`987a3b7`) is `449d60f` for this branch (it
+  contains the Scribe-lane WO-8.1 commit) and `987a3b7` for `step/8.2-keyboard-hotkeys`
+  (it contains both Scribe commits). Merging **8.1 first** is therefore conflict-free
+  (main's side of every shared path is unchanged since the merge-base). Merging 8.2
+  afterwards — or 8.1 second, if the order is reversed — collides in the four files **both**
+  steps modified: `src/input/{intent,keybinds,mod,tests}.rs`. `tests.rs` will conflict for
+  certain (both branches append their tests at the same anchor after T1–T11) and `intent.rs`
+  is near-certain (both extend `UiState`); `keybinds.rs`/`mod.rs` may auto-merge if their
+  hunks are disjoint — resolve whatever git flags, keeping T1–T11 byte-identical.
+- **Test arithmetic:** name sets are disjoint (T12–T27 vs 8.2's 11 plain + 1 tokio = 12, no
+  overlap), so the sequential baselines are 371 → **387** → **399** (363 lib + 11 + 25).
+  Re-verify the count from `test.log` at the combined merge, never from prose.
+- **Docs:** `WO-8.1.md` differs between this branch (delivery note) and main/Scribe
+  (`7f80e36`), and `WO-8.2.md` differs between main (`c4ce9a9`) and the 8.2 branch
+  (`8f28570`) — both need content reconciliation at merge time (the Scribe definition and the
+  delivery/verdict material must both survive). `TASK_MATRIX.md` is untouched by both
+  branches — no conflict there; the row flip remains a post-acceptance Verifier action.
+- **After both merges:** run the full five-gate set at the combined **399** before Step 8.3
+  wiring, and re-run this bundle's write-guard/F-07/zero-queue audits against the merged tree
+  if any conflict resolution touched `src/input/**`.

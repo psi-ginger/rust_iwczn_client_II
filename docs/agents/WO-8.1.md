@@ -668,4 +668,105 @@ A Step 8.1 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
+- **Branch:** `step/8.1-mouse-move` (cut from `main` @ `449d60f`, this WO's sign-off), delivery
+  SHA **`f91897e`** — implementation only; this note lands as a follow-up docs commit on the
+  same branch.
+- **Baseline:** 371 → **387** (+16 = T12–T27, all lib; `asset_fixtures` 11 and e2e 25
+  untouched; 1 ignored lib + 4 ignored `live_integration` preserved), counted from `cargo
+  test` output, never from prose (351 lib + 11 + 25). T1–T11 remain in the 351 and are
+  byte-identical (0 deletions).
+
+**Gates at the delivery SHA, and re-run post-probe on the pristine tree (both runs green):**
+
+| Gate | Command | Result |
+|---|---|---|
+| 1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | exit 0 |
+| 2 | `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| 3 | `cargo fmt --check` | exit 0 — 0 diffs |
+| 4 | `cargo doc --no-deps` | exit 0 — 0 warnings |
+| 5 | `cargo test` | exit 0 — **387 passed / 0 failed** (351 lib + 11 fixtures + 25 e2e) |
+
+**T12–T27, each run individually** (`cargo test --lib <name>` → `1 passed; 0 failed`, 16/16):
+
+`screen_to_tile_round_trips_draw_center_xy`, `screen_to_tile_matches_hand_computed_goldens`,
+`screen_to_tile_truncates_toward_zero_like_legacy_c`,
+`is_pt_in_map_gates_inclusive_screen_bounds`, `is_in_map_area_is_half_open`,
+`clicks_outside_the_screen_rect_are_discarded`,
+`clicks_on_tiles_outside_the_map_are_refused_by_name`,
+`click_on_empty_land_encodes_the_frozen_move_bytes`,
+`click_on_an_enemy_produces_the_frozen_attack_order`,
+`click_on_a_friendly_npc_is_discarded_not_moved`,
+`click_on_a_friendly_player_falls_through_to_move`,
+`target_hit_test_uses_strict_rect_containment_and_the_three_tile_filter`,
+`nearest_center_wins_and_first_candidate_wins_ties`,
+`release_and_hover_never_produce_intents_even_with_the_view_wired`,
+`clicks_before_the_in_world_guard_are_discarded`, `clicks_act_while_the_chat_line_is_open`.
+
+**Charter gate-1 parity pins green:** T12 (round trip, 66 pairs over 2 frozen rects × 3
+centers × 11 tiles), T13/T14 (hand goldens G1–G5), T19 (click → `encode_order ==
+[0, 100, 0, 100, 0]`), plus T20's attack bytes `[1, 7, 0, 0, 0]` — all through the frozen
+`encode_order`, never new encoding code.
+
+**Write guard (DoD 5):** `git diff --stat 449d60f..f91897e` = exactly the six §6 files
+(786 insertions, 5 deletions): NEW `src/input/screen.rs` (90) and `src/input/target.rs` (103),
+`intent.rs` (15), `keybinds.rs` (52), `mod.rs` (12, insertions only), `tests.rs` **519
+insertions / 0 deletions** (additions-only diff, DoD 2). The 5 deletions are the sanctioned §7
+edits: one `intent.rs` `Default`-doc line (§7.3) and the four `:93-96` placeholder lines
+(comment + `Move | LeftDown | LeftUp => None` arm, §7.4). Forbidden paths (`Cargo.*`,
+`tests/**`, `src/client|game|graphics|auth|net|protocol`, matrix, contributing, README,
+`WO-8.0.md`, `GoonZu_Source/**`): diff empty. `event.rs`/`validate.rs` untouched.
+
+**Gate-forced mechanical rewrites vs §7 (disclosed; semantics identical, no E-row affected):**
+
+- §7.4's `let Some(view) = ui.view else { return None; };` → `let view = ui.view?;` —
+  `clippy::question_mark` denies the former under `-D warnings` (gate 2); `?` on `Option`
+  inside a function returning `Option<Intent>` is the same D10 discard.
+- §7.2's explicit `pick_target<'a>` → elided single-input form — `clippy::needless_lifetimes`
+  denies the explicit lifetime under `-D warnings`; with one input reference, elision binds
+  the output to `candidates`'s lifetime either way (stated in the fn's doc comment).
+
+**Findings:**
+
+- **F-8.1-01 (disclosed, never edited — §1 write guard):** §11's literal zero-queue grep
+  `grep -inE 'VecDeque|coalesc|MAX_KEY|cltKey' src/input/` returns **1** match, not "no
+  matches": `src/input/event.rs:6` — the pre-existing Step 8.0 `//!` line citing the legacy
+  `cltKey` payload (what was *not* ported; last touched by `fc1a7c7`, READ-ONLY for this
+  step) — the same citation already adjudicated under F-8.0-01. The audit's intent holds: the
+  machinery subset `VecDeque|coalesc|MAX_KEY` has **zero** matches, and `UiState.targets` is
+  the §7.2-declared snapshot field that `translate` never mutates. Adjudication is the
+  Verifier's.
+- **F-7.4-01-style pre-check (§11):** among Rust sources the new identifiers
+  (`MapView|CharTarget|TargetClass|pick_target|screen_to_tile|screen_to_real|real_to_tile|
+  is_pt_in_map|is_in_map_area`) occur only inside `src/input/**`. Other hits are docs
+  (`WO-8.1.md` defining them; pre-existing `CONTRIBUTING_PHASE4.md`/`TASK_MATRIX.md`/
+  `WO-8.0.md` already naming `screen_to_tile`) and incidental legacy-tree `MapView`
+  occurrences under `GoonZu_Source/**` — no Rust file outside `src/input/**` references any
+  new identifier.
+
+**Implementation notes:** the inverse is composed term-for-term from `Map-Client.cpp:185-187`
++ `MapCommon.cpp:965-966` — the trailing `+ MAP_TILE_YSIZE_HALF` at `:187` kept verbatim
+(it is what lands G4 at (-13,-1)); `draw_center_xy`, `ScreenRect` and `MAP_TILE_*` are
+imported from `src/graphics/**`, called never duplicated (D16); `translate` keeps its 2-arg
+signature; `UiState`'s two new fields are `#[derive(Default)]`-compatible (`None`/`[]`),
+which is what leaves T1–T11 compiling and passing untouched (D10); every assertion cites an
+§8 E-row, the §2.2 hand arithmetic or a frozen constant — never the code under test (F-07);
+no `.await`/buffer between `InputEvent` and `CommandSender::send` (D7 structural claim, T10
+green); `Cargo.toml`/`Cargo.lock` untouched (no new crates, no new opcodes); no window/Win32/
+network in any gate test (P4-C4).
+
+**§12 mutation probes: 4/4** — each: one semantic break → named test fails at **exit 101**
+→ `git checkout --` → `git status --porcelain` clean → full gate re-run green at 387:
+
+| # | Mutation | Named test | Failing assertion observed |
+|---:|---|---|---|
+| 1 | `screen_to_real`: the trailing `+ MAP_TILE_YSIZE_HALF` deleted | **T14** | `E15: G4 truncates toward zero like C99 …` — `left: (-14, -2)`, `right: (-13, -1)` |
+| 2 | `real_to_tile`: y-branch divisor `MAP_TILE_XSIZE_HALF` → `MAP_TILE_YSIZE_HALF` | **T13** | `E14: G1 — the rect center lands on the view center` — `left: (100, 201)`, `right: (100, 100)` |
+| 3 | `translate`: the `is_pt_in_map` gate deleted | **T17** | `E18: off-screen click (1000, 340) is discarded …` — `left: Some(MoveTo { x: 107, y: 94 })`, `right: None` |
+| 4 | `translate`: the `TargetClass::Npc` arm falls through to `Some(MoveTo { … })` | **T21** | `E22: Npc class → typed None, never a MoveTo …` — `left: Some(MoveTo { x: 100, y: 100 })`, `right: None` |
+
+Probe runs carry no `RUSTFLAGS` (WO §12's plain named-test run), so probe 3's deleted gate
+also surfaced its `unused import: is_pt_in_map` as a non-fatal warning — the failure itself
+is T17's assertion as tabled. Post-probe full gate re-run on the restored tree: all five
+gates exit 0, `cargo test` = **387** (351 + 11 + 25), porcelain clean.
+
 ### Verdict - Verifier

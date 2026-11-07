@@ -1,0 +1,21 @@
+# WO-8.0 11 zero-queue audit (P4-C1) - captured in S4 clone at fc1a7c7
+# cmd: grep -inE 'VecDeque|ring|coalesc|MAX_KEY|cltKey' src/input/
+
+## A. literal section-11 pattern (expected no matches per spec; see F-8.0-01):
+src/input/event.rs:6:/// Pure data: no HWND, no FFI, `Copy` — the legacy `cltKey`'s payload without
+src/input/intent.rs:28:        line: String,
+src/input/intent.rs:40:/// `chat_open: false`, `line: String::new()` (§7.2).
+src/input/intent.rs:48:    pub line: String,
+src/input/tests.rs:259:            line: String::new()
+
+## B. machinery subset VecDeque|coalesc|MAX_KEY (the prohibited types themselves):
+(no matches)
+
+## C. word-bounded variant (ring as a token, not substring):
+src/input/event.rs:6:/// Pure data: no HWND, no FFI, `Copy` — the legacy `cltKey`'s payload without
+
+## Adjudication (F-8.0-01): all A-hits are §7 contract text delivered verbatim -
+# event.rs:6 = §7.1 mandated doc comment (cltKey citation, documents what was NOT ported);
+# intent.rs:28/:48 = the §7.2-mandated String field type (bare 'ring' substring-matches
+# 'String'); intent.rs:40 = §7.2 Default sketch restated; tests.rs:259 = T9 empty-line stimulus.
+# Machinery subset B = zero matches: no queue/ring/cap/coalescing type exists in src/input/**.

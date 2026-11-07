@@ -1,0 +1,73 @@
+Write-guard audit - WO-8.0 sections 6, 11 and DoD item 5
+S4 clone HEAD: fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600   merge-base with origin/main: d1a5267013d6996ba64b1d929e803525e50a6b9a   captured: 2026-11-07 00:07:16 +07:00
+
+### (1) delivered diff vs merge-base (name-status)
+cmd: git diff --name-status d1a5267..fc1a7c7
+A	src/input/event.rs
+A	src/input/intent.rs
+A	src/input/keybinds.rs
+A	src/input/mod.rs
+A	src/input/tests.rs
+A	src/input/validate.rs
+M	src/lib.rs
+result: 0  (exit 0)
+
+### (2) delivered diff vs merge-base (numstat)
+cmd: git diff --numstat d1a5267..fc1a7c7
+48	0	src/input/event.rs
+49	0	src/input/intent.rs
+98	0	src/input/keybinds.rs
+32	0	src/input/mod.rs
+412	0	src/input/tests.rs
+49	0	src/input/validate.rs
+2	0	src/lib.rs
+result: 0  (exit 0)
+
+### (3) READ-ONLY path classes: src/client|game|graphics|auth|net|protocol, src/main.rs, tests/, Cargo.toml, Cargo.lock, TASK_MATRIX.md, CONTRIBUTING*.md, README.md, GoonZu_Source/, docs/, evidence/ - must be empty
+cmd: git diff --name-only d1a5267..fc1a7c7 -- src/client src/game src/graphics src/auth src/net src/protocol src/main.rs tests Cargo.toml Cargo.lock TASK_MATRIX.md CONTRIBUTING.md CONTRIBUTING_PHASE2.md CONTRIBUTING_PHASE3.md CONTRIBUTING_PHASE4.md README.md GoonZu_Source docs evidence
+(no output)
+result: 0  (exit 0)
+
+### (4) full text of the only modified pre-existing file (src/lib.rs, section 6 row 8)
+cmd: git diff d1a5267..fc1a7c7 -- src/lib.rs
+diff --git a/src/lib.rs b/src/lib.rs
+index 1f2e2d5..402bef1 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -27,11 +27,13 @@
+ //! bounded drain; `client::driver` (Step 6.1, `CONTRIBUTING_PHASE2.md`) the
+ //! end-to-end orchestrator that runs the whole session above as one
+ //! conversation.
++//! `input` (Step 8.0, Phase IV `CONTRIBUTING_PHASE4.md`) the zero-queue direct-feed input core: `InputEvent` → `Intent` → `ClientCommand` plus the keybind table and pre-enqueue validation.
+ 
+ pub mod auth;
+ pub mod client;
+ pub mod game;
+ pub mod graphics;
++pub mod input;
+ pub mod net;
+ pub mod protocol;
+ 
+result: 0  (exit 0)
+
+### (5) clone working tree status (must be empty)
+cmd: git status --porcelain
+(no output)
+result: 0  (exit 0)
+
+### (6) delivery SHA vs branch tip - tip is docs-only (WO-8.0.md delivery note, post-verification)
+cmd: git diff --name-only fc1a7c7 89b9a9d
+docs/agents/WO-8.0.md
+result: 0  (exit 0)
+
+### section 6 file-plan comparison (delivered diff vs the WO plan)
+plan row 2 src/input/mod.rs     NEW -> delivered: A src/input/mod.rs
+plan row 3 src/input/event.rs   NEW -> delivered: A src/input/event.rs
+plan row 4 src/input/intent.rs  NEW -> delivered: A src/input/intent.rs
+plan row 5 src/input/keybinds.rs NEW -> delivered: A src/input/keybinds.rs
+plan row 6 src/input/validate.rs NEW -> delivered: A src/input/validate.rs
+plan row 7 src/input/tests.rs    NEW -> delivered: A src/input/tests.rs
+plan row 8 src/lib.rs EDIT (2 lines: one //! bullet + one pub mod input;) -> delivered: M, 2 insertions / 0 deletions
+plan row 1 docs/agents/WO-8.0.md committed BEFORE code (main @ d1a5267) -> unchanged at fc1a7c7, see (6)
+plan row 9 evidence/8.0/ NEW at verification, Verifier only -> this bundle
+RESULT: delivered file set == section 6 plan, exactly 7 files touched, no READ-ONLY file moved.

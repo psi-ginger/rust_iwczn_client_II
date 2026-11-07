@@ -1,0 +1,14 @@
+S4 clean clone of git@github.com:psi-ginger/rust_iwczn_client_II.git
+checkout: step/8.0-input-core @ delivery SHA fc1a7c7 (branch tip 89b9a9d is docs-only)
+HEAD: fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600
+origin/step/8.0-input-core: 89b9a9d888f16ea84a72086f620940ebb344a7bd
+merge-base with origin/main: d1a5267013d6996ba64b1d929e803525e50a6b9a
+captured: 2026-11-07 00:03:17 +07:00
+
+git log -1:
+fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600
+goonzu-rs <goonzu-rs@localhost>
+2026-11-06 23:08:15 +0700
+step8.0: input subsystem core - pure InputEvent -> Intent -> ClientCommand two-hop (D2) with UiState (D4 in-world guard replacing GetFrame()>40, D8 Move never enqueues), keybind table (D6 fresh VK_RETURN/INSERT/ESCAPE, uniform KeyDown divergence 2.2-4), pre-enqueue validation (D3: u16 tile range, empty/over-cap chat refused never clamped, declared ChatMode::Normal D5), zero-queue direct feed into the frozen 7.4 channel (D1/P4-C1, D7 no-await structural); tests T1-T11, 360 -> 371, 5 gates green
+
+git status --porcelain (before gates): (clean - no output)

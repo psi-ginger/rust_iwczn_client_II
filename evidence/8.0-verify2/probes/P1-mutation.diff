@@ -1,0 +1,21 @@
+diff --git a/src/input/validate.rs b/src/input/validate.rs
+index cc136dc..ca66032 100644
+--- a/src/input/validate.rs
++++ b/src/input/validate.rs
+@@ -35,12 +35,13 @@ pub fn validate(intent: &Intent) -> Option<ClientCommand> {
+             if line.is_empty() {
+                 return None;
+             }
+-            if line.len() > MAX_CHAT_BYTES {
+-                return None;
++            let mut text = line.clone();
++            if text.len() > MAX_CHAT_BYTES {
++                text.truncate(MAX_CHAT_BYTES);
+             }
+             Some(ClientCommand::Chat {
+                 mode: ChatMode::Normal,
+-                text: line.clone(),
++                text,
+             })
+         }
+         // §7.4 table: UI-only intents never enqueue (D2).

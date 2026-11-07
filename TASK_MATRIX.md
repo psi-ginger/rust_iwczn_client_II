@@ -136,7 +136,7 @@ that row's `evidence/` directory (no handwritten numbers).
 
 | Step | Target Milestone | Status | Verified Commit | Tests Baseline | Lanes (I → V) | Work order | Evidence |
 | :---: | :--- | :---: | :---: | :---: | :--- | :--- | :--- |
-| **8.0** | Input Core — `InputEvent`/`Intent`, keybind table, validation (zero-queue direct feed into `CommandSender`) | `PENDING` | — | 360/360 + est. 10–14 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.0.md` | `evidence/8.0/` |
+| **8.0** | Input Core — `InputEvent`/`Intent`, keybind table, validation (zero-queue direct feed into `CommandSender`) | `PASSED` | `fc1a7c7` (branch tip `89b9a9d`; verdict in this `docs(qc)` commit) | 371/371 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.0.md` | `evidence/8.0/` |
 | **8.1** | Mouse — `screen_to_tile` inverse (round-trip vs `draw_center_xy`) + click-to-move / target selection | `PENDING` | — | est. +16–20 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.1.md` (to author at opening) | `evidence/8.1/` |
 | **8.2** | Keyboard / Hotkeys — Enter (chat focus/flush), Insert (sit toggle, frozen `Order::SitDown`), Escape (close/cancel) | `PENDING` | — | est. +12–16 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.2.md` (to author at opening) | `evidence/8.2/` |
 | **8.3** | Driver Wiring — `wm_to_input` decode arms in `window.rs` → translator → `CommandSender` (pump thread); `src/client/**` untouched | `PENDING` | — | est. +12–16 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.3.md` (to author at opening) | `evidence/8.3/` |

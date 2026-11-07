@@ -1,0 +1,13 @@
+diff --git a/src/input/validate.rs b/src/input/validate.rs
+index cc136dc..9bedd85 100644
+--- a/src/input/validate.rs
++++ b/src/input/validate.rs
+@@ -39,7 +39,7 @@ pub fn validate(intent: &Intent) -> Option<ClientCommand> {
+                 return None;
+             }
+             Some(ClientCommand::Chat {
+-                mode: ChatMode::Normal,
++                mode: ChatMode::Secret,
+                 text: line.clone(),
+             })
+         }

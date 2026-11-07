@@ -1,0 +1,13 @@
+diff --git a/src/input/keybinds.rs b/src/input/keybinds.rs
+index a60739e..45d18e9 100644
+--- a/src/input/keybinds.rs
++++ b/src/input/keybinds.rs
+@@ -76,7 +76,7 @@ pub fn translate(event: InputEvent, ui: &mut UiState) -> Option<Intent> {
+             }
+             // E6: unknown keys are discarded outright — nothing holds
+             // them, because there is nothing to hold them (D1).
+-            _ => None,
++            _ => Some(Intent::SitToggle),
+         },
+         // §2.2-4: every binding fires on `KeyDown`; releases are accepted
+         // and ignored (E6).

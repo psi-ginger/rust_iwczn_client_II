@@ -1,0 +1,24 @@
+# Write guard (WO-8.0 6, 11, 13.5) - S4 clone
+
+## A. delivery diff d1a5267..fc1a7c7 --stat (must be §6 rows 2-8 only):
+ src/input/event.rs    |  48 ++++++
+ src/input/intent.rs   |  49 ++++++
+ src/input/keybinds.rs |  98 ++++++++++++
+ src/input/mod.rs      |  32 ++++
+ src/input/tests.rs    | 412 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/input/validate.rs |  49 ++++++
+ src/lib.rs            |   2 +
+ 7 files changed, 690 insertions(+)
+
+## B. forbidden paths in the delivery diff (src/client|game|graphics|auth|net|protocol, tests/, Cargo.*, matrix, contributing, README, GoonZu_Source, other docs):
+(none - exit 1)
+
+## C. pre-existing files touched (M outside src/input/):
+M	src/lib.rs
+
+## D. branch tip 89b9a9d = delivery + docs-only §14 note (src/, tests/, Cargo.* byte-identical):
+ docs/agents/WO-8.0.md | 76 +++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 73 insertions(+), 3 deletions(-)
+
+## E. TASK_MATRIX row 8.0 state at tip (Verifier leaves PENDING until governance):
+| **8.0** | Input Core — `InputEvent`/`Intent`, keybind table, validation (zero-queue direct feed into `CommandSender`) | `PENDING` | — | 360/360 + est. 10–14 | Implementer → Verifier + Adversary (mutation probes) | `docs/agents/WO-8.0.md` | `evidence/8.0/` |

@@ -1,0 +1,24 @@
+   Compiling goonzu_client v0.1.0 (C:\Users\CatsHome\AppData\Local\Temp\opencode\s4-8.0)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.51s
+     Running unittests src\lib.rs (target\debug\deps\goonzu_client-c0e7f20001d7119c.exe)
+
+running 1 test
+test input::tests::chat_flush_refuses_empty_and_over_cap_lines_without_clamping ... FAILED
+
+failures:
+
+---- input::tests::chat_flush_refuses_empty_and_over_cap_lines_without_clamping stdout ----
+
+thread 'input::tests::chat_flush_refuses_empty_and_over_cap_lines_without_clamping' (22728) panicked at src\input\tests.rs:268:5:
+assertion `left == right` failed: E10: a 256-byte line is refused, never truncated
+  left: Some(Chat { mode: Normal, text: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" })
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    input::tests::chat_flush_refuses_empty_and_over_cap_lines_without_clamping
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 335 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

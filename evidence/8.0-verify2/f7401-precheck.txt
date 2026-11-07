@@ -1,0 +1,32 @@
+# F-7.4-01 pre-check (WO-8.0 11 + 13.2) - S4 clone at fc1a7c7
+
+## A. whole-tree grep over the new enums AT BASELINE (d1a5267, before delivery) - must be empty:
+(no matches - no pre-existing exhaustive match over the new enums)
+
+## B. same grep AT DELIVERY (fc1a7c7) - must be confined to src/input/**:
+fc1a7c7:src/input/keybinds.rs
+fc1a7c7:src/input/tests.rs
+fc1a7c7:src/input/validate.rs
+
+## C. pre-existing files modified by the delivery (excluding the new src/input/**):
+M	src/lib.rs
+
+## D. the two-line src/lib.rs edit (§6 row 8), verbatim:
+diff --git a/src/lib.rs b/src/lib.rs
+index 1f2e2d5..402bef1 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -27,11 +27,13 @@
+ //! bounded drain; `client::driver` (Step 6.1, `CONTRIBUTING_PHASE2.md`) the
+ //! end-to-end orchestrator that runs the whole session above as one
+ //! conversation.
++//! `input` (Step 8.0, Phase IV `CONTRIBUTING_PHASE4.md`) the zero-queue direct-feed input core: `InputEvent` → `Intent` → `ClientCommand` plus the keybind table and pre-enqueue validation.
+ 
+ pub mod auth;
+ pub mod client;
+ pub mod game;
+ pub mod graphics;
++pub mod input;
+ pub mod net;
+ pub mod protocol;
+ 

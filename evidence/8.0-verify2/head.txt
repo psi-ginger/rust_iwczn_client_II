@@ -1,0 +1,7 @@
+captured-utc: 2026-11-06T16:50:50Z
+repo: S4 clean clone (local mirror of origin; origin tip verified via git ls-remote = 89b9a9d888f16ea84a72086f620940ebb344a7bd)
+head: fc1a7c7c3f6ed684fdc78c3eae236347bd8dd600
+tree: 30f9bfc22085897e7287c277f5fb38ea73582b88
+parent: d1a5267
+state: detached at delivery SHA fc1a7c7, porcelain CLEAN
+branch-tip: 89b9a9d = fc1a7c7 + docs-only section 14 delivery note

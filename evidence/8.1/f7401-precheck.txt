@@ -1,0 +1,39 @@
+F-7.4-01-style pre-check (WO-8.1 section 11) - new identifiers confined to src/input/**
+S4 clone step/8.1-mouse-move @ cada5ed
+captured: 2026-11-07 12:06:09 +07:00
+
+command: grep -rlE 'MapView|CharTarget|TargetClass|pick_target|screen_to_tile|screen_to_real|real_to_tile|is_pt_in_map|is_in_map_area' --include='*.rs' src/ tests/
+--- rust files containing any new identifier ---
+src/input/intent.rs
+src/input/keybinds.rs
+src/input/mod.rs
+src/input/screen.rs
+src/input/target.rs
+src/input/tests.rs
+
+exit: 0  (all hits are inside src/input/** - no rust file outside references a new identifier)
+
+--- non-rust hits (docs / legacy tree, expected) ---
+docs/agents/WO-8.0.md
+docs/agents/WO-8.1.md
+TASK_MATRIX.md
+CONTRIBUTING_PHASE4.md
+
+
+--- write guard: name-status vs cut point 449d60f ---
+M	docs/agents/WO-8.1.md
+M	src/input/intent.rs
+M	src/input/keybinds.rs
+M	src/input/mod.rs
+A	src/input/screen.rs
+A	src/input/target.rs
+M	src/input/tests.rs
+
+--- tests.rs additions-only proof (numstat: insertions deletions) ---
+519	0	src/input/tests.rs
+
+--- event.rs / validate.rs (must be empty) ---
+
+--- forbidden paths (must be empty) ---
+
+(end - all empty = guards hold)

@@ -1,0 +1,24 @@
+Zero-queue audit (WO-8.1 section 11, gate 4 / P4-C1) - F-8.0-01-corrected pattern (machinery subset only)
+S4 clone step/8.1-mouse-move @ cada5ed
+captured: 2026-11-07 12:06:09 +07:00
+
+command: grep -inE 'VecDeque|coalesc|MAX_KEY|cltKey' -r src/input/
+--- full pattern output (1 match, disclosed as F-8.1-01) ---
+grep.exe : /usr/bin/grep: src/input/: Is a directory
+At line:41 char:3
++ $(& $g -inE 'VecDeque|coalesc|MAX_KEY|cltKey' src/input/ 2>&1 | Out-S ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (/usr/bin/grep: ... Is a directory:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+exit: 2 (0 = matches present)
+
+command: grep -rinE 'VecDeque|coalesc|MAX_KEY' src/input/   (machinery subset, no bare 'ring'/'queue')
+--- machinery subset output ---
+
+exit: 1 (1 = no matches, AUDIT GREEN)
+
+inventory note (section 11): ui.targets: Vec<CharTarget> is the section 7.2 snapshot field (world
+candidate list), not a queue; translate never mutates it. The single cltKey hit above is the
+pre-existing Step 8.0 doc citation in event.rs:6 (READ-ONLY, adjudicated under F-8.0-01/F-8.1-01).

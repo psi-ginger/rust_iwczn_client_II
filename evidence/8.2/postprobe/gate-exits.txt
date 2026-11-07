@@ -1,0 +1,12 @@
+Step 8.2 verification - gate exits (run 2, post-probe, pristine tree restored) - S4 clone @ 937c9ab
+
+probes executed before this run: 4/4 (P8.2-1..4), each: one semantic break -> named test
+  exit 101 -> git checkout -- -> porcelain CLEAN (../mutation-probes.md)
+gate exits: check=0 clippy=0 fmt=0 doc=0 test=0
+fmt.log bytes: 0 (0 diffs)
+doc.log warning lines: 0
+cargo test: 383 passed, 0 failed = 347 lib + 11 asset_fixtures + 25 e2e_loopback
+  (ignored preserved: 1 lib + 4 live_integration = 5; 0 doc-tests)
+T12-T23 present and green in test.log: 12/12 (name-verified against the run)
+git status --porcelain: clean before and after the run
+full result lines: see test.log ("test result:" rows)

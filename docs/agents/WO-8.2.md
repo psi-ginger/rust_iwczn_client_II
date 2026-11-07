@@ -534,6 +534,103 @@ the committed tree** (the table above is the committed-tree run).
 
 ### Verdict - Verifier
 
-_(appended at verification: S4 clone SHA, five gates × 2 runs, `Tests Baseline` copy target,
-write-guard + mouse-arms-unchanged + zero-queue + F-7.4-01 evidence paths, probes 4/4, F-07
-confirmation, bundle manifest, DoD §13 items 1–8, verdict and matrix direction)_
+**Status: PASSED** — formally verified 2026-11-07 (+07:00) on a fresh S4 clean clone of
+`git@github.com:psi-ginger/rust_iwczn_client_II.git` at the delivery tip **`937c9ab`**
+(delivery SHA `26c07a7`, parent/base `987a3b7` = the Scribe WO-8.2 commit; `26c07a7..937c9ab`
+= this WO's section-14 note alone, docs-only — `src/`, `tests/`, `Cargo.*` byte-identical, so
+gating the tip fully characterizes the delivery). All five gates green in **both** runs
+(run 1 pre-probe, run 2 post-probe on the restored pristine tree):
+
+| Gate | Command | Run 1 | Run 2 |
+|---|---|---:|---:|
+| 1 | `RUSTFLAGS=-D warnings cargo check --all-targets` | 0 | 0 |
+| 2 | `cargo clippy --all-targets -- -D warnings` | 0 | 0 |
+| 3 | `cargo fmt --check` | 0 — 0 diffs | 0 — 0 diffs |
+| 4 | `cargo doc --no-deps` | 0 — 0 warnings | 0 — 0 warnings |
+| 5 | `cargo test` | 0 — **383 passed / 0 failed** | 0 — **383 passed / 0 failed** |
+
+**Baseline:** 371 → **383** (+12 = T12–T23, all lib; 347 lib + 11 `asset_fixtures` + 25
+`e2e_loopback`); the 5 ignored tests preserved (1 lib + 4 `live_integration`); 0 doc-tests;
+`cargo test --lib input::tests` = **23/23** (T1–T11 + T12–T23). Matrix `Tests Baseline` copy
+target **383/383**, taken from `test.log` only. `TASK_MATRIX.md` untouched — row 8.2 stays
+`PENDING`: this verdict and `evidence/8.2/` are produced for Custodian acceptance; no matrix
+flip, commit or push is authorized by the verification directive (8.0 round-1 precedent).
+
+**DoD (§13) items 1–8, audited:**
+
+1. Five gates exit-0 at 383 in both runs, fmt 0 diffs, doc 0 warnings, porcelain clean
+   before/after every run — **hold**.
+2. T1–T11 byte-identical: `t1-t11-unchanged.txt` — exactly one hunk `@@ -412,0 +413,431 @@`
+   (pure insertion after line 412), zero deletion lines in the file; all 23 `input::tests`
+   green — **hold**.
+3. D9–D12 each pinned by a failing-if-corrected test or probe: D9 → T12/T13/T14/T16 + probe 1
+   (and T10 for the D9.4 other-key clause + the O(1)/`< 16 ms` claim, green with its margin
+   documented and unrelaxed); D10 → T18/T19/T20 + probe 3; D11 → T15/T16/T17/T23 + probe 2;
+   D12 → `f7401-postcheck.txt` (`Intent`/`InputEvent` byte-identical, `validate` untouched) +
+   T21/T22 + probe 4 — **hold**.
+4. §12 probes **4/4**: each one semantic break → named test FAILED at **exit 101** with the
+   tabled E-row assertion (T12 `E13/D9.1 … left: Some(SitToggle)`; T17 `E15: the line stays
+   empty after '\r'`; T18 `E16/D10: the dialog is closed`; T21 `E18: arrow KeyDown 0x26 …
+   left: Some(SitToggle)`) → `git checkout --` → porcelain CLEAN; post-probe full gate re-run
+   green at 383 — **hold** (transcripts + two disclosed process notes in
+   `evidence/8.2/mutation-probes.md`).
+5. Write guard: `987a3b7..26c07a7` = exactly the four §6 files (519 insertions / 9 deletions,
+   `tests.rs` 431/0); `26c07a7..937c9ab` = this WO only; **mouse arms byte-identical** (13
+   hunks, machine-checked 0 overlaps of old lines 93–96; base line 93 == delivery line 163);
+   `event.rs`/`validate.rs`/`lib.rs`, forbidden paths and the legacy tree all empty — **hold**.
+6. F-07: 104 assertion lines, 120 E-row citations covering **E1–E19** (E1–E12 inherited,
+   E13–E19 new); each E-row traces to a legacy `file:line` or a frozen constant, never the
+   code under test — **hold**.
+7. Zero-queue audit green: both components of the corrected pattern return **0 matches**
+   (machinery subset + word-bounded `ring`, run as `git grep` on the delivery commit; the
+   host's PS/grep backslash quirk and the `cmd /c` `|` blockage are disclosed in
+   `zero-queue-grep.txt`). D1/D7 structural claim holds — production `.await` = 0 (only
+   `mod.rs:16` doc prose), async code only in the two pre-existing 8.0 harnesses plus T23's
+   test body; T10 green with its margin documented — **hold**.
+8. No new crates (`Cargo.*` untouched), no new opcodes, no wire-byte changes, no
+   `Intent`/`InputEvent`/`validate` changes (§13.8; `Intent` enum byte-identical — all three
+   `intent.rs` hunks start at old line ≥ 40, the enum at line 9 precedes every hunk), no
+   window/Win32/network in any gate test (grep over `src/input/**` = 0 matches), no live run
+   as a gate — **hold**.
+
+**Findings:** none — no `F-8.2-NN` findings, no out-of-plan edits (consistent with the
+Implementer's note). Two **verifier process notes**, disclosed in `mutation-probes.md`:
+the first probe-4 attempt was invalid (script array-literal bug dropped the `_ => {` line →
+compile error at exit 101, not a test failure) — detected, restored, re-run cleanly; the
+first probe-1 run produced the intended break with a whitespace-only artifact — re-run for
+the exact 6-deletion diff, with the post-probe gate set re-run after the final probe run.
+
+**Evidence:** `evidence/8.2/` — 21 files (§11 standing set of 14 incl. `t1-t11-unchanged.txt`
+and `f7401-postcheck.txt`, + `gate-exits.txt` + `postprobe/` run 2), `SHA256SUMS` verified
+**20/20** over the delivered LF/no-BOM bytes (6.3 L-2 lesson). Artifacts left **uncommitted**
+on the branch working tree pending Custodian acceptance.
+
+**Integration considerations (Step 8.1 + Step 8.2 → main, sequentially, before Step 8.3):**
+
+- **Lineage / order:** `step/8.1-mouse-move` (tip `cada5ed`) cuts at `449d60f`;
+  `step/8.2-keyboard-hotkeys` (tip `937c9ab`) cuts at `987a3b7` = current `origin/main`.
+  Merge **8.1 first**: main-side `src/**` is unchanged since `449d60f` (both Scribe commits
+  are docs-only), so 8.1's six files merge clean; the one content reconciliation at merge 1
+  is `docs/agents/WO-8.1.md` — both sides *added* it from the `449d60f` base (main/Scribe
+  blob `7f80e36` vs 8.1-branch blob `f5df5b7`) — keep the Scribe definition **and** the
+  delivery note + verdict.
+- **Second merge (8.2):** merge-base with the post-8.1 main is `987a3b7`, and both sides
+  have since touched the four shared files **`src/input/{intent,keybinds,mod,tests}.rs`** —
+  expect conflicts: `tests.rs` certain (both append at the same anchor after line 412);
+  `intent.rs` near-certain (both extend `UiState`); `keybinds.rs`/`mod.rs` may auto-merge if
+  their hunks are disjoint (8.1's click arms sit at old `:93-96`+, 8.2's keyboard hunks at
+  old `:10-89`) — resolve whatever git flags, keeping T1–T11 byte-identical and the mouse
+  arms byte-identical. `WO-8.2.md` should take the 8.2 side automatically (main unchanged
+  since `987a3b7`) unless main moves it meanwhile; `TASK_MATRIX.md` is untouched by both
+  branches — no conflict there.
+- **T-number collision:** WO-8.1 numbers its new tests **T12–T27** and WO-8.2 numbers its
+  **T12–T23** — *different tests, overlapping numbers*. The fn names are disjoint (verified),
+  so the merge is mechanical, but post-merge renumber (or a cross-WO annotation) is needed
+  before Step 8.3's WO can cite T-numbers unambiguously.
+- **Test arithmetic:** sequential baselines 371 → **387** → **399** (363 lib + 11 + 25).
+  Re-verify the combined count from `test.log` at the merged tree, never from prose.
+- **After both merges:** run the full five-gate set at the combined **399** before Step 8.3
+  wiring, and re-run the write-guard / F-07 / zero-queue audits against the merged tree if
+  any conflict resolution touched `src/input/**`. Both verdict bundles
+  (`evidence/8.1/`, `evidence/8.2/`) stay uncommitted until Custodian acceptance; the row
+  flips and any push are the governance step that follows.

@@ -25,7 +25,7 @@ pub mod validate;
 
 pub use event::InputEvent;
 pub use intent::{Intent, UiState};
-pub use keybinds::{translate, VK_ESCAPE, VK_INSERT, VK_RETURN};
+pub use keybinds::{translate, VK_BACK, VK_ESCAPE, VK_INSERT, VK_RETURN};
 pub use validate::validate;
 
 #[cfg(test)]

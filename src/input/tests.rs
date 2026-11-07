@@ -410,3 +410,434 @@ fn feed(event: InputEvent, ui: &mut UiState, sender: &CommandSender) -> Option<C
         .expect("receiver alive for the batch");
     Some(command)
 }
+
+// ---------------------------------------------------------------------------
+// Step 8.2 — WO-8.2 §9, T12–T23. APPENDED ONLY: the T1–T11 block above is
+// byte-identical to the Step 8.0 delivery (DoD 13.2; evidence
+// `t1-t11-unchanged.txt`). F-07: every assertion cites a §8 E-row (E13–E19
+// new; E1–E12 inherited). P4-C4: values built by hand — no window, no
+// Win32, no network.
+// ---------------------------------------------------------------------------
+use super::keybinds::VK_BACK;
+
+// T12 — E13/D9.1/D9.2: a held Insert fires once per physical press; the
+// OS auto-repeat stream is discarded until the matching KeyUp, which
+// re-arms the key for the next press (legacy got this from WM_KEYUP —
+// `mainfunction.cpp:1229`; the unguarded KeyDown bind spammed
+// Order::SitDown on every repeat).
+#[test]
+fn held_insert_fires_once_until_released() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+
+    let first = translate(InputEvent::KeyDown { vk: VK_INSERT }, &mut ui);
+    assert_eq!(
+        first,
+        Some(Intent::SitToggle),
+        "E13: the first press fires the toggle"
+    );
+    assert_eq!(
+        ui.repeat_vk,
+        Some(VK_INSERT),
+        "E13/D9.1: the press opens the repeat window"
+    );
+    let held = ui.clone();
+    for repeat in 1..5 {
+        assert_eq!(
+            translate(InputEvent::KeyDown { vk: VK_INSERT }, &mut ui),
+            None,
+            "E13/D9.1: auto-repeat {repeat} must be discarded, not re-fired"
+        );
+        assert_eq!(ui, held, "E13: a discarded repeat leaves UiState untouched");
+    }
+
+    assert_eq!(
+        translate(InputEvent::KeyUp { vk: VK_INSERT }, &mut ui),
+        None,
+        "E6: releases never fire (8.0 row)"
+    );
+    assert_eq!(
+        ui.repeat_vk, None,
+        "E13/D9.2: the matching KeyUp ends the window"
+    );
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_INSERT }, &mut ui),
+        Some(Intent::SitToggle),
+        "E13: a fresh press after the release fires again"
+    );
+}
+
+// T13 — E13/E15: a held Enter cannot oscillate the chat line. Repeats —
+// whether delivered as consecutive KeyDowns or interleaved with filtered
+// '\r' CharInput (8.3's decode policy must not matter, D11) — are
+// discarded while the window is open; a release ends it, so the next
+// deliberate press flushes.
+#[test]
+fn held_enter_does_not_oscillate_the_chat_line() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+        Some(Intent::ChatFocus),
+        "E1: the first press opens the line"
+    );
+    assert_eq!(
+        ui.repeat_vk,
+        Some(VK_RETURN),
+        "E13: the press opens the repeat window"
+    );
+
+    for _ in 0..3 {
+        assert_eq!(
+            translate(InputEvent::CharInput { ch: '\r' }, &mut ui),
+            None,
+            "E15: '\\r' is a command, never text"
+        );
+        assert!(ui.line.is_empty(), "E15: the line stays empty");
+        assert_eq!(
+            ui.repeat_vk,
+            Some(VK_RETURN),
+            "E13/D9.3: a filtered character does not end the window"
+        );
+    }
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+        None,
+        "E13/D9.1: the held repeat must not flush (no open/close flicker)"
+    );
+    assert!(ui.chat_open, "E13: the chat stays open — no oscillation");
+
+    assert_eq!(
+        translate(InputEvent::KeyUp { vk: VK_RETURN }, &mut ui),
+        None,
+        "E6: releases never fire (8.0 row)"
+    );
+    assert_eq!(ui.repeat_vk, None, "E13/D9.2: the release ends the window");
+    translate(InputEvent::CharInput { ch: 'h' }, &mut ui);
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+        Some(Intent::SendChat {
+            line: "h".to_owned()
+        }),
+        "E13/E2: the next deliberate press flushes"
+    );
+    assert!(!ui.chat_open, "E2: the flush closes the line");
+}
+
+// T14 — E13-divergence (a)/E4: Escape auto-repeat is DELIBERATELY
+// unguarded — a lone Escape and its repeats leave UiState byte-identical
+// (T3's identity, generalized), because Escape never enqueues and its
+// signals are idempotent (D9.6; legacy idiom `NExitDlg.cpp:63`). This
+// pins the asymmetry so a future "helpful" Escape guard must revise
+// WO-8.2 first.
+#[test]
+fn escape_repeats_are_deliberately_unguarded() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    let before = ui.clone();
+    for press in 1..=3 {
+        assert_eq!(
+            translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui),
+            Some(Intent::CloseDialog),
+            "E4/E13(a): press {press} emits the close/cancel signal"
+        );
+        assert_eq!(
+            ui, before,
+            "E4: Escape alone changes no state (T3 identity)"
+        );
+    }
+    assert_eq!(
+        validate(&Intent::CloseDialog),
+        None,
+        "D2: the signal never enqueues"
+    );
+}
+
+// T15 — E14/D11: Backspace edits the line — char-wise pop, safe on an
+// empty buffer (legacy edit-control behavior, `Edit.cpp:1024`), and the
+// edited line flushes whole.
+#[test]
+fn backspace_edits_the_chat_line() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+    translate(InputEvent::CharInput { ch: 'h' }, &mut ui);
+    translate(InputEvent::CharInput { ch: 'i' }, &mut ui);
+    assert_eq!(ui.line, "hi", "the stimulus");
+
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_BACK }, &mut ui),
+        None,
+        "E14: editing is a state change only"
+    );
+    assert_eq!(ui.line, "h", "E14: one char popped");
+    translate(InputEvent::KeyDown { vk: VK_BACK }, &mut ui);
+    assert_eq!(ui.line, "", "E14: two pops empty the line");
+    translate(InputEvent::KeyDown { vk: VK_BACK }, &mut ui);
+    assert_eq!(
+        ui.line, "",
+        "E14: Backspace on an empty line is a no-op (no panic)"
+    );
+
+    translate(InputEvent::CharInput { ch: 'o' }, &mut ui);
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+        Some(Intent::SendChat {
+            line: "o".to_owned()
+        }),
+        "E14/E2: the edited line flushes whole"
+    );
+}
+
+// T16 — E14/D9.7: editing keys are deliberately NOT latched — held
+// Backspace must repeat (the asymmetry with T12 is the design, not an
+// oversight).
+#[test]
+fn backspace_autorepeat_is_intentional() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+    for ch in ['a', 'b', 'c'] {
+        translate(InputEvent::CharInput { ch }, &mut ui);
+    }
+    assert_eq!(ui.line, "abc", "the stimulus");
+
+    for step in ["ab", "a", ""] {
+        assert_eq!(
+            translate(InputEvent::KeyDown { vk: VK_BACK }, &mut ui),
+            None,
+            "E14: editing never emits an intent"
+        );
+        assert_eq!(
+            ui.line, step,
+            "E14/D9.7: consecutive presses pop with no KeyUp between ({step:?})"
+        );
+    }
+}
+
+// T17 — E15/D11: control characters never enter the line; printable
+// characters (ASCII and non-ASCII) do, byte-exact (the cap is byte-based,
+// `action.rs:53`).
+#[test]
+fn control_characters_never_enter_the_chat_line() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui);
+
+    for ch in ['\r', '\x08', '\t', '\u{1}'] {
+        assert_eq!(
+            translate(InputEvent::CharInput { ch }, &mut ui),
+            None,
+            "E15: {ch:?} is discarded, never pushed"
+        );
+        assert!(ui.line.is_empty(), "E15: the line stays empty after {ch:?}");
+    }
+    translate(InputEvent::CharInput { ch: 'é' }, &mut ui);
+    translate(InputEvent::CharInput { ch: '世' }, &mut ui);
+    assert_eq!(ui.line, "é世", "E15: printable non-ASCII enters whole");
+    assert_eq!(
+        ui.line.len(),
+        5,
+        "E15: UTF-8 byte count (2 + 3) — the cap counts bytes"
+    );
+}
+
+// T18 — E16/D10: Escape closes the active dialog — the close direction of
+// the legacy per-dialog contract (`ItemInventory.cpp:1479`); the signal
+// stays UI-only (D2) and the Escape arm never touches the repeat guard
+// (D9.6).
+#[test]
+fn escape_closes_the_active_dialog() {
+    let mut ui = UiState {
+        in_world: true,
+        dialog_open: true,
+        ..UiState::default()
+    };
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui),
+        Some(Intent::CloseDialog),
+        "E16: the close transition emits the signal"
+    );
+    assert!(!ui.dialog_open, "E16/D10: the dialog is closed");
+    assert_eq!(
+        ui.repeat_vk, None,
+        "E13(a): the Escape arm never touches the guard (D9.6)"
+    );
+    assert_eq!(
+        validate(&Intent::CloseDialog),
+        None,
+        "D2: UI-only — validate refuses it"
+    );
+}
+
+// T19 — E16: the focused input wins — Escape cancels the chat line first
+// (`PartyDlg.cpp:411-413` clears the input) and leaves an open dialog
+// alone.
+#[test]
+fn chat_cancel_takes_priority_over_the_dialog() {
+    let mut ui = UiState {
+        in_world: true,
+        chat_open: true,
+        dialog_open: true,
+        ..UiState::default()
+    };
+    ui.line.push_str("hi");
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui),
+        None,
+        "E3: chat cancel is UI-only"
+    );
+    assert!(!ui.chat_open, "E3: the chat closed");
+    assert!(ui.line.is_empty(), "E3: the line was discarded");
+    assert!(
+        ui.dialog_open,
+        "E16: the dialog is untouched — focused input wins"
+    );
+}
+
+// T20 — E17: dialog state is non-modal — game keys keep working (legacy
+// popups are custom-drawn in the game window; `mainfunction.cpp`'s
+// WM_KEYDOWN switch `:1282` runs regardless).
+#[test]
+fn dialog_state_does_not_swallow_game_keys() {
+    let mut ui = UiState {
+        in_world: true,
+        dialog_open: true,
+        ..UiState::default()
+    };
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_INSERT }, &mut ui),
+        Some(Intent::SitToggle),
+        "E17: Insert still sits with a dialog open"
+    );
+    assert_eq!(
+        validate(&Intent::SitToggle),
+        Some(ClientCommand::Order(Order::SitDown)),
+        "E5/Q2: the frozen order (action.rs:94)"
+    );
+    assert_eq!(
+        translate(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui),
+        Some(Intent::ChatFocus),
+        "E17: Enter still focuses chat with a dialog open"
+    );
+    assert!(ui.chat_open, "the chat opened");
+    assert!(
+        ui.dialog_open,
+        "E17: the dialog is still open — neither state gates the other"
+    );
+}
+
+// T21 — E18: arrow keys remain unbound (charter non-goal; the legacy
+// movement block is dead code, `mainfunction.cpp:1205-1217` /
+// `MouseOperation.cpp:273-522`) — down and up, discarded, untouched.
+#[test]
+fn arrow_keys_remain_unbound() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    let before = ui.clone();
+    for vk in [0x25, 0x26, 0x27, 0x28] {
+        assert_eq!(
+            translate(InputEvent::KeyDown { vk }, &mut ui),
+            None,
+            "E18: arrow KeyDown {vk:#04x} must be discarded"
+        );
+        assert_eq!(
+            translate(InputEvent::KeyUp { vk }, &mut ui),
+            None,
+            "E18: arrow KeyUp {vk:#04x} must be discarded"
+        );
+        assert_eq!(ui, before, "E18: discarded arrows leave UiState untouched");
+    }
+}
+
+// T22 — E19: the legacy no-op keys (empty F8/F11/F12 arms,
+// `mainfunction.cpp:1378/:1287/:1292`) and the Win keys (window
+// minimize `:1344-1350` — not ported, window management is not the
+// input layer) are discarded untouched.
+#[test]
+fn legacy_no_op_keys_are_discarded() {
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+    let before = ui.clone();
+    for vk in [0x77, 0x7A, 0x7B, 0x5B, 0x5C] {
+        assert_eq!(
+            translate(InputEvent::KeyDown { vk }, &mut ui),
+            None,
+            "E19: KeyDown {vk:#04x} is a legacy no-op"
+        );
+        assert_eq!(ui, before, "E19: discarded input leaves UiState untouched");
+    }
+}
+
+// T23 — E14+E16 integration: an edited line flushes through the whole
+// P4-C1 chain (translate → validate → send), and the dialog-close signal
+// never reaches the channel (D2).
+#[tokio::test]
+async fn the_edited_line_flushes_through_the_full_chain() {
+    let (sender, mut receiver) = channel();
+    let mut ui = UiState {
+        in_world: true,
+        ..UiState::default()
+    };
+
+    assert_eq!(
+        feed(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui, &sender),
+        None,
+        "E1: focus is UI-only — nothing enqueues"
+    );
+    for ch in ['c', 'a', 't'] {
+        feed(InputEvent::CharInput { ch }, &mut ui, &sender);
+    }
+    assert_eq!(ui.line, "cat", "E14: the stimulus");
+    assert_eq!(
+        feed(InputEvent::KeyDown { vk: VK_BACK }, &mut ui, &sender),
+        None,
+        "E14: editing enqueues nothing"
+    );
+    assert_eq!(ui.line, "ca", "E14: one pop");
+
+    let flushed = feed(InputEvent::KeyDown { vk: VK_RETURN }, &mut ui, &sender)
+        .expect("E14/E2: the edited line must enqueue");
+    assert_eq!(
+        flushed,
+        ClientCommand::Chat {
+            mode: ChatMode::Normal,
+            text: "ca".to_owned()
+        },
+        "E14/E11: whole line, declared default mode"
+    );
+
+    ui.dialog_open = true;
+    assert_eq!(
+        feed(InputEvent::KeyDown { vk: VK_ESCAPE }, &mut ui, &sender),
+        None,
+        "E16/D2: the close signal is refused by validate — never enqueued"
+    );
+    assert!(!ui.dialog_open, "E16: the dialog closed");
+
+    drop(sender);
+    let mut drained = 0usize;
+    while receiver.recv().await.is_some() {
+        drained += 1;
+    }
+    assert_eq!(
+        drained, 1,
+        "exactly the one flush reached the channel — the signal did not"
+    );
+}

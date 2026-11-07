@@ -481,9 +481,56 @@ A Step 8.2 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(appended at delivery: branch, delivery SHA, baseline count from `test.log`, gate table,
-T12–T23 individual runs, T1–T11-unchanged proof, disclosed edits/`F-8.2-NN` findings, probe
-results 4/4 with restore states)_
+**Branch:** `step/8.2-keyboard-hotkeys` · **Delivery SHA:** `26c07a7` (parent `987a3b7`, the
+WO commit) · **Delivered:** 2026-11-07 · **Baseline from `test.log`: 383/383** (347 lib +
+11 `asset_fixtures` + 25 `e2e_loopback`; 1 ignored lib + 4 ignored `live_integration` preserved).
+
+**Five gates** (`RUSTFLAGS=-D warnings`, all exit 0, run twice: pre-probe and post-probe
+baseline — identical both times):
+
+| Gate | Result |
+|---|---|
+| `cargo check --all-targets` | exit 0 |
+| `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| `cargo fmt --check` | exit 0, 0 diffs |
+| `cargo doc --no-deps` | exit 0, 0 warnings |
+| `cargo test` | **383/383** (347 + 11 + 25), 0 failed |
+| `cargo test --lib input::tests` | **23/23** (T1–T11 inherited + T12–T23) — matches §9 expected |
+
+**T12–T23 individual runs:** all 12 green in the appended block (counted in the 23/23 above);
+T10's 100-event `< 16 ms` batch green with the D9 guard in place (no margin relaxed).
+
+**T1–T11 byte-identical (DoD 13.2):** `git diff -U0 987a3b7..26c07a7 -- src/input/tests.rs`
+shows exactly one hunk — `@@ -412,0 +413,431 @@` — zero deletions anywhere in the file
+(`NO_DELETIONS`); lines 1–412 untouched.
+
+**Write guard (DoD 13.5):** `git diff --name-only 987a3b7..26c07a7` = the four §6 source
+files only (`intent.rs`, `keybinds.rs`, `mod.rs`, `tests.rs`). `event.rs`, `validate.rs`,
+`src/client/**`, `src/game/**`, `src/lib.rs`, `tests/**`, `Cargo.*`, matrix, contributing,
+README and the legacy tree: **NONE**. Mouse arms byte-identical
+(`InputEvent::Move { .. } | InputEvent::LeftDown { .. } | InputEvent::LeftUp { .. } => None,`
+identical at base and delivery — the 8.1 parallel-lane guarantee).
+
+**F-7.4-01:** `Intent`/`InputEvent` definitions byte-identical to the 8.0 delivery (only
+`UiState` gained two documented fields, as §7.1 specifies).
+
+**Probes 4/4** (each against the committed tree; pristine restore + porcelain clean after
+each; full gate set re-run green at 383 afterwards):
+
+| # | Mutation | Named test | Result |
+|---:|---|---|---|
+| 1 | delete the D9.1 block-checks in `VK_RETURN`/`VK_INSERT` | T12 | **exit 101** — `E13/D9.1: auto-repeat 1 must be discarded, not re-fired` (`left: Some(SitToggle)`), restored, clean |
+| 2 | `line.push(ch)` unconditional (drop `!ch.is_control()`) | T17 | **exit 101** — `E15: the line stays empty after '\r'`, restored, clean |
+| 3 | drop `ui.dialog_open = false` in the Escape close branch | T18 | **exit 101** — `E16/D10: the dialog is closed`, restored, clean |
+| 4 | bind arrow `0x26 => Some(SitToggle)` | T21 | **exit 101** — `E18: arrow KeyDown 0x26 must be discarded` (`left: Some(SitToggle)`), restored, clean |
+
+**Disclosed edits / findings:** none — no `F-8.2-NN` findings, no out-of-plan edits; one
+compile fix during authoring (`'\b'` → `'\x08'`, Rust has no backspace escape — inside the
+appended test block) and five `cargo fmt` line-joins, all at lines ≥ 450 (appended region).
+One process incident: probe 1 was first run against the *uncommitted* tree, and its
+`git checkout --` restore reverted the whole implementation; it was re-applied, gates
+re-verified at 383, committed as `26c07a7`, and **all four probes were then re-run against
+the committed tree** (the table above is the committed-tree run).
 
 ### Verdict - Verifier
 

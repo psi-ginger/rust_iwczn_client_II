@@ -3,6 +3,9 @@
 //! legacy dialog flags. Both surfaces are declared in full now so 8.1/8.2
 //! extend behavior, not the enum (the F-7.4-01 lesson, §2.2-1).
 
+use super::screen::MapView;
+use super::target::CharTarget;
+
 /// What the player wants, after keybind translation — the middle hop (D2).
 /// Full surface declared now so 8.1/8.2 extend behavior, not the enum (F-7.4-01).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +40,10 @@ pub enum Intent {
 /// owned by the input layer; nothing else mutates it in Phase IV.
 ///
 /// `Default` is the pre-world idle state: `in_world: false`,
-/// `chat_open: false`, `line: String::new()` (§7.2).
+/// `chat_open: false`, `line: String::new()`, plus Step 8.1's click
+/// context `view: None` / `targets: []` (WO-8.1 §7.3, D10) — clicks and
+/// hovers are discarded until 8.3 wires the view, which is exactly what
+/// keeps the 8.0 T5/T6/T7 expectations byte-identical.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UiState {
     /// In-world stage reached (8.3 sets it; replaces `GetFrame() > 40`, D4-guard).
@@ -46,4 +52,11 @@ pub struct UiState {
     pub chat_open: bool,
     /// The typed line; cleared on flush and on cancel (Q3: line buffer only).
     pub line: String,
+    /// 8.1: the view a click is interpreted against; `None` until 8.3 wires
+    /// it — clicks are discarded until then (WO-8.1 D10). `Default` = `None`,
+    /// so every 8.0 test's `..UiState::default()` builds unchanged state.
+    pub view: Option<MapView>,
+    /// 8.1: the candidate snapshot `pick_target` scans (WO-8.1 D10 — a
+    /// snapshot field, not a queue; `translate` never mutates it).
+    pub targets: Vec<CharTarget>,
 }

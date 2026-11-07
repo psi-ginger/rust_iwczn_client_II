@@ -14,6 +14,13 @@ use crate::client::commands::{channel, ClientCommand, CommandSender};
 use crate::game::action::{ChatMode, Order, MAX_CHAT_BYTES};
 use std::time::{Duration, Instant};
 
+// Step 8.1 additions (WO-8.1 §9) — imports only; every T1-T11 body above
+// stays byte-identical (DoD 2: the tests.rs diff is additions only).
+use super::screen::{is_in_map_area, is_pt_in_map, real_to_tile, screen_to_tile, MapView};
+use super::target::{CharTarget, RealRect, TargetClass};
+use crate::game::action::encode_order;
+use crate::graphics::screen::{draw_center_xy, ScreenMode};
+
 // T1 — E1/E2: Enter focuses the chat line, the typed characters accumulate,
 // and the second Enter flushes the whole line and closes the buffer.
 #[test]
@@ -409,4 +416,516 @@ fn feed(event: InputEvent, ui: &mut UiState, sender: &CommandSender) -> Option<C
         .send(command.clone())
         .expect("receiver alive for the batch");
     Some(command)
+}
+
+// ---------------------------------------------------------------------------
+// Step 8.1 tests — the mouse half (WO-8.1 §9, T12–T27).
+//
+// F-07: every expectation is an §8 E-row (E13–E29) carrying its legacy
+// `file:line` or the §2.2 hand arithmetic — never read back from the code
+// under test. P4-C4 headless: `MapView`/`CharTarget` values are built by
+// hand (helpers at the bottom); no window, no Win32, no network. DoD 2:
+// nothing above this line changes — pure additions.
+// ---------------------------------------------------------------------------
+
+/// T12 — E13: charter gate 1's round trip — `screen_to_tile` inverts the
+/// frozen `draw_center_xy` over 3 view centers × 2 backbuffer rects ×
+/// 11 tiles = 66 pairs (WO-8.1 §9).
+///
+/// Identity (§2.2-1): for any center the forward transform yields
+/// `realx = 40(tx - ty)` and `realy = 20(tx + ty) + 20`, so
+/// `tx' = (40tx + 20)/40 = tx` and `ty' = (40ty + 20)/40 = ty` — exact
+/// for every tile ≥ 0 (remainder 20). Non-negative tiles only: past zero
+/// the `+20` crosses the truncation boundary and legacy returns e.g.
+/// `(-40 + 20)/40 = 0 ≠ -1` (C truncates toward zero, as Rust's `/`);
+/// such tiles are refused by E16/E17/E19 before any order carries them.
+#[test]
+fn screen_to_tile_round_trips_draw_center_xy() {
+    // The frozen backbuffer table (Client.cpp:3206-3208 / :3220-3222).
+    let screens = [
+        ScreenMode::Mode800x600.backbuffer(false).screen_rect(),
+        ScreenMode::Mode1024x768.backbuffer(true).screen_rect(),
+    ];
+    assert_eq!(
+        (screens[0].right + 1, screens[0].bottom + 1),
+        (960, 680),
+        "stimulus: the frozen 800x600 backbuffer"
+    );
+    assert_eq!(
+        (screens[1].right + 1, screens[1].bottom + 1),
+        (1200, 880),
+        "stimulus: the frozen 1024x768-fullscreen backbuffer"
+    );
+    let centers = [(0, 0), (100, 100), (37, 91)];
+    let tiles = [
+        (0, 0),
+        (1, 0),
+        (0, 1),
+        (1, 1),
+        (100, 100),
+        (101, 100),
+        (100, 101),
+        (399, 399),
+        (799, 0),
+        (0, 799),
+        (250, 75),
+    ];
+    let mut checked = 0usize;
+    for screen in &screens {
+        let w = screen.right + 1;
+        let h = screen.bottom + 1;
+        for center in centers {
+            for tile in tiles {
+                let (px, py) = draw_center_xy(center.0, center.1, tile.0, tile.1, screen);
+                assert_eq!(
+                    screen_to_tile(px, py, center, screen),
+                    tile,
+                    "E13: tile {tile:?} at center {center:?} on the {w}x{h} rect must round-trip"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 66, "E13: 3 centers x 2 screens x 11 tiles");
+}
+
+/// T13 — E14: hand-computed goldens G1–G3 (WO-8.1 §2.2-2) — arithmetic
+/// done by hand from `Map-Client.cpp:185-187` + `MapCommon.cpp:965-966`
+/// over the frozen 960×680 rect (mid (480,340)), never recomputed here:
+///
+/// * G1: (480,340) → real (0,4020) → (0+4020)/40 = 100 r20 → (100,100)
+/// * G2: (520,360) → real (40,4040) → (20+4040)/40 = 101, (-20+4040)/40 = 100
+/// * G3: (440,360) → real (-40,4040) → (-20+4040)/40 = 100, (20+4040)/40 = 101
+#[test]
+fn screen_to_tile_matches_hand_computed_goldens() {
+    let screen = ScreenMode::Mode800x600.backbuffer(false).screen_rect();
+    assert_eq!(
+        (screen.right, screen.bottom),
+        (959, 679),
+        "stimulus: the frozen 960x680 rect (Client.cpp:3206-3208)"
+    );
+    assert_eq!(
+        screen_to_tile(480, 340, (100, 100), &screen),
+        (100, 100),
+        "E14: G1 — the rect center lands on the view center"
+    );
+    assert_eq!(
+        screen_to_tile(520, 360, (100, 100), &screen),
+        (101, 100),
+        "E14: G2 — one tile east"
+    );
+    assert_eq!(
+        screen_to_tile(440, 360, (100, 100), &screen),
+        (100, 101),
+        "E14: G3 — one tile south"
+    );
+}
+
+/// T14 — E15: C-truncation goldens G4–G5 (WO-8.1 §2.2-2).
+///
+/// * G4: click (10,10) at center (0,0) → real (-470,-310);
+///   (-235 + -310)/40 = -13.625 → **-13**, (235 + -310)/40 = -1.875 → **-1**
+///   (floors would give (-14,-2)).
+/// * G5: `real_to_tile(-41,-19)` → -41/2 = **-20** (floor: -21),
+///   (-20-19)/40 = -0.975 → **0**, (20-19)/40 → 0 (floor paths: (-1,0)).
+#[test]
+fn screen_to_tile_truncates_toward_zero_like_legacy_c() {
+    let screen = ScreenMode::Mode800x600.backbuffer(false).screen_rect();
+    assert_eq!(
+        screen_to_tile(10, 10, (0, 0), &screen),
+        (-13, -1),
+        "E15: G4 truncates toward zero like C99 (MapCommon.cpp:965-966); floor gives (-14,-2)"
+    );
+    assert_eq!(
+        real_to_tile(-41, -19),
+        (0, 0),
+        "E15: G5 — -41/2 = -20 (not -21) keeps both quotients at zero; floors give (-1,0)"
+    );
+}
+
+/// T15 — E16: `IsPtInMap`'s inclusive `ScreenRect` gate
+/// (`Map-Client.cpp:199-200`, fired at `MouseOperation.cpp:534`).
+#[test]
+fn is_pt_in_map_gates_inclusive_screen_bounds() {
+    let screen = ScreenMode::Mode800x600.backbuffer(false).screen_rect();
+    assert_eq!(
+        (screen.right, screen.bottom),
+        (959, 679),
+        "stimulus: the frozen 960x680 rect"
+    );
+    assert!(
+        is_pt_in_map(0, 0, &screen),
+        "E16: top-left corner is inside"
+    );
+    assert!(
+        is_pt_in_map(959, 679, &screen),
+        "E16: bottom-right corner is inside (bounds inclusive)"
+    );
+    for p in [(-1, 0), (960, 679), (0, 680), (959, 680)] {
+        assert!(
+            !is_pt_in_map(p.0, p.1, &screen),
+            "E16: {p:?} is one pixel outside the inclusive rect"
+        );
+    }
+}
+
+/// T16 — E17: `IsInMapArea`'s half-open tile bounds (`map.cpp:226`:
+/// `0 ≤ x < MapXsize`) — the predicate behind D14's named refusal.
+#[test]
+fn is_in_map_area_is_half_open() {
+    assert!(
+        is_in_map_area(0, 0, 100, 100),
+        "E17: the origin is in the map"
+    );
+    assert!(
+        is_in_map_area(99, 99, 100, 100),
+        "E17: the last tile row/column is in the map"
+    );
+    for t in [(100, 99), (99, 100), (-1, 0), (0, -1)] {
+        assert!(
+            !is_in_map_area(t.0, t.1, 100, 100),
+            "E17: {t:?} is outside the half-open 100x100 map"
+        );
+    }
+}
+
+/// T17 — E18: off-screen clicks hit the `IsPtInMap` gate
+/// (`MouseOperation.cpp:534`) and are discarded with `UiState` untouched.
+///
+/// Hand arithmetic (§2.2-2): every stimulus computes to a tile that IS
+/// inside the wired 400×400 map — (1000,340) → (107,94),
+/// (960,0) → (98,86), (-1,-1) → (85,97), (0,680) → (103,115) — so only
+/// the screen gate can be discarding them (probe 3 deletes exactly it).
+#[test]
+fn clicks_outside_the_screen_rect_are_discarded() {
+    let mut ui = wired(vec![]);
+    let before = ui.clone();
+    for p in [(1000, 340), (960, 0), (-1, -1), (0, 680)] {
+        assert_eq!(
+            translate(InputEvent::LeftDown { x: p.0, y: p.1 }, &mut ui),
+            None,
+            "E18: off-screen click {p:?} is discarded (IsPtInMap, Map-Client.cpp:196-206)"
+        );
+        assert_eq!(
+            ui, before,
+            "E18: no mouse row ever mutates UiState (WO-8.1 §7.4)"
+        );
+    }
+}
+
+/// T18 — E19: an in-screen click whose tile leaves the map is refused by
+/// name before enqueue (WO-8.1 D14; verification gate 2).
+///
+/// Hand arithmetic (§2.2-2): click (900,600) at center (100,100) →
+/// real (420,4280) → (210+4280)/40 = 112 r10, (-210+4280)/40 = 101 r30
+/// → tile (112,101), outside the half-open 100×100 map (`map.cpp:226`).
+/// Legacy's gate sits at `UnderMouseObject.cpp:335` yet still encodes
+/// ORDER_MOVE (`:5532-5537`) for the server to drop — the port refuses
+/// (§8 divergence d).
+#[test]
+fn clicks_on_tiles_outside_the_map_are_refused_by_name() {
+    let mut ui = wired(vec![]);
+    let screen = ScreenMode::Mode800x600.backbuffer(false).screen_rect();
+    assert!(
+        is_pt_in_map(900, 600, &screen),
+        "stimulus: the click is inside the screen — only the map gate can refuse it"
+    );
+    ui.view = Some(MapView {
+        screen,
+        center: (100, 100),
+        map_size: (100, 100),
+    });
+    let before = ui.clone();
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 900, y: 600 }, &mut ui),
+        None,
+        "E19: tile (112,101) leaves the 100x100 map — typed refusal, never a clamp (D14)"
+    );
+    assert_eq!(ui, before, "E19: the refusal leaves UiState untouched");
+}
+
+/// T19 — E20: charter gate 1's click→move bytes — a click on empty land
+/// walks the whole synchronous chain (`translate` → `validate`) into the
+/// frozen `Order::Move` and its frozen encoder (`action.rs:113-125`).
+#[test]
+fn click_on_empty_land_encodes_the_frozen_move_bytes() {
+    let mut ui = wired(vec![]); // empty snapshot: no candidate under the cursor
+    let intent = translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut ui)
+        .expect("E20: a click on empty land yields the move intent");
+    assert_eq!(
+        intent,
+        Intent::MoveTo { x: 100, y: 100 },
+        "E20: G1's hand-computed tile (§2.2-2)"
+    );
+    let command = validate(&intent).expect("E20: the move intent validates before enqueue (D3)");
+    assert_eq!(
+        command,
+        ClientCommand::Order(Order::Move { x: 100, y: 100 }),
+        "E20: the frozen Order::Move carries the tile uncoerced"
+    );
+    let ClientCommand::Order(order) = command else {
+        panic!("E20: the command is an order");
+    };
+    assert_eq!(
+        encode_order(&order),
+        vec![0, 100, 0, 100, 0],
+        "E20: kind 0 (OrderKind::Move, action.rs:65) + LE x,y — charter gate-1 click-to-move bytes"
+    );
+}
+
+/// T20 — E21: an enemy under the cursor → `MOUSEMODE_ATTACK`
+/// (`MouseOperation.cpp:3259-3261/:3275-3277` → `:5544`, `:5607-5631`)
+/// → the frozen attack bytes.
+#[test]
+fn click_on_an_enemy_produces_the_frozen_attack_order() {
+    let mut ui = wired(vec![candidate_at_g1(7, TargetClass::Enemy)]);
+    let intent = translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut ui)
+        .expect("E21: an enemy under the cursor yields the attack intent");
+    assert_eq!(
+        intent,
+        Intent::AttackTarget { target_char: 7 },
+        "E21: Enemy class → the frozen AttackTarget (D12)"
+    );
+    let command = validate(&intent).expect("E21: the attack intent validates");
+    assert_eq!(
+        command,
+        ClientCommand::Order(Order::Attack { target_char: 7 }),
+        "E21: the frozen Order::Attack"
+    );
+    let ClientCommand::Order(order) = command else {
+        panic!("E21: the command is an order");
+    };
+    assert_eq!(
+        encode_order(&order),
+        vec![1, 7, 0, 0, 0],
+        "E21: kind 1 (OrderKind::Attack, action.rs:67) + LE id (action.rs:121)"
+    );
+}
+
+/// T21 — E22: a friendly NPC discards the click — legacy's dialog arm
+/// (`MouseOperation.cpp:4138+`) is Q3-excluded, and there is no
+/// fall-through move (D12; legacy's `bdoneswitch` stops there too).
+#[test]
+fn click_on_a_friendly_npc_is_discarded_not_moved() {
+    let mut ui = wired(vec![candidate_at_g1(7, TargetClass::Npc)]);
+    let before = ui.clone();
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut ui),
+        None,
+        "E22: Npc class → typed None, never a MoveTo (probe 4 breaks exactly this)"
+    );
+    assert_eq!(
+        ui, before,
+        "E22: the discarded click leaves UiState untouched"
+    );
+}
+
+/// T22 — E23: a friendly player falls through to the move branch
+/// (`MOUSEMODE_OTHERUSER`, `MouseOperation.cpp:3283` → `:5409`).
+#[test]
+fn click_on_a_friendly_player_falls_through_to_move() {
+    let mut ui = wired(vec![candidate_at_g1(7, TargetClass::OtherUser)]);
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut ui),
+        Some(Intent::MoveTo { x: 100, y: 100 }),
+        "E23: OtherUser class → the move intent (D12, same as empty land)"
+    );
+}
+
+/// T23 — E24+E25: the two hit-test filters of `FindLandChar`'s math core.
+///
+/// Click (520,340) hand-computes (§2.2-2) to real (40,4020), tile
+/// (101,100): x == `rect.right` exactly — strict containment
+/// (`Char-Client.cpp:1015-1016`) misses; `right + 1` contains the same
+/// point (E24). A candidate 4 tiles away (Chebyshev) is skipped even
+/// with a containing rect (`UnderMouseObject.cpp:156-159`, E25).
+#[test]
+fn target_hit_test_uses_strict_rect_containment_and_the_three_tile_filter() {
+    let mut on_edge = wired(vec![CharTarget {
+        id: 7,
+        tile: (100, 100),
+        rect: RealRect {
+            left: -40,
+            top: 4000,
+            right: 40,
+            bottom: 4040,
+        },
+        center: (0, 4020),
+        class: TargetClass::Enemy,
+    }]);
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 520, y: 340 }, &mut on_edge),
+        Some(Intent::MoveTo { x: 101, y: 100 }),
+        "E24: x == rect.right misses (strict < both axes) → the move branch"
+    );
+
+    let mut widened = wired(vec![CharTarget {
+        id: 7,
+        tile: (100, 100),
+        rect: RealRect {
+            left: -40,
+            top: 4000,
+            right: 41,
+            bottom: 4040,
+        },
+        center: (0, 4020),
+        class: TargetClass::Enemy,
+    }]);
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 520, y: 340 }, &mut widened),
+        Some(Intent::AttackTarget { target_char: 7 }),
+        "E24: right+1 contains the same point → the enemy is hit"
+    );
+
+    let mut four_away = wired(vec![CharTarget {
+        id: 7,
+        tile: (105, 100),
+        rect: RealRect {
+            left: -40,
+            top: 4000,
+            right: 41,
+            bottom: 4040,
+        },
+        center: (0, 4020),
+        class: TargetClass::Enemy,
+    }]);
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 520, y: 340 }, &mut four_away),
+        Some(Intent::MoveTo { x: 101, y: 100 }),
+        "E25: |105-101| = 4 tiles > 3 skips the candidate despite the containing rect"
+    );
+}
+
+/// T24 — E26: `pick_target` selection — nearest center wins even when the
+/// nearer candidate comes later (WO-8.1 D13, the stated §8 divergence from
+/// legacy's pass-1 first-arrived effect), and equal lengths keep the first
+/// candidate in slice order (`UnderMouseObject.cpp:168-175` first-hit +
+/// `:212-215` strict `<`).
+#[test]
+fn nearest_center_wins_and_first_candidate_wins_ties() {
+    let rect = RealRect {
+        left: -1000,
+        top: 3000,
+        right: 1000,
+        bottom: 5000,
+    };
+    let target = |id: u32, center: (i32, i32)| CharTarget {
+        id,
+        tile: (100, 100),
+        rect,
+        center,
+        class: TargetClass::Enemy,
+    };
+
+    // Both rects contain G1's real dot (0,4020); the lengths are 100 then 0.
+    let mut nearest = wired(vec![target(1, (0, 4120)), target(2, (0, 4020))]);
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut nearest),
+        Some(Intent::AttackTarget { target_char: 2 }),
+        "E26: the later, nearer candidate replaces the earlier farther one (D13)"
+    );
+
+    // Equal lengths (20 and 20): the first in slice order wins.
+    let mut tie = wired(vec![target(3, (0, 4040)), target(4, (20, 4020))]);
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut tie),
+        Some(Intent::AttackTarget { target_char: 3 }),
+        "E26: a length tie keeps the first candidate (FindLandChar:168-175/:212-215)"
+    );
+}
+
+/// T25 — E27: with the view and an enemy fully wired, release and hover
+/// still never produce an intent — the legacy release arm pushes a no-flag
+/// key (`mainfunction.cpp:251-258`) and hover is position tracking only
+/// (`:208`; 8.0 D8 + WO-8.1 D11).
+#[test]
+fn release_and_hover_never_produce_intents_even_with_the_view_wired() {
+    let mut ui = wired(vec![candidate_at_g1(7, TargetClass::Enemy)]);
+    let before = ui.clone();
+    assert_eq!(
+        translate(InputEvent::LeftUp { x: 480, y: 340 }, &mut ui),
+        None,
+        "E27: LeftUp is inert (mainfunction.cpp:251-258)"
+    );
+    assert_eq!(ui, before, "E27: LeftUp leaves UiState untouched");
+    assert_eq!(
+        translate(InputEvent::Move { x: 480, y: 340 }, &mut ui),
+        None,
+        "E27: hover/Move stays 8.0 D8 — position tracking only"
+    );
+    assert_eq!(ui, before, "E27: Move leaves UiState untouched");
+}
+
+/// T26 — E28: the `!in_world` guard (8.0 D4, legacy `GetFrame() > 40` at
+/// `mainfunction.cpp:236`) runs before any 8.1 click logic — proven by a
+/// fully wired view + enemy that would otherwise produce an attack.
+#[test]
+fn clicks_before_the_in_world_guard_are_discarded() {
+    let mut ui = wired(vec![candidate_at_g1(7, TargetClass::Enemy)]);
+    ui.in_world = false;
+    let before = ui.clone();
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut ui),
+        None,
+        "E28: pre-world clicks are discarded before the view/target logic runs"
+    );
+    assert_eq!(ui, before, "E28: UiState is byte-identical");
+}
+
+/// T27 — E29: the D15 split — keyboard input is focus-driven (8.0 rows),
+/// the pointer is position-driven: the legacy `WM_LBUTTONDOWN` arm has no
+/// focus check (`mainfunction.cpp:232-249`), so clicks act while the chat
+/// line is open, leaving chat state untouched.
+#[test]
+fn clicks_act_while_the_chat_line_is_open() {
+    let mut ui = wired(vec![]);
+    ui.chat_open = true;
+    ui.line = "hi".to_owned();
+    let before = ui.clone();
+    assert_eq!(
+        translate(InputEvent::LeftDown { x: 480, y: 340 }, &mut ui),
+        Some(Intent::MoveTo { x: 100, y: 100 }),
+        "E29: an open chat line never swallows a click (D15)"
+    );
+    assert_eq!(
+        ui, before,
+        "E29: chat_open and the typed line travel untouched"
+    );
+}
+
+/// WO-8.1 §9 — the wired `UiState` every 8.1 click test starts from:
+/// `in_world` true (8.0's D4 guard passes), the frozen 800×600 backbuffer
+/// rect (960×680 → `(0,0,959,679)`, `Client.cpp:3206-3208`), view center
+/// (100,100), map size (400,400), plus the given candidate snapshot —
+/// everything else is `UiState::default()` (WO-8.1 D10).
+fn wired(candidates: Vec<CharTarget>) -> UiState {
+    UiState {
+        in_world: true,
+        view: Some(MapView {
+            screen: ScreenMode::Mode800x600.backbuffer(false).screen_rect(),
+            center: (100, 100),
+            map_size: (400, 400),
+        }),
+        targets: candidates,
+        ..UiState::default()
+    }
+}
+
+/// The candidate whose class T20–T22 swap: at the clicked tile (100,100),
+/// a sprite whose strict rect contains G1's real dot (0,4020)
+/// (WO-8.1 §2.2-2) and whose center is exactly that point — length 0,
+/// the nearest possible (E26).
+fn candidate_at_g1(id: u32, class: TargetClass) -> CharTarget {
+    CharTarget {
+        id,
+        tile: (100, 100),
+        rect: RealRect {
+            left: -40,
+            top: 4000,
+            right: 40,
+            bottom: 4040,
+        },
+        center: (0, 4020),
+        class,
+    }
 }

@@ -768,8 +768,95 @@ A Step 8.3 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(appended by the Implementer at delivery: branch, delivery SHA, baseline from `test.log`,
-five gates, T40–T51 individual runs, write-guard diff, probes, disclosed edits)_
+**Branch:** `step/8.3-driver-wiring` · **Code delivery SHA:** `8e9ba02` (parent `f4e93bc`,
+the WO commit) · **Delivered:** 2026-11-08 · **Baseline from `test.log`: 414/414** (371 lib +
+11 `asset_fixtures` + 25 `e2e_loopback` + 7 `input_loopback`; 1 ignored lib + 4 ignored
+`live_integration` preserved; 399 → 414 exactly as §9). This §14 note lands in the follow-up
+commit on the same branch (a note commit cannot cite its own SHA).
+
+**Five gates** (`RUSTFLAGS=-D warnings`, all exit 0, run twice: pre-probe and post-probe
+baseline — identical both times):
+
+| Gate | Result |
+|---|---|
+| `cargo check --all-targets` | exit 0 |
+| `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| `cargo fmt --check` | exit 0, 0 diffs |
+| `cargo doc --no-deps` | exit 0, 0 warnings |
+| `cargo test` | **414/414** (371 + 11 + 25 + 7), 0 failed |
+| `cargo test --lib input::tests` | **43/43** (39 inherited + T43–T46) — matches §9 |
+| `cargo test --lib graphics::window` | **4 passed + 1 ignored preserved** — matches §9 |
+
+**T40–T51 individual runs:** T40/T41/T42/T51 green in the new `src/graphics/window/tests.rs`
+(4/4; the operator test stays `#[ignore]`; D18 pinned failing-if-corrected by T40's dedicated
+`WM_LBUTTONDBLCLK → LeftDown` assertion); T43–T46 green in the appended `input::tests` block
+(counted in the 43/43 above); T47–T50 green in `tests/input_loopback.rs` (7/7 = T47–T50 +
+`frames.rs`'s 3 inner tests re-running — D22's disclosed duplication, §9's arithmetic).
+T51's 100-raw-message `< 16 ms` batch green with its margin documented and never relaxed
+(T10 green unchanged).
+
+**T1–T39 byte-identical (DoD 13.2):** `git diff -U0 f4e93bc..8e9ba02 -- src/input/tests.rs`
+= exactly one hunk — `@@ -1362,0 +1363,192 @@` — zero deletions anywhere in the file; lines
+1–1362 untouched.
+
+**Write guard (DoD 13.5):** `git diff --name-only f4e93bc..8e9ba02` = the six §6 code files
+only: `src/graphics/window.rs`, NEW `src/graphics/window/tests.rs`, NEW `src/input/feed.rs`,
+`src/input/mod.rs` (exactly two lines), `src/input/tests.rs` (append-only), NEW
+`tests/input_loopback.rs`. Forbidden set — `src/client/**`, `src/main.rs`, `src/lib.rs`,
+`src/game/**`, `keybinds/event/intent/validate/screen/target`, `tests/e2e_loopback*`,
+`tests/asset_fixtures*`, `tests/live_integration*`, `Cargo.*`, matrix, README, contributing,
+legacy tree —: **NONE** (empty diff). `window.rs` = 7 hunks, all input-side (module-doc
+sentence, imports, seven `WM_*` consts + `wm_to_input`, `WindowState.input` +
+`input: None`, the arm, `mod tests`): render/present/tick/pump/demo hunks **zero**, the only
+2 deletion lines repo-wide are the two `use` lines extended with the border constants, and
+the `_ => DefWindowProcA` fallthrough plus the pump are byte-identical.
+
+**F-7.4-01:** `Intent`/`InputEvent`/`UiState`/`translate`/`validate` byte-identical to the
+8.1/8.2 delivery (empty `git diff` over those definitions and `keybinds.rs`).
+
+**Probes 4/4** (each against the committed tree `8e9ba02`: one semantic break, the named test
+run, pristine `git checkout --` restore + `git status --porcelain` clean after each, full
+gate set re-run green at 414 afterwards; runs use plain `cargo test --lib <name>` — see
+disclosure 1):
+
+| # | Mutation | Named test | Result |
+|---:|---|---|---|
+| 1 | drop the window→backbuffer translation (raw zero-extended coords) | T40 | **exit 101** — `E30: WM_MOUSEMOVE decodes to Move in backbuffer space` (`left: Some(Move { x: 480, y: 360 })`, `right: Some(Move { x: 560, y: 400 })`), restored, clean |
+| 2 | `KeyDown { vk: l_param as u32 }` | T41 | **exit 101** — `E32: RETURN (0x0D) round-trips as KeyDown { vk: 13 }` (`left: Some(KeyDown { vk: 0 })`), restored, clean |
+| 3 | `let _ = self.sender.send(command.clone()); Ok(Some(command))` | T45 | **exit 101** at `tests.rs:1523` — `E38: the closed channel surfaces by name — no panic, no Ok` (got `Ok(Some(…))`), restored, clean |
+| 4 | `enter_world` sets only `in_world = true` (view forgotten) | T44 | **exit 101** — `E37: enter_world wires the click context in the same call (D20)` (`left: None`, `right: Some(MapView { … })`), restored, clean |
+
+**Disclosed edits / findings:**
+
+1. **Probe 1 runs without `-D warnings`.** Deleting the `+80/+40` term orphans
+   `MAP_TILE_XSIZE/MAP_TILE_YSIZE/SCREEN_RX/SCREEN_RY` inside `window.rs` (their only use),
+   so under `-D warnings` the probe would fail compilation instead of showing the tabled
+   assertion; it is run as §12 words it ("run the named test") with default flags to record
+   exit 101 + the failing assertion. The full gate set re-ran `-D warnings` green after every
+   restore (probes 2–4 compile clean under `-D warnings` either way).
+2. **Probe 3 keeps `command.clone()`.** The tabled `let _ = self.sender.send(command);` does
+   not compile (use-after-move of `command`); the clone preserves the exact semantic break —
+   the channel failure is swallowed and `Ok(Some)` is returned.
+3. **T45's "(still default)" precision fix.** The §9 row pins `ui()` "(still default)"
+   across the `Err(Closed)` failure, but reaching `send` at all requires `enter_world`: the
+   D4 guard (`keybinds.rs:50-52`) discards every event while the state is default, so the
+   failure-time state can never be the default one. Implemented as: a fresh-feed
+   `ui() == UiState::default()` pin before arming, plus "unchanged across the failure"
+   asserted against a post-`enter_world` snapshot (documented in the test's doc comment).
+   E38's substance — `Err(CommandError::Closed)` surfaced by name, no panic, `ui()` read-only
+   by type — is pinned exactly as tabled.
+4. **Module-scoped `#[allow(dead_code)]` on the two re-declared frozen harness modules**
+   (`frames`, `game_double`) in `tests/input_loopback.rs`. Items used only by the
+   deliberately non-re-declared `robustness`/`soak`/e2e-root siblings (`MALFORMED_*_WIRE`,
+   `MOVE_COMMAND_WIRE`, `mutated_worldlist_response`, `Tail::HeartbeatThenFin/Storm/
+   RawFault/…`) would otherwise fail `-D warnings` in the new binary (D22 §2.2-7 forbids
+   re-declaring those siblings). The frozen files are untouched, and `input_loopback`'s own
+   code — the mirrors included — stays fully linted: an unused mirror still fails the gate
+   (§2.2-10).
+
+No `F-8.3-NN` findings, no out-of-plan edits: every wire expectation is a §8.3 frozen literal
+(F-07), no new crate/opcode/wire byte, and the stage trigger stays 8.4's scope (divergence
+(a)).
 
 ### Verdict - Verifier
 

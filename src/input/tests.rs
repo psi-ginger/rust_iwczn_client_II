@@ -1360,3 +1360,195 @@ fn candidate_at_g1(id: u32, class: TargetClass) -> CharTarget {
         class,
     }
 }
+
+// ---------------------------------------------------------------------------
+// Step 8.3 tests — the production feed (WO-8.3 §9, T43–T46). APPENDED
+// ONLY: T1–T39 above stay byte-identical (DoD 13.2; evidence
+// `t1-t39-unchanged.txt`). F-07: every assertion cites §8's E36–E39 rows
+// with their legacy/frozen provenance — never read back from the code
+// under test. P4-C4: values built by hand — no window, no Win32, no
+// network; the only channel is the in-process 7.4 `commands::channel()`.
+// ---------------------------------------------------------------------------
+use super::feed::InputFeed;
+use crate::client::commands::CommandError;
+
+/// T43 — E36: `InputFeed::feed` is the whole P4-C1 chain in one synchronous
+/// call — exactly one command drained for the valid intent, zero for every
+/// typed refusal (the UI-only `CloseDialog` at `validate.rs:47` and the
+/// empty-line `SendChat` at `validate.rs:35-37`), no intermediate storage
+/// of any kind between the event and `send`.
+#[tokio::test]
+async fn input_feed_enqueues_validated_commands_synchronously() {
+    let (sender, mut receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+    // The D4 guard must pass or nothing enqueues (E7, keybinds.rs:50-52).
+    feed.enter_world(MapView {
+        screen: ScreenMode::Mode800x600.backbuffer(false).screen_rect(),
+        center: (100, 100),
+        map_size: (400, 400),
+    });
+
+    // INSERT → the frozen sit toggle (E5) — the one enqueue of this test.
+    assert_eq!(
+        feed.feed(InputEvent::KeyDown { vk: VK_INSERT })
+            .expect("the receiver is alive for the whole test"),
+        Some(ClientCommand::Order(Order::SitDown)),
+        "E36: the valid intent enqueues exactly one command (Ok(Some))"
+    );
+
+    // ESCAPE with nothing open → `CloseDialog`; validate refuses it (D2).
+    assert_eq!(
+        feed.feed(InputEvent::KeyDown { vk: VK_ESCAPE })
+            .expect("the receiver is alive for the whole test"),
+        None,
+        "E36: the UI-only close signal returns Ok(None), zero sent"
+    );
+
+    // RETURN opens the chat line (`ChatFocus`, UI-only → no send) …
+    assert_eq!(
+        feed.feed(InputEvent::KeyDown { vk: VK_RETURN })
+            .expect("the receiver is alive for the whole test"),
+        None,
+        "E36: focusing the chat line enqueues nothing"
+    );
+    // … KeyUp RETURN clears the D9 auto-repeat guard (keybinds.rs:140-145) …
+    assert_eq!(
+        feed.feed(InputEvent::KeyUp { vk: VK_RETURN })
+            .expect("the receiver is alive for the whole test"),
+        None,
+        "the release is accepted and ignored — it only re-arms the key"
+    );
+    // … and the next RETURN flushes the still-empty line: `validate`
+    // refuses it before any send (E10, action.rs:202-204).
+    assert_eq!(
+        feed.feed(InputEvent::KeyDown { vk: VK_RETURN })
+            .expect("the receiver is alive for the whole test"),
+        None,
+        "E36/E10: the empty flush returns Ok(None), zero sent"
+    );
+
+    // Exactly one command ever reached the channel: `Ok(Some)` ⇔ exactly
+    // one `send` happened (P4-C1 — the send is the only observable).
+    drop(feed);
+    let mut drained = 0usize;
+    while receiver.recv().await.is_some() {
+        drained += 1;
+    }
+    assert_eq!(
+        drained, 1,
+        "E36: exactly the INSERT's SitDown drained — the refusals sent nothing"
+    );
+}
+
+/// T44 — E37: `enter_world` arms the feed in one call (D20) — a fresh feed
+/// discards a wired-space click under the D4 guard with `ui()` still the
+/// default, then `in_world` **and** `view` land together and the very same
+/// click enqueues the frozen move (§2.4 G1: window (480,360) → backbuffer
+/// (560,400) → real (80,4080) → tile (103,101)).
+#[tokio::test]
+async fn enter_world_arms_the_feed_in_one_call() {
+    let (sender, mut receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+
+    assert_eq!(
+        feed.feed(InputEvent::LeftDown { x: 560, y: 400 })
+            .expect("the receiver is alive for the whole test"),
+        None,
+        "E37: before enter_world the click is discarded (D4 guard)"
+    );
+    assert_eq!(
+        feed.ui(),
+        &UiState::default(),
+        "E37: a discarded event leaves ui() byte-identical to UiState::default()"
+    );
+
+    let view = MapView {
+        screen: ScreenMode::Mode800x600.backbuffer(false).screen_rect(),
+        center: (100, 100),
+        map_size: (400, 400),
+    };
+    feed.enter_world(view);
+    assert!(feed.ui().in_world, "E37: enter_world raises the stage flag");
+    assert_eq!(
+        feed.ui().view,
+        Some(view),
+        "E37: enter_world wires the click context in the same call (D20)"
+    );
+
+    assert_eq!(
+        feed.feed(InputEvent::LeftDown { x: 560, y: 400 })
+            .expect("the receiver is alive for the whole test"),
+        Some(ClientCommand::Order(Order::Move { x: 103, y: 101 })),
+        "E37/§2.4 G1: the same click now enqueues Order::Move {{ 103, 101 }}"
+    );
+
+    drop(feed);
+    let mut drained = 0usize;
+    while receiver.recv().await.is_some() {
+        drained += 1;
+    }
+    assert_eq!(drained, 1, "exactly the one move reached the channel");
+}
+
+/// T45 — E38: a dead receiver surfaces `Err(CommandError::Closed)` **by
+/// name** — no panic, no `Ok`, no retry — and `ui()` is unchanged across
+/// the failure; `ui()` returns `&UiState`, so `feed`/`enter_world` are the
+/// only mutators (read-only by type).
+///
+/// Precision (disclosed in the delivery note): the WO row's parenthetical
+/// "(still default)" pins the *fresh* feed — but reaching `send` at all
+/// requires `enter_world`, because the D4 guard blocks every event while
+/// the state is default. So the pins are: fresh `ui() == default` before
+/// arming, then "unchanged across the failure" against a post-arm
+/// snapshot.
+#[test]
+fn feed_surfaces_the_closed_channel_by_name() {
+    let (sender, receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+
+    assert_eq!(
+        feed.ui(),
+        &UiState::default(),
+        "E38: a fresh feed starts at UiState::default()"
+    );
+
+    feed.enter_world(MapView {
+        screen: ScreenMode::Mode800x600.backbuffer(false).screen_rect(),
+        center: (100, 100),
+        map_size: (400, 400),
+    });
+    let armed = feed.ui().clone();
+    drop(receiver); // every receiver is gone → send must fail Closed
+
+    assert!(
+        matches!(
+            feed.feed(InputEvent::LeftDown { x: 560, y: 400 }),
+            Err(CommandError::Closed)
+        ),
+        "E38: the closed channel surfaces by name — no panic, no Ok"
+    );
+    assert_eq!(
+        feed.ui(),
+        &armed,
+        "E38: ui() is unchanged across the failure"
+    );
+    let _: &UiState = feed.ui(); // read-only by type (E38)
+}
+
+/// T46 — E39: `InputFeed: Send` at compile time (it rides the window's
+/// pump thread, D19) and `Debug`-formattable over a fresh feed without
+/// panicking. The zero-queue claim itself is §11's grep over `feed.rs`
+/// (P4-C1 — no `VecDeque`/ring/cap anywhere in `src/input/**`).
+#[test]
+fn input_feed_is_send_and_carries_no_queue() {
+    fn assert_send<T: Send>() {}
+    assert_send::<InputFeed>();
+
+    let (sender, _receiver) = channel();
+    let feed = InputFeed::new(sender);
+    let rendered = format!("{feed:?}");
+    assert!(
+        !rendered.is_empty(),
+        "E39: Debug renders a fresh feed without panicking"
+    );
+}

@@ -1,0 +1,25 @@
+Step 8.3 S4 verification - clone head
+Captured: 2026-11-08 (+07:00)
+
+Clone: S4 clean clone of https://github.com/psi-ginger/rust_iwczn_client_II.git
+  git clone --branch step/8.3-driver-wiring <url>
+  path: C:\Users\workcats\AppData\Local\Temp\opencode\s4-8.3
+  fresh target/ (all dependencies compiled from scratch in run 1)
+
+HEAD:  90a0f0766a091e5b33f74a44e62d0e44d405d7d8
+  tree: ec1672af277b10a8bf87268001bae97168ffe7d0
+
+90a0f0766a091e5b33f74a44e62d0e44d405d7d8 2026-11-08T10:02:56+07:00 docs(agents): WO-8.3 section 14 delivery note - 414/414 at 8e9ba02, five gates x2 green, probes 4/4, write guard held (Implementer lane)
+8e9ba02cc533786b07fb81ec23046aa82dce8d00 2026-11-08T09:54:05+07:00 feat(input): Step 8.3 driver wiring - wm_to_input decode, InputFeed, raw-message wire proof T40-T51 (Implementer lane)
+f4e93bcbd348a6a5b902f8110b947fb4d7f0238e 2026-11-08T07:32:06+07:00 docs(agents): WO-8.3 driver wiring definition - wm_to_input decode, InputFeed, loopback proof (Scribe lane)
+
+Delivery SHA: 8e9ba02cc533786b07fb81ec23046aa82dce8d00 (parent f4e93bc = the Scribe
+  WO-8.3 commit = the branch cut point = origin/main at cut time).
+Note-vs-code split: git diff --name-only 8e9ba02..90a0f07 = docs/agents/WO-8.3.md ONLY
+  (docs-only note commit), so src/, tests/ and Cargo.* at the tip are byte-identical to
+  the delivery SHA - gating at the tip fully characterizes the delivery (same docs-only
+  pattern as 8.0 fc1a7c7 -> 89b9a9d, 8.1 f91897e -> cada5ed, 8.2 26c07a7 -> 937c9ab).
+
+Porcelain: clean at clone; after run 1 and run 2 only the verifier's own untracked
+  evidence/8.3/; every probe restore verified with
+  git status --porcelain -- ':!:evidence' => empty (TRACKED_CLEAN).

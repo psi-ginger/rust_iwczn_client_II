@@ -25,6 +25,7 @@
 //! (WO-8.1 §7).
 
 pub mod event;
+pub mod feed;
 pub mod intent;
 pub mod keybinds;
 pub mod screen;
@@ -32,6 +33,7 @@ pub mod target;
 pub mod validate;
 
 pub use event::InputEvent;
+pub use feed::InputFeed;
 pub use intent::{Intent, UiState};
 pub use keybinds::{translate, VK_BACK, VK_ESCAPE, VK_INSERT, VK_RETURN};
 pub use screen::{

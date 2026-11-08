@@ -1,0 +1,33 @@
+Step 8.3 - F-7.4-01 post-check (DoD 13.8)
+Range: f4e93bc .. 8e9ba02 (delivery)
+
+1. BLOB IDENTITY (git rev-parse <commit>:<path>), base vs delivery:
+   src/input/event.rs     4e743d4fc7a17ca5861a78c8849121f7f0de06f3 == IDENTICAL
+   src/input/intent.rs    256e1127660645e6734fa96fce8ffdbc1d95191c == IDENTICAL
+   src/input/keybinds.rs  IDENTICAL
+   src/input/validate.rs  IDENTICAL
+   src/input/screen.rs / src/input/target.rs: empty diff (write-guard.txt)
+   => all six Intent variants, all six InputEvent variants, all eight UiState fields,
+   the whole translate table and validate are byte-identical to the 8.1/8.2 delivery:
+   no new variant, no new field, no re-ordered guard, no touched arm - so no exhaustive
+   match anywhere in the tree can break (the F-7.4-01 invariant, structurally preserved).
+
+2. git diff --stat f4e93bc..8e9ba02 over {intent,event,validate,keybinds,screen,target}.rs
+   = EMPTY (no output).
+
+3. No new exhaustive match over the frozen enums outside src/input/**:
+   - The delivery's only new match outside src/input is `match msg` over a u32 message id
+     inside window.rs::wm_to_input - it CONSTRUCTS InputEvent values, it does not
+     destructure them.
+   - grep "InputEvent::" at 8e9ba02 over {window.rs, window/tests.rs, input_loopback.rs}:
+     every hit is a construction inside Some(InputEvent::...) or an assert_eq expectation
+     (window.rs:292-298, window/tests.rs, input_loopback.rs) - none is a match arm
+     destructure.
+   - grep "Intent::" over the same files: ZERO hits.
+   - grep "match <event|intent identifier>" over src/graphics and tests/: ZERO hits.
+
+4. The delivery touched only the six section-6 files (write-guard.txt), so no other file
+   could have gained a match; tests/e2e_loopback* (frozen) untouched.
+
+=> No new Intent/InputEvent variant, no validate change, no new exhaustive match outside
+   src/input/**: the F-7.4-01 post-check is GREEN.

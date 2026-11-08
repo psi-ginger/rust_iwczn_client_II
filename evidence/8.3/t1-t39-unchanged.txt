@@ -1,0 +1,36 @@
+Step 8.3 - T1-T39 unchanged proof (DoD 13.2)
+Range: f4e93bc (base = Scribe WO commit) .. 8e9ba02 (delivery)
+
+Command: git diff -U0 f4e93bc..8e9ba02 -- src/input/tests.rs
+Hunks: EXACTLY ONE - "@@ -1362,0 +1363,192 @@ fn candidate_at_g1(id: u32, class: TargetClass) -> CharTarget {"
+  (pure insertion after line 1362; zero hunks in lines 1-1362)
+Deletion lines: NONE (grep "^-[^-]" over the diff = empty)
+
+Line counts (git-captured line arrays): base 1362 -> delivered 1554 (+192, delta = the
+  hunk's insertion count).
+
+Byte-identity cross-check (stronger than the hunk): element-wise comparison of all 1362
+  base lines against the delivered file's first 1362 lines (-cne) => NO MISMATCH =>
+  BASE_IS_EXACT_PREFIX_T1_T39_BYTE_IDENTICAL. Lines 1-1362 (T1-T39 + the shared
+  feed/wired helpers) are byte-identical; the shared helpers are unchanged by construction.
+
+Appended block header (delivered lines 1363+):
+  "// Step 8.3 tests - the production feed (WO-8.3 section 9, T43-T46). APPENDED"
+
+Test evidence: cargo test --lib input::tests = 43 passed / 0 failed (test.log run-1
+  cross-check) = 39 inherited + T43-T46, matching section 9's expected 43/43.
+  Ignored tests preserved in both runs: 1 lib operator + 4 live_integration = 5.
+
+T40-T51 name-verified in test.log (both runs): 12/12 "... ok" -
+  graphics::window::tests::wm_to_input_decodes_the_mouse_messages (T40)
+  graphics::window::tests::wm_to_input_decodes_the_keyboard_messages (T41)
+  graphics::window::tests::wm_to_input_zero_extends_and_stays_total (T42)
+  input::tests::input_feed_enqueues_validated_commands_synchronously (T43)
+  input::tests::enter_world_arms_the_feed_in_one_call (T44)
+  input::tests::feed_surfaces_the_closed_channel_by_name (T45)
+  input::tests::input_feed_is_send_and_carries_no_queue (T46)
+  raw_insert_key_down_reaches_the_wire_as_the_frozen_sitdown (T47)
+  typed_chat_reaches_the_wire_as_the_frozen_normal_chat (T48)
+  a_left_click_reaches_the_wire_as_the_frozen_move (T49)
+  pre_world_messages_enqueue_nothing_and_the_session_still_tears_down (T50)
+  graphics::window::tests::the_composed_decode_and_feed_chain_stays_within_the_16ms_frame_budget (T51)

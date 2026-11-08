@@ -1,0 +1,65 @@
+Step 8.3 - write guard (section 6, DoD 13.5)
+Range f4e93bc..8e9ba02 (delivery). Note commit 8e9ba02..90a0f07 = docs/agents/WO-8.3.md
+only (head.txt), so the tip's src/tests/Cargo bytes = the delivery's.
+
+git diff --name-only f4e93bc..8e9ba02:
+  src/graphics/window.rs
+  src/graphics/window/tests.rs   (NEW)
+  src/input/feed.rs              (NEW)
+  src/input/mod.rs               (2 lines)
+  src/input/tests.rs             (append-only)
+  tests/input_loopback.rs        (NEW)
+= EXACTLY the six section-6 files.
+
+git diff --stat f4e93bc..8e9ba02:
+  src/graphics/window.rs        |  96 +++++++-
+  src/graphics/window/tests.rs  | 218 +++++++++++++++++
+  src/input/feed.rs             |  75 +++++
+  src/input/mod.rs              |   2 +
+  src/input/tests.rs            | 192 +++++++++++++++
+  tests/input_loopback.rs       | 557 +++++++++++++++++++++++++++++++++++++++++++
+  6 files changed, 1138 insertions(+), 2 deletions(-)
+
+FORBIDDEN SET (git diff --name-only f4e93bc..8e9ba02 -- src/client src/main.rs
+src/lib.rs src/game src/input/event.rs src/input/intent.rs src/input/keybinds.rs
+src/input/validate.rs src/input/screen.rs src/input/target.rs tests/e2e_loopback.rs
+tests/e2e_loopback tests/asset_fixtures.rs tests/asset_fixtures tests/live_integration.rs
+tests/live_integration Cargo.toml Cargo.lock TASK_MATRIX.md CONTRIBUTING_PHASE4.md
+README.md): NONE (empty output).
+=> src/client/** STRICTLY UNTOUCHED (phase-wide read-only, CONTRIBUTING:165-167, held).
+=> Also empty: src/main.rs, src/lib.rs, src/game/**, event/intent/keybinds/validate/
+   screen/target, tests/e2e_loopback* (frozen harness), Cargo.*, matrix, contributing,
+   README, legacy tree.
+
+window.rs HUNK-LEVEL AUDIT (git diff -U0 f4e93bc..8e9ba02 -- src/graphics/window.rs):
+  8 hunks, every one input-side (old-line starts 28/50/56/242/314/443/578/784):
+  @@ -28,0  +29,5    module-doc sentence on the input arm (section 6; the WO 2.2-2
+                      disclosed one-sentence doc update)
+  @@ -50,0  +56,2    use crate::input::{InputEvent, InputFeed};
+  @@ -56,2  +63,2    the TWO existing use lines extended with SCREEN_RX/RY and
+                      MAP_TILE_XSIZE/YSIZE - the ONLY 2 deletion lines in the whole
+                      delivery (sanctioned line joins, section 6)
+  @@ -242,0 +250,54  seven WM_* pub consts + wm_to_input (D17, section 7.1)
+  @@ -314,0 +376,7   WindowState.input field + its doc (D21, section 7.2)
+  @@ -443,0 +512,20  the window_proc input arm, immediately before the fallthrough (D21)
+  @@ -578,0 +667     input: None, in build_scene's Ok(WindowState {..}) (D21, section 7.2)
+  @@ -784,0 +874,3   #[cfg(test)] mod tests; at end of file
+  Render/present/tick/pump/demo hunks: ZERO. No hunk falls in the paint/WM_PAINT region
+  (old 320-421), the render body (old 507-577 apart from the sanctioned field-init at
+  578), the pump (old 341-344), or run_demo (old 595+); DEMO_STATE (old 320), the
+  operator test and CS_DBLCLKS (old 694) untouched.
+
+Fallthrough byte-identical: "_ => DefWindowProcA(hwnd, msg, w_param, l_param)," base ==
+  delivery (byte-for-byte). Pump code byte-identical: "TranslateMessage(&msg);" and
+  "DispatchMessageA(&msg);" unchanged - the only pump-line delta is inside the NEW
+  WM_CHAR const's doc comment (a section-6 sanctioned doc reference to pump
+  window.rs:343), not pump code.
+
+mod.rs: exactly two lines added (pub mod feed; / pub use feed::InputFeed;) - the 2 +
+  in the stat; pipeline docs untouched.
+
+input_loopback.rs (D22): #[path] re-declarations of the three frozen harness modules
+  only (lines 27-34); the frozen tests/e2e_loopback.rs and tests/e2e_loopback/** are
+  byte-untouched (forbidden NONE above).
+
+Matrix, contributing, README, GoonZu_Source, other WOs, existing evidence/**: untouched.

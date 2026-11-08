@@ -1,0 +1,9 @@
+Run 1 (pre-probe), S4 clone at 90a0f07, RUSTFLAGS=-D warnings:
+check=0
+clippy=0
+fmt=0        (fmt.log = 0 bytes, 0 diffs)
+doc=0        (0 warnings)
+test=0       (414/414 - see test.log)
+cross-check cargo test --lib input::tests=0    (43 passed, 0 failed - appended to test.log)
+cross-check cargo test --lib graphics::window=0 (4 passed, 1 ignored - appended to test.log)
+porcelain after run: only the verifier's untracked evidence/8.3/

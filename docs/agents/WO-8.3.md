@@ -768,10 +768,181 @@ A Step 8.3 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(appended by the Implementer at delivery: branch, delivery SHA, baseline from `test.log`,
-five gates, T40–T51 individual runs, write-guard diff, probes, disclosed edits)_
+**Branch:** `step/8.3-driver-wiring` · **Code delivery SHA:** `8e9ba02` (parent `f4e93bc`,
+the WO commit) · **Delivered:** 2026-11-08 · **Baseline from `test.log`: 414/414** (371 lib +
+11 `asset_fixtures` + 25 `e2e_loopback` + 7 `input_loopback`; 1 ignored lib + 4 ignored
+`live_integration` preserved; 399 → 414 exactly as §9). This §14 note lands in the follow-up
+commit on the same branch (a note commit cannot cite its own SHA).
+
+**Five gates** (`RUSTFLAGS=-D warnings`, all exit 0, run twice: pre-probe and post-probe
+baseline — identical both times):
+
+| Gate | Result |
+|---|---|
+| `cargo check --all-targets` | exit 0 |
+| `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| `cargo fmt --check` | exit 0, 0 diffs |
+| `cargo doc --no-deps` | exit 0, 0 warnings |
+| `cargo test` | **414/414** (371 + 11 + 25 + 7), 0 failed |
+| `cargo test --lib input::tests` | **43/43** (39 inherited + T43–T46) — matches §9 |
+| `cargo test --lib graphics::window` | **4 passed + 1 ignored preserved** — matches §9 |
+
+**T40–T51 individual runs:** T40/T41/T42/T51 green in the new `src/graphics/window/tests.rs`
+(4/4; the operator test stays `#[ignore]`; D18 pinned failing-if-corrected by T40's dedicated
+`WM_LBUTTONDBLCLK → LeftDown` assertion); T43–T46 green in the appended `input::tests` block
+(counted in the 43/43 above); T47–T50 green in `tests/input_loopback.rs` (7/7 = T47–T50 +
+`frames.rs`'s 3 inner tests re-running — D22's disclosed duplication, §9's arithmetic).
+T51's 100-raw-message `< 16 ms` batch green with its margin documented and never relaxed
+(T10 green unchanged).
+
+**T1–T39 byte-identical (DoD 13.2):** `git diff -U0 f4e93bc..8e9ba02 -- src/input/tests.rs`
+= exactly one hunk — `@@ -1362,0 +1363,192 @@` — zero deletions anywhere in the file; lines
+1–1362 untouched.
+
+**Write guard (DoD 13.5):** `git diff --name-only f4e93bc..8e9ba02` = the six §6 code files
+only: `src/graphics/window.rs`, NEW `src/graphics/window/tests.rs`, NEW `src/input/feed.rs`,
+`src/input/mod.rs` (exactly two lines), `src/input/tests.rs` (append-only), NEW
+`tests/input_loopback.rs`. Forbidden set — `src/client/**`, `src/main.rs`, `src/lib.rs`,
+`src/game/**`, `keybinds/event/intent/validate/screen/target`, `tests/e2e_loopback*`,
+`tests/asset_fixtures*`, `tests/live_integration*`, `Cargo.*`, matrix, README, contributing,
+legacy tree —: **NONE** (empty diff). `window.rs` = 7 hunks, all input-side (module-doc
+sentence, imports, seven `WM_*` consts + `wm_to_input`, `WindowState.input` +
+`input: None`, the arm, `mod tests`): render/present/tick/pump/demo hunks **zero**, the only
+2 deletion lines repo-wide are the two `use` lines extended with the border constants, and
+the `_ => DefWindowProcA` fallthrough plus the pump are byte-identical.
+
+**F-7.4-01:** `Intent`/`InputEvent`/`UiState`/`translate`/`validate` byte-identical to the
+8.1/8.2 delivery (empty `git diff` over those definitions and `keybinds.rs`).
+
+**Probes 4/4** (each against the committed tree `8e9ba02`: one semantic break, the named test
+run, pristine `git checkout --` restore + `git status --porcelain` clean after each, full
+gate set re-run green at 414 afterwards; runs use plain `cargo test --lib <name>` — see
+disclosure 1):
+
+| # | Mutation | Named test | Result |
+|---:|---|---|---|
+| 1 | drop the window→backbuffer translation (raw zero-extended coords) | T40 | **exit 101** — `E30: WM_MOUSEMOVE decodes to Move in backbuffer space` (`left: Some(Move { x: 480, y: 360 })`, `right: Some(Move { x: 560, y: 400 })`), restored, clean |
+| 2 | `KeyDown { vk: l_param as u32 }` | T41 | **exit 101** — `E32: RETURN (0x0D) round-trips as KeyDown { vk: 13 }` (`left: Some(KeyDown { vk: 0 })`), restored, clean |
+| 3 | `let _ = self.sender.send(command.clone()); Ok(Some(command))` | T45 | **exit 101** at `tests.rs:1523` — `E38: the closed channel surfaces by name — no panic, no Ok` (got `Ok(Some(…))`), restored, clean |
+| 4 | `enter_world` sets only `in_world = true` (view forgotten) | T44 | **exit 101** — `E37: enter_world wires the click context in the same call (D20)` (`left: None`, `right: Some(MapView { … })`), restored, clean |
+
+**Disclosed edits / findings:**
+
+1. **Probe 1 runs without `-D warnings`.** Deleting the `+80/+40` term orphans
+   `MAP_TILE_XSIZE/MAP_TILE_YSIZE/SCREEN_RX/SCREEN_RY` inside `window.rs` (their only use),
+   so under `-D warnings` the probe would fail compilation instead of showing the tabled
+   assertion; it is run as §12 words it ("run the named test") with default flags to record
+   exit 101 + the failing assertion. The full gate set re-ran `-D warnings` green after every
+   restore (probes 2–4 compile clean under `-D warnings` either way).
+2. **Probe 3 keeps `command.clone()`.** The tabled `let _ = self.sender.send(command);` does
+   not compile (use-after-move of `command`); the clone preserves the exact semantic break —
+   the channel failure is swallowed and `Ok(Some)` is returned.
+3. **T45's "(still default)" precision fix.** The §9 row pins `ui()` "(still default)"
+   across the `Err(Closed)` failure, but reaching `send` at all requires `enter_world`: the
+   D4 guard (`keybinds.rs:50-52`) discards every event while the state is default, so the
+   failure-time state can never be the default one. Implemented as: a fresh-feed
+   `ui() == UiState::default()` pin before arming, plus "unchanged across the failure"
+   asserted against a post-`enter_world` snapshot (documented in the test's doc comment).
+   E38's substance — `Err(CommandError::Closed)` surfaced by name, no panic, `ui()` read-only
+   by type — is pinned exactly as tabled.
+4. **Module-scoped `#[allow(dead_code)]` on the two re-declared frozen harness modules**
+   (`frames`, `game_double`) in `tests/input_loopback.rs`. Items used only by the
+   deliberately non-re-declared `robustness`/`soak`/e2e-root siblings (`MALFORMED_*_WIRE`,
+   `MOVE_COMMAND_WIRE`, `mutated_worldlist_response`, `Tail::HeartbeatThenFin/Storm/
+   RawFault/…`) would otherwise fail `-D warnings` in the new binary (D22 §2.2-7 forbids
+   re-declaring those siblings). The frozen files are untouched, and `input_loopback`'s own
+   code — the mirrors included — stays fully linted: an unused mirror still fails the gate
+   (§2.2-10).
+
+No `F-8.3-NN` findings, no out-of-plan edits: every wire expectation is a §8.3 frozen literal
+(F-07), no new crate/opcode/wire byte, and the stage trigger stays 8.4's scope (divergence
+(a)).
 
 ### Verdict - Verifier
 
-_(appended by the Verifier at sign-off: S4 clean clone SHA, both gate runs, DoD 1–8 audit,
-findings, evidence list, integration considerations)_
+**Status: PASSED** (one non-blocking finding, **F-8.3-01**, adjudicated per the F-8.0-01
+precedent) — formally verified 2026-11-08 (+07:00) on a fresh S4 clean clone of
+`https://github.com/psi-ginger/rust_iwczn_client_II.git` (`git clone --branch
+step/8.3-driver-wiring`), checked out at the delivery tip
+**`90a0f0766a091e5b33f74a44e62d0e44d405d7d8`** (tree `ec1672af277b10a8bf87268001bae97168ffe7d0`).
+Delivery SHA `8e9ba02cc533786b07fb81ec23046aa82dce8d00` (parent `f4e93bc`, the Scribe WO-8.3
+commit = the branch cut point); `8e9ba02..90a0f07` = `docs/agents/WO-8.3.md` alone (docs-only
+note commit), so `src/`, `tests/` and `Cargo.*` at the tip are byte-identical to the delivery
+and gating the tip fully characterizes it (same pattern as 8.0 `fc1a7c7` → `89b9a9d`,
+8.1 `f91897e` → `cada5ed`, 8.2 `26c07a7` → `937c9ab`). Porcelain clean at clone, after both
+gate runs and after every probe restore (`git status --porcelain -- ':!:evidence'` empty — only
+the Verifier's own untracked `evidence/8.3/` ever appeared).
+
+**Both gate runs green** (`RUSTFLAGS=-D warnings` on every gate; run 1 pre-probe 11:32–11:34,
+run 2 post-probe baseline 11:40–11:41, +07:00):
+
+| Gate | Run 1 | Run 2 |
+|---|---|---|
+| `RUSTFLAGS=-D warnings cargo check --all-targets` | exit 0, 0 warnings | exit 0, 0 warnings |
+| `RUSTFLAGS=-D warnings cargo clippy --all-targets -- -D warnings` | exit 0, 0 warnings | exit 0, 0 warnings |
+| `cargo fmt --check` | exit 0, 0 diffs (0 bytes) | exit 0, 0 diffs (0 bytes) |
+| `cargo doc --no-deps` | exit 0, 0 warnings | exit 0, 0 warnings |
+| `cargo test` | **414/414**, 0 failed | **414/414**, 0 failed |
+
+Composition from `test.log` (identical both runs): 371 lib + 11 `asset_fixtures` +
+25 `e2e_loopback` + 7 `input_loopback` = **414 passed**; 0 failed; 5 ignored preserved
+(1 lib operator + 4 `live_integration`); 0 doc-tests; no warning line in either log.
+Cross-checks (run 1, appended to `test.log`): `cargo test --lib input::tests` = **43/43**;
+`cargo test --lib graphics::window` = **4 passed + 1 ignored preserved** — both match §9.
+T40–T51 name-verified **12/12 `... ok`** in both runs; `frames.rs`'s 3 inner tests re-run in
+both binaries (D22's disclosed duplication confirmed); T51's `< 16 ms` batch green with its
+margin documented, T10 unchanged green.
+
+**DoD (§13) audit — 13.1 through 13.8:**
+
+| # | DoD item | Verdict |
+|---|---|---|
+| 13.1 | Five gates exit-0 at 414 from `test.log`, fmt 0 diffs, doc 0 warnings, porcelain clean | **PASS** — both runs, table above |
+| 13.2 | T1–T39 byte-identical, `input::tests` 43/43, 5 ignored preserved | **PASS** — `t1-t39-unchanged.txt`: exactly one hunk `@@ -1362,0 +1363,192 @@`, zero deletion lines, and the 1362-line base file is the **exact prefix** of the 1554-line delivered file (element-wise byte-identical, `-cne` = no mismatch); 43/43 and 5 ignored green both runs |
+| 13.3 | D17–D23 pinned by named tests | **PASS** — D17 → T40/T41/T42 (+ probes 1–2); D18 → T40's dedicated `WM_LBUTTONDBLCLK → LeftDown` assertion (body audited); D19 → T43/T45/T46 (+ probe 3); D20 → T44/T50 (+ probe 4); D21 → decode half T40–T42 + feed half T43–T46, the Win32 arm under P4-C4's operator-only clause (no gate test builds a window/DC/message); D22 → T47–T50 running on the `#[path]`-re-declared frozen harness (`input_loopback.rs:27-34` audited); D23 → T51 green with its margin documented |
+| 13.4 | Probes 4/4: named test fails exit 101 with the tabled assertion, pristine restores, green post-probe baseline | **PASS** — re-run independently by the Verifier (see `mutation-probes.md`): P1 `E30 ... left {480,360} right {560,400}` (compile-fail under `-D warnings` first — disclosure 1 verified by the Verifier's own capture), P2 `E32 ... {vk: 0}` vs `{vk: 13}`, P3 `E38` at `tests.rs:1523`, P4 `E37 ... left: None`; every restore TRACKED_CLEAN; run 2 green at 414/414 afterwards |
+| 13.5 | Write guard: only §6 files, `src/client/**` et al. untouched, `window.rs` input-side hunk audit, fallthrough + pump byte-identical | **PASS** — `write-guard.txt`: exactly the six §6 files (1138+/2−); forbidden set (`src/client/**`, `src/main.rs`, `src/lib.rs`, `src/game/**`, `event/intent/keybinds/validate/screen/target`, `tests/e2e_loopback*`, `Cargo.*`, matrix, contributing, README, legacy tree) = **NONE** — **`src/client/**` strictly untouched**. `window.rs` hunk audit: 8 hunks at `-U0` / 7 at default context (the note's count — same content, the two import edits merge at U3), all input-side; render/present/tick/pump/demo hunks **zero**; the only 2 deletion lines repo-wide are the sanctioned `use` joins; `_ => DefWindowProcA(...)` and the pump's `TranslateMessage`/`DispatchMessageA` byte-identical; `mod.rs` exactly 2 lines |
+| 13.6 | F-07 holds: E30–E41 (+ E12) each trace to legacy `file:line`, frozen constant or §2.4 arithmetic — never the code under test | **PASS** — 64 E-row citation occurrences across the three delivered test files (21 + 31 + 12); the three §8.3 goldens byte-verified at `input_loopback.rs:78/81/85` (`06 00 00 F0 00 02`, `08 00 00 75 00 01 68 69`, `0A 00 00 F0 00 00 67 00 65 00`) |
+| 13.7 | Zero-queue audit green (corrected §11 pattern, no matches) + structural claim | **PASS with F-8.3-01 adjudicated** — machinery components (`VecDeque`, `coalesc*`, `MAX_KEY`) = **0 matches**; the literal pattern misses by exactly one prose line (the finding below). Structural claim green: no `.await`/buffer between the raw message and `CommandSender::send` (`feed.rs` = translate → validate → send, one synchronous call, audited); T51 green with its documented margin |
+| 13.8 | No new crates/opcodes/wire bytes, no `Intent`/`InputEvent`/`UiState`/`translate`/`validate` change, no Win32 object in gates, no live run, 7-count disclosed | **PASS** — `Cargo.toml`/`Cargo.lock` untouched; F-7.4-01 post-check green (`event.rs`/`intent.rs`/`keybinds.rs`/`validate.rs` **blob-identical** base → delivery, `screen.rs`/`target.rs` empty diff, every `InputEvent::` use outside `src/input` is a construction not a destructure, `Intent::` zero uses there, no new exhaustive match); decode takes raw integers in every gate test; no live run used as a gate; `input_loopback` 7 = T47–T50 + 3 `frames` re-runs disclosed in §9 and the evidence |
+
+**Finding (recorded, never edited — P3-6 write guard):**
+
+- **F-8.3-01 — non-blocking (a §11 pattern-vs-prose defect, not a delivery defect):** the
+  corrected §11 zero-queue pattern returns exactly one match — `src/input/tests.rs:1541`, the
+  appended T46 doc comment *"(`P4-C1` — no `VecDeque`/ring/cap anywhere in `src/input/**`)"*:
+  prose asserting the *absence* of queue machinery trips the audit with its own wording
+  (machinery subset hits `VecDeque`; word-bounded `ring` sits between `/` and `/`). Machinery
+  matches = 0 anywhere; the collection inventory confirms no queue/ring/cap/coalescing
+  structure exists in `src/input/**` or `feed.rs` (only `Vec<CharTarget>`, 8.1's target list).
+  Adjudicated exactly as F-8.0-01 (WO-8.0 §14: *"adjudicated, NON-BLOCKING — a §11
+  prose/pattern defect, not a delivery defect"*), so DoD 13.7 reads **PASS with F-8.3-01
+  adjudicated**. The line is part of the delivery and was never edited.
+
+The Implementer's four disclosures were each verified independently: (1) probe 1's no-`-D`
+run — the Verifier reproduced the compile-fail (`error: unused imports: SCREEN_RX/SCREEN_RY …`
+exit 101) before recording the tabled exit-101 assertion; (2) probe 3's `command.clone()` —
+the tabled form is a use-after-move and would not compile; (3) T45's "(still default)"
+precision fix — fresh-`default` pin before arming + post-arm snapshot, E38's substance intact;
+(4) module-scoped `#[allow(dead_code)]` at `input_loopback.rs:28/:33` — frozen files untouched,
+the new binary's own code stays fully linted. The delivery note's "no `F-8.3-NN` findings"
+claim stands except for F-8.3-01 above (a §11 audit-pattern interaction the note did not
+anticipate, not an out-of-plan edit — its "no out-of-plan edits" claim is fully verified).
+
+**Evidence:** `evidence/8.3/` — 21 files (§11 standing set + `gate-exits.txt` +
+`postprobe/` run-2 set), `SHA256SUMS` covering the other 20 verified **20/20** against the
+delivered LF bytes (every file CR=0, no BOM, pure ASCII — Step 6.3 L-2). Entry point
+`summary.md`; `mutation-probes.md` the probe record; `write-guard.txt`, `zero-queue-grep.txt`,
+`f7401-postcheck.txt`, `t1-t39-unchanged.txt` the audits; `head.txt`/`env.txt` the clone and
+toolchain; `gate-exits.txt` + `postprobe/` the two runs.
+
+**Integration considerations:** baseline moves **399 → 414** (matrix cell copy target
+**414/414**, taken from `test.log`); row 8.3 flips `PENDING → PASSED @ 8e9ba02` with F-8.3-01
+non-blocking — the Verifier's/Governance's to flip; §9's cross-check pins (43/43 and 4+1) are
+re-confirmed for 8.4's verifier; no code change is required by this verdict (F-8.3-01 is a
+spec-internal §11 wording note for the next WO, not a delivery edit).
+
+**Status:** verification products produced for Custodian acceptance. This verdict and the
+`evidence/8.3/` bundle are left uncommitted; the matrix flip, the commit of both, and any push
+are the governance step that follows acceptance — none authorized by this verification
+directive (8.2 precedent).

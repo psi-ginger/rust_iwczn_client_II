@@ -1,0 +1,34 @@
+Step 8.3 - zero-queue audit (P4-C1, Phase IV gate item 4; section 11 pattern)
+Pattern (corrected, per the F-8.0-01 disposition): machinery subset
+  VecDeque|coalesc|MAX_KEY   PLUS   word-bounded ring
+Commands (host quirk disclosed, same method as evidence/8.2: this host's PowerShell
+  strips backslashes from native grep arguments and the full pattern's "|" is a cmd
+  metacharacter, so the audit runs as its two semantically equivalent components,
+  -w ring == \bring\b):
+  git grep -inE "VecDeque|coalesc|MAX_KEY" -- src/input/
+  git grep -inw "ring" -- src/input/
+Run against BOTH the worktree and the delivery commit 8e9ba02 - identical results.
+
+RESULT: 1 match - PROSE ONLY:
+  src/input/tests.rs:1541:/// (P4-C1 - no VecDeque/ring/cap anywhere in src/input/**).
+  (identical line at 8e9ba02:src/input/tests.rs:1541 - it sits in the APPENDED T46
+  block, delivered by this step)
+
+ADJUDICATION - finding F-8.3-01 (non-blocking; never edited, P3-6 write guard):
+  This is the F-8.0-01 pattern-vs-prose class recurring in a new location: a test doc
+  comment that ASSERTS the absence of queue machinery trips the audit pattern with its
+  own wording ("VecDeque" matches the machinery subset; "ring" is word-bounded between
+  "/" and "/"). Machinery components (VecDeque as a type, coalesc*, MAX_KEY): ZERO
+  matches anywhere. The section 11 / DoD 13.7 literal expectation "no matches" is
+  therefore missed by exactly one prose line, while the P4-C1 SUBSTANCE HOLDS:
+  no queue, ring, capacity or coalescing machinery exists in src/input/** or feed.rs.
+
+COLLECTION INVENTORY in src/input/** at 8e9ba02 (context for the adjudication):
+  intent.rs:63   pub targets: Vec<CharTarget>   - 8.1's target hit-list (a Vec, not a
+                 queue; not matched by the pattern)
+  tests.rs:1332  fn wired(candidates: Vec<CharTarget>) - test helper, same
+  (no VecDeque, no VecDeque-like deque, no coalescing, no MAX_KEY, no ring/cap structure)
+
+Per the F-8.0-01 precedent (WO-8.0 section 14: "adjudicated, NON-BLOCKING - a section 11
+prose/pattern defect, not a delivery defect"; DoD 7 there read "PASS with F-8.0-01
+adjudicated"), F-8.3-01 is recorded the same way for the Custodian's acceptance.

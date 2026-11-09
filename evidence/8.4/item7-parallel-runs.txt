@@ -1,0 +1,14 @@
+Item-7 verification campaign - full parallel gate runs (cargo test --workspace)
+S4 clone @ 19e603d, pristine tree; started: 2026-11-09 21:00:28 +07:00
+context: run 1 (pre-probe) and run 2 (post-probe) already green; this adds 5 more
+full parallel executions => 7/7, mirroring the Implementer's disclosed '7/7 parallel runs green'.
+
+campaign run 1: exit=0, total passed=421, FAILED markers=0 | T53: test typed_chat_flushes_and_its_echo_dispatches ... ok
+campaign run 2: exit=0, total passed=421, FAILED markers=0 | T53: test typed_chat_flushes_and_its_echo_dispatches ... ok
+campaign run 3: exit=0, total passed=421, FAILED markers=0 | T53: test typed_chat_flushes_and_its_echo_dispatches ... ok
+campaign run 4: exit=0, total passed=421, FAILED markers=0 | T53: test typed_chat_flushes_and_its_echo_dispatches ... ok
+campaign run 5: exit=0, total passed=421, FAILED markers=0 | T53: test typed_chat_flushes_and_its_echo_dispatches ... ok
+
+campaign result: 5/5 green - combined with gate runs 1+2 => 7/7 full parallel runs green, T53 green in every one
+finished: 2026-11-09 21:03:26 +07:00
+porcelain: []

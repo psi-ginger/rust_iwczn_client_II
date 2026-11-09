@@ -845,11 +845,223 @@ A Step 8.4 delivery is `PASSED` only when, on a clean S4 clone at the delivery S
 
 ### Delivery note - Implementer
 
-_(appended at delivery: branch, code delivery SHA, gates, probe table, disclosures — same
-format as WO-8.3 §14; a note commit cannot cite its own SHA)_
+**Branch:** `step/8.4-live-acceptance` · **Code delivery SHA:** `d47d57c` (parent `dddd822`,
+the WO commit) · **Delivered:** 2026-11-09 · **Baseline from `test.log`: 421/421** (373 lib +
+1 `goonzu_client` bin + 11 `asset_fixtures` + 25 `e2e_loopback` + 11 `input_loopback`;
+ignored 5 → 6: the 1 lib operator test + 4 `live_integration` preserved, +1 `live_acceptance`;
+414 → 421 exactly as §9's `+7` arithmetic). This §14 note lands in the follow-up commit on
+the same branch (a note commit cannot cite its own SHA).
+
+**Five gates** (`RUSTFLAGS=-D warnings`, all exit 0, run twice: pre-probe and post-probe
+baseline — identical both times):
+
+| Gate | Result |
+|---|---|
+| `cargo check --all-targets` | exit 0 |
+| `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| `cargo fmt --check` | exit 0, 0 diffs |
+| `cargo doc --no-deps` | exit 0, 0 warnings |
+| `cargo test` | **421/421** (373 + 1 + 11 + 25 + 11), 0 failed, 6 ignored |
+| `cargo test --lib graphics::window` | **6 passed + 1 ignored preserved** — T40–T42, T51 + new T56, T58; the operator test stays `#[ignore]` |
+| `cargo test --test input_loopback` | **11/11** — T47–T50 + new T52–T55 + `frames::tests` ×3 (D22's disclosed duplication) |
+| `cargo test --bin goonzu_client` | **1/1** — new T57 |
+| `cargo test --lib input::tests` | **43/43** unchanged — `src/input/**` zero-touch (§13.5) |
+
+**Test inventory:** T52–T55 appended after T50 in `tests/input_loopback.rs`; T56/T58
+appended after T51 in `src/graphics/window/tests.rs`; T57 in an inline `#[cfg(test)] mod
+tests` in `src/main.rs` (disclosure 5); T1–T51 byte-identical (see below); the live vehicle
+`tests/live_acceptance.rs` is NEW and `#[ignore]`d with §7.4's exact message (1 ignored).
+T56's 100-event `< 16 ms` batch green with its margin documented and never relaxed (T10/T51
+green unchanged).
+
+**Append-only proofs (DoD 13.3):** `git diff -U0 dddd822..d47d57c` over
+`src/graphics/window/tests.rs` and `tests/input_loopback.rs` shows **additions only — zero
+deletion lines anywhere in either file**; the T40–T51 and T47–T50 regions and every pre-existing
+`use` line are byte-identical (the new `use` statements are new statements, not edits).
+
+**Write guard (DoD 13.5):** `git diff --name-only dddd822..d47d57c` = the §6 files only:
+`src/graphics/window.rs`, `src/graphics/window/tests.rs` (append-only), `src/main.rs`,
+`tests/input_loopback.rs` (append-only), NEW `tests/live_acceptance.rs` (+ this WO doc in the
+note commit). Forbidden set — `src/client/**`, `src/game/**`, `src/input/**` (**empty diff**),
+`src/lib.rs`, `Cargo.*`, `tests/e2e_loopback*`, `tests/asset_fixtures*`, `tests/live_integration*`,
+matrix, contributing, README, legacy tree, existing `evidence/**`: **NONE** (empty diff).
+`window.rs` = 14 hunks, all seam-lines per §7.2 (module-doc bullet, two `use` lines extended
+with `MapView`/`ScreenRect`, `PostMessageW` decl, `WM_CLOSE` + `WM_ENTER_WORLD` consts, the
+`WM_ENTER_WORLD` window_proc arm, `post_enter_world`/`close_demo`/`enter_world_view`, the
+`run_demo` delegate + `run_demo_with`/`run_demo_session`, `run_demo_inner`'s `ready` param +
+the single `Ok(hwnd)` send): render/present/tick/pump/scene hunks **zero**, the `_ =>
+DefWindowProcA` fallthrough and the 8.3 input arm byte-identical (context lines in the hunk
+audit); `src/main.rs`'s exit match keeps the delivered messages and codes 0/1/2 (WO-6.1 §5)
+byte-for-byte in both cfg bodies. Zero-queue: the §11 grep over `src/input/` returns exactly
+the one prose line F-8.3-01 already adjudicated (the untouched T46 doc comment) — machinery
+components zero, and `src/main.rs`'s composition adds no buffer between event and `send`
+(the channel is the frozen `commands::channel()`).
+
+**Probes 4/4** (each against the committed tree `d47d57c`: one semantic break, the named test
+run, pristine `git checkout --` restore + `git status --porcelain` clean after each, full
+gate set re-run green at 421 afterwards):
+
+| # | Mutation | Named test | Result |
+|---:|---|---|---|
+| 1 | drop the window→backbuffer translation in `wm_to_input` (delete `+ MAP_TILE_XSIZE + SCREEN_RX` / `+ MAP_TILE_YSIZE + SCREEN_RY`) | **T52** | **exit 101** — `E30/§2.4: the packed window point decodes through the +80/+40 border to (480, 340)` (`left: Some(LeftDown { x: 400, y: 300 })`, `right: Some(LeftDown { x: 480, y: 340 })`), restored, clean — run with default flags, see disclosure 1 |
+| 2 | `enter_world_view`: `center: (100, 100)` instead of `(32, 32)` | **T58** | **exit 101** — `E47: the view is the render's rect + draw_map's center + the demo map's header` (left `center: (100, 100)`, right `center: (32, 32)`), restored, clean (compiled `-D warnings` clean) |
+| 3 | drop the message-name check — `outcome_debug.starts_with("Entered")` only (`_event_name`) | **T57** | **exit 101** — `E48: message "heartbeat sent" must not fire even with an Entered outcome`, restored, clean (compiled `-D warnings` clean) |
+| 4 | drop the outcome check — `event_name == "in-world frame dispatched"` only (`_outcome_debug`) | **T57** | **exit 101** — `E48: outcome "Chat(ChatMessage { … player_name: \"someone\" … })" of the stage message must not fire`, restored, clean (compiled `-D warnings` clean) |
+
+**Disclosed edits / decisions:**
+
+1. **Probe 1 runs without `-D warnings`** (§12's pre-emptive disclosure, same class as 8.3's
+   disclosure 1): deleting the `+80/+40` terms orphans `MAP_TILE_XSIZE/MAP_TILE_YSIZE/
+   SCREEN_RX/SCREEN_RY` inside `window.rs` (their only use), so under `-D warnings` the probe
+   fails compilation instead of showing the tabled assertion; it is run as §12 words it
+   ("run the named test") with default flags to record exit 101 + the failing assertion. The
+   full gate set re-ran `-D warnings` green after every restore.
+2. **`SubscriberBuilder` has no `.with(Trigger)`** (the §7.1 sketch's API shape): the
+   composition is `tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish()
+   .with(EnterWorldTrigger { hwnd })` — the trigger attached to the built `Subscriber` via
+   `tracing_subscriber::prelude::*`'s `SubscriberExt::with`, imported function-locally inside
+   `composed()`. Semantics identical to the sketch (one subscriber, one Layer, DEBUG).
+3. **Predicate cfg (D29 boundary):** `enter_world_signal` is
+   `#[cfg(any(windows, test))]` — off-Windows non-test builds have no caller for it (the
+   Layer is `#[cfg(windows)]`), and a dead private function fails `RUSTFLAGS=-D warnings`;
+   under test (T57) it compiles. `EnterWorldTrigger`/`OutcomeVisitor`/their impls are
+   `#[cfg(windows)]`, as is the `Arc<OnceLock<isize>>` import. No intra-doc link to
+   `graphics::window` exists outside `cfg(windows)` — plain backticks everywhere
+   (`cargo doc --no-deps` 0 warnings).
+4. **T55 implements §7.3's eight-message enumeration**, while §9's prose says
+   "seven-message": both `KeyUp Enter` releases are included (§7.3 lists them). The KeyUps
+   clear the D9.1 repeat guard so the final flush actually reaches `validate` — E45's
+   substance; disclosed in the test's doc comment.
+5. **T57 is an inline `#[cfg(test)] mod tests` in `src/main.rs`** — the predicate's subject
+   lives in the binary, so no lib surface is added and the `#[cfg(test)]`-gated module adds
+   zero gate-test Win32 exposure (P4-C4: strings only, `post_enter_world` never called).
+6. **D30: two local `Capture` copies** — `tests/input_loopback.rs` (T53) and
+   `tests/live_acceptance.rs`, ~20 lines each (`Write` + `MakeWriter` + DEBUG `fmt`
+   subscriber), because `tests/e2e_loopback.rs`'s original is frozen read-only (D22). The
+   live vehicle's copy is disclosed here as §11's `summary.md` requires naming both.
+7. **Callsite-interest guard in T53 and the live vehicle (observed, then fixed):** running
+   T53 under the parallel gate failed twice with `capture: ""` while isolated runs passed.
+   Root cause in `tracing-core`: each callsite's interest is cached from whichever thread
+   registers it *first* — a concurrent test thread with no dispatcher registers against
+   `NoSubscriber` (`subscriber.rs:676` → `Interest::never`) and poisons that callsite for the
+   whole process; `set_default` alone repairs only the callsites registered at that instant,
+   so other tests' drivers could poison `driver.rs:850` before T53's own driver hit it.
+   Fix (same dependency set, no new crate): both capture tests first install a
+   **process-global** DEBUG subscriber writing to `std::io::sink`
+   (`set_global_default` — every later registration answers `always`, so no further poison),
+   then the thread-scoped D30 capture as before (its `Dispatch::new` rebuild runs last and
+   repairs earlier poison; on the capture thread the scoped subscriber wins, elsewhere events
+   drop into the sink). Order matters and is commented in both files: 7/7 parallel runs green
+   after (2/2 red before). D30's "installed with thread-scoped `set_default`" remains true —
+   the global is an additional harness guard, not a replacement.
+8. **Live vehicle driver task = `LocalSet` + `spawn_local`** (§7.4 step 3's "on a task …
+   mirror `live_integration`'s timeout style"): the driver future is not `Send`
+   (`e2e_loopback.rs:21-25`), so `tokio::spawn` is impossible; the session budget wraps
+   `driver::run_with_commands` in `tokio::time::timeout` inside the spawned local task.
+9. **The live walk feeds decoded backbuffer points directly** (`InputEvent::LeftDown
+   {480,340}`/`{520,360}`/`{440,360}` — T52's window points after the hand `+80/+40` decode)
+   because `wm_to_input` is `cfg(windows)` and §7.4 keeps the live file cross-platform with
+   no `cfg(windows)` (contract line 4; commented in the file). The escape group's KeyUps
+   after each focus mirror disclosure 4's reasoning (the empty flush must reach `validate`).
+10. **T53's fourth capture assert pins `player_name: "Hero"`** on the `outcome=Chat` record:
+    the hand-placed prefix already carries a `someone` 118 whose dispatch would satisfy the
+    three §9 `contains` checks by itself, so the roster-name pin is what proves the session's
+    **own** reply was dispatched (E43's "for the session's own character").
+11. **`src/input/**` zero-touch held:** empty `git diff dddd822..d47d57c -- src/input/` and
+    `cargo test --lib input::tests` green at 43/43.
+
+No `F-8.4-NN` findings raised by the Implementer, no out-of-plan edits: every expectation
+traces to E42–E48 (§8), §2.4 hand arithmetic, or the frozen §8.3 goldens (F-07); no new
+crate, opcode, env var, UI flag, or wire byte; no Win32 object in any gate test (P4-C4 —
+T57 is strings-only); live evidence stays `#[ignore]`d and never a gate; `TASK_MATRIX.md`
+row 8.4 stays `PENDING` (Verifier-owned, evidence per §11).
 
 ### Verdict - Verifier
 
-_(appended at verification: S4 clone SHA, both gate runs, DoD 13.1–13.8 table, probe
-re-runs, live-evidence disposition (run or not-run disclosure), findings `F-8.4-NN` and
-their adjudication)_
+**Status: PASSED** (no `F-8.4-NN` findings; the zero-queue literal-pattern hit is the
+already-adjudicated **F-8.3-01 carry-over**, unchanged from the frozen base) — formally
+verified 2026-11-09 (+07:00) on a fresh S4 clean clone of
+`git@github.com:psi-ginger/rust_iwczn_client_II.git`, branch `step/8.4-live-acceptance`,
+checked out at the note tip **`19e603d66bad5c9cf5a2f8582e318ba9ea98cb61`** (tree
+`3d28e2fa2b39580b8be073747556599dc7b14e80`), porcelain clean before and after every run.
+**Delivery SHA `d47d57cfe79d69348a52c88c92a43b368ff15d9d`** (parent `dddd822`, the Scribe
+WO-8.4 commit = the branch's cut point and current `origin/main`);
+`d47d57c..19e603d` = this WO's section-14 note alone, docs-only — `src/`, `tests/` and
+`Cargo.*` at the tip are byte-identical to the delivery SHA, so gating the tip fully
+characterizes the delivery (the 8.0–8.3 docs-only note pattern).
+
+**Both gate runs green** (`RUSTFLAGS=-D warnings` on gates 1–2; run 1 pre-probe, run 2
+post-probe on the restored pristine tree):
+
+| Gate | Command | Run 1 | Run 2 |
+|---|---|---:|---:|
+| 1 | `RUSTFLAGS=-D warnings cargo check --workspace --all-targets` | 0 | 0 |
+| 2 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 0 |
+| 3 | `cargo fmt --all --check` | 0 — 0 diffs | 0 — 0 diffs |
+| 4 | `cargo doc --workspace --no-deps` | 0 — 0 warnings | 0 — 0 warnings |
+| 5 | `cargo test --workspace` | 0 — **421 passed / 0 failed, 6 ignored** | 0 — **421 passed / 0 failed, 6 ignored** |
+
+**Baseline:** 414 → **421** (+7 = T52–T58; matrix copy target **421/421** from `test.log`
+only). Composition: 373 lib + 1 `goonzu_client` bin + 11 `asset_fixtures` + 25
+`e2e_loopback` + 11 `input_loopback` = 421; ignored 5 → **6** (1 lib operator + 4
+`live_integration` preserved, +1 `live_acceptance` named); 0 doc-tests. Cross-checks, all
+matching §9: `graphics::window` **6 + 1 ignored**, `input_loopback` **11/11**,
+`--bin goonzu_client` **1/1**, `input::tests` **43/43** unchanged. All seven T52–T58 names
+green in `test.log`.
+
+**DoD (§13) 1–8:**
+
+| # | DoD item | Verdict |
+|---:|---|---|
+| 1 | Five gates exit-0 at 421, fmt 0 diffs, doc 0 warnings, porcelain clean | **PASS** — both runs, table above; *disclosed:* off-Windows doc cannot execute on this Windows-only host, so D29's `#[cfg]` boundary was structurally audited instead (cfg pairs at `main.rs:25/30/32/40/83`, predicate `#[cfg(any(windows, test))]` at `:198`, Layer/trigger `#[cfg(windows)]`, no cross-boundary intra-doc link; doc green on-host) — matches the Implementer's disclosure 3 |
+| 2 | T1–T51 byte-identical: `src/input/**` empty + append-only tests, 6 ignored | **PASS** — `src-input-untouched.txt` (name-only/stat/name-status all empty; `tests.rs`/`feed.rs`/`mod.rs` blob-identical; 43/43); `tests-unchanged.txt`: exactly one hunk each (`@@ -218,0 +219,170 @@`, `@@ -557,0 +558,579 @@`), **zero deletion lines**, base byte-identical **prefix** of delivered; frozen `e2e_loopback`/`asset_fixtures`/`live_integration` empty; 6 ignored with the new `live_acceptance` named |
+| 3 | D24–D30 pinned | **PASS** — D24 → T57 + probes 3–4 (Win32 posting half operator-only, P4-C4); D25/D26 → `evidence/8.4/live/windowed-run.md` under the **NOT RUN disclosure** (`live/README.md`, `CONTRIBUTING.md:28-46`; explicitly non-blocking per §11); D27 → T58 + probe 2; D28 → vehicle `#[ignore]`d (1 ignored both runs) + not-run disclosure; D29 → **0 new env vars/flags** in the diff + boundary audit above; D30 → T53 capture green 7/7 |
+| 4 | Probes 4/4 at exit 101 with tabled assertions, pristine restores, green post-probe baseline | **PASS** — re-run independently (`mutation-probes.md`): P1 T52 `E30/§2.4 … (480, 340)` left `{400,300}` (default flags, disclosure p1 verified); P2 T58 `E47` center `(100,100)` vs `(32,32)`; P3 T57 `E48: message "heartbeat sent" …`; P4 T57 `E48: outcome "Chat(ChatMessage …)" …` — every restore CLEAN; run 2 green at 421 afterwards |
+| 5 | Write guard: §6 files only, `src/input/**` etc. untouched, window.rs seam-only, exit match 0/1/2 after close+join | **PASS** — `write-guard.txt`: exactly the five §6 code files; whole forbidden set empty — **`src/input/**` strictly untouched** (empty diff + blob identity); `window.rs` = 14 seam hunks, render/present/tick/pump/scene zero, only 4 deletion lines (2 `use` joins + 2 `run_demo` delegate lines), `_ => DefWindowProcA` byte-identical, the 8.3 input arm untouched; `main.rs` exit match keeps messages + codes 0/1/2 reached after `close_demo()` + `join` (`main.rs:162-166`) |
+| 6 | F-07: E42–E48 each trace to legacy `file:line`/frozen golden/§2.4 arithmetic | **PASS** — row census complete (E42–E45: `input_loopback` 21 citation lines; E46/E47: `window/tests.rs` 9; E48: `main.rs` 7), spot checks: `E42/§2.4 G-row`, T58's hand rect `Client.cpp:3206-3208`, `driver.rs:850` + `dispatcher.rs:766` literals — none read back from the code under test |
+| 7 | Zero-queue audit + structural claim | **PASS with F-8.3-01 carry-over disclosed** — literal §11 pattern returns exactly 1 match (`src/input/tests.rs:1541`, the T46 doc prose asserting absence), **byte-identical to base** (step does not touch `src/input/**`) → not a new finding; machinery subset 0, code-only 0; composed chain = `decode → feed → send` over frozen `commands::channel()` (`main.rs:125`), no queue/buffer added; T56's 100-event `<16 ms` batch green with margin documented; T10/T51 green unchanged |
+| 8 | No new crates/opcodes/wire bytes, frozen surfaces empty, no Win32 object in gates, no live gate, +7 arithmetic + D30 copies disclosed | **PASS** — `Cargo.*`/opcodes empty; deep scan of all four delivered files = 0 `unsafe`/`DEMO_STATE`/`CreateWindow`/`GetDC`/`BeginPaint`/`PostMessage` (single `DefWindowProc` hit is a comment); vehicle `#[ignore]`d, never a gate; `summary.md` discloses the +7 arithmetic and **both D30 `Capture` copies** (`input_loopback` + `live_acceptance`; e2e's frozen one deliberately not reused) |
+
+**Directive item 4 — §14 Item 7 (tracing subscriber) disclosure: VERIFIED, structurally
+and behaviorally.**
+1. Fix present in both capture tests (`set_global_default` → DEBUG → `io::sink` before the
+   scoped `set_default`; `input_loopback.rs:767`, `live_acceptance.rs:160`) with the
+   order-rationale comment.
+2. Both citations exact at their sources: `tracing-core subscriber.rs:676` =
+   `NoSubscriber::register_callsite → Interest::never()` (tracing-core 0.1.36);
+   `driver.rs:850` = the frozen `debug!(… "in-world frame dispatched")` record in
+   `src/client/driver.rs` (blob-identical).
+3. With the guard: **7/7 full parallel gate runs green** (runs 1+2 + 5 campaign runs,
+   `evidence/8.4/item7-parallel-runs.txt`) — 421/421 each, T53 `… ok` every time,
+   reproducing the disclosed "7/7 parallel runs green after".
+4. Without the guard (ad-hoc verifier reverse check, disclosed): the parallel
+   `input_loopback` binary went **3/3 RED** (T53 FAILED, exit 101) while the **isolated**
+   T53 run still **PASSED**, with the exact disclosed signature `E43: the frozen driver
+   dispatch record must appear (driver.rs:850); got:` and an empty capture — reproducing
+   "2/2 red before" and "isolated runs passed" on this host. Restored, porcelain clean.
+
+**Findings:** none new. **F-8.3-01 carry-over** recorded (zero-queue literal pattern vs
+the frozen T46 doc prose — already adjudicated non-blocking in the 8.3 verdict; this
+step's zero touch of `src/input/**` makes it not a delivery defect of 8.4). Never edited —
+P3-6.
+
+**Evidence:** `evidence/8.4/` — all §11 required files present (`head.txt`, `check.log`,
+`clippy.log`, `fmt.log`, `test.log`, `doc.log`, `env.txt`, `summary.md`,
+`mutation-probes.md`, `zero-queue-grep.txt`, `write-guard.txt`, `tests-unchanged.txt`,
+`src-input-untouched.txt`, `SHA256SUMS`) plus `gate-exits.txt`,
+`item7-parallel-runs.txt`, `postprobe/` (run 2) and `live/README.md`. **`SHA256SUMS`:
+22 entries, verified 22/22** by independent recomputation over the committed (LF-
+normalized) bytes (6.3 L-2 lesson).
+
+**Live-evidence disposition:** **NOT RUN — no reachable game service**
+(`evidence/8.4/live/README.md` records the `CONTRIBUTING.md:28-46` citation), per §11's
+closing clause: no gate item and no §13 item requires the bundle — **PASSED is
+unaffected**. D25/D26's windowed operator record is pending a reachable service + display
+(explicitly operator-only under P4-C4).
+
+**Integration considerations:** `TASK_MATRIX.md` untouched — row 8.4 stays **`PENDING`**;
+this verdict and `evidence/8.4/` are produced for Custodian acceptance. **No matrix flip,
+no commit, no push** is authorized by this verification directive (8.2/8.3 precedent —
+the `docs(qc)` sign-off commit lands after acceptance). The Implementer's §14 note matches
+every measured number (421, 6 ignored, 6+1, 11/11, 1/1, 43/43, probes 4/4 verbatim,
+14-hunk write guard, append-only proofs) — no discrepancy found.

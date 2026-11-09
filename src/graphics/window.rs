@@ -31,6 +31,15 @@
 //!   `WM_KEYDOWN`/`WM_KEYUP`/`WM_CHAR`) before that fallthrough — decode
 //!   via `wm_to_input`, feed through `WindowState.input`, return 0 — and
 //!   every other message keeps the `DefWindowProc` fallthrough unchanged.
+//! - **Composition (Step 8.4, `WO-8.4.md` §7.2)**: `WM_ENTER_WORLD`
+//!   (posted by [`post_enter_world`] from `main`'s stage trigger, D24)
+//!   arms the session feed with the render's own view through
+//!   `enter_world_view` (D27 — the same rect, center, and map the demo
+//!   draws), [`close_demo`] posts `WM_CLOSE` so a finished session ends
+//!   the pump loop (D26), and [`run_demo_with`] carries the session's
+//!   `InputFeed` while delivering the window handle over a ready channel
+//!   before the pump starts (D25) — [`run_demo`] is its headless
+//!   delegate, behavior unchanged.
 //! - **Message pump**: `Win32Queue` adapts the Win32 queue to
 //!   [`super::tick::MessageQueue`] - one `peek + take + translate + dispatch` per
 //!   drain iteration, `WM_QUIT` reported as [`TickMessage::Quit`]
@@ -53,7 +62,7 @@
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::input::{InputEvent, InputFeed};
+use crate::input::{InputEvent, InputFeed, MapView};
 
 use super::blit;
 use super::draw_map::{draw_map, Tileset};
@@ -61,7 +70,7 @@ use super::framebuffer::{ClipArea, Framebuffer};
 use super::map::MapFile;
 use super::palette::{RgbMode, TPal};
 use super::present::{present_crop, present_to_window, PresentCrop, SCREEN_RX, SCREEN_RY};
-use super::screen::{ScreenGeometry, ScreenMode, MAP_TILE_XSIZE, MAP_TILE_YSIZE};
+use super::screen::{ScreenGeometry, ScreenMode, ScreenRect, MAP_TILE_XSIZE, MAP_TILE_YSIZE};
 use super::spr::{load_sprite, LoadedSprite};
 use super::tick::{run_tick, MessageQueue, TickConfig, TickMessage};
 
@@ -199,6 +208,9 @@ extern "system" {
     fn TranslateMessage(lpMsg: *const MSG) -> i32;
     fn DispatchMessageA(lpMsg: *const MSG) -> isize;
     fn PostQuitMessage(nExitCode: i32);
+    // Step 8.4 (WO-8.4 §7.2): the composition's two posts — the stage
+    // arming message (D24) and the session-end close (D26).
+    fn PostMessageW(hWnd: isize, Msg: u32, wParam: usize, lParam: isize) -> i32;
     fn LoadCursorA(hInstance: isize, lpCursorName: *const u8) -> isize;
     fn GetVersionExA(lpVersionInformation: *mut OSVERSIONINFOEXA) -> i32;
 }
@@ -247,6 +259,11 @@ const PM_REMOVE: u32 = 0x0001;
 const WM_PAINT: u32 = 0x000F;
 const WM_DESTROY: u32 = 0x0002;
 const WM_QUIT: u32 = 0x0012;
+/// Step 8.4 (WO-8.4 D26): `WM_CLOSE` (`0x0010`) — what [`close_demo`]
+/// posts at the live demo window so the pump runs the legacy close chain
+/// (`DefWindowProc` → `DestroyWindow` → `WM_DESTROY` → `PostQuitMessage(0)`,
+/// `mainfunction.cpp:1598,1656`).
+const WM_CLOSE: u32 = 0x0010;
 
 /// `WM_KEYDOWN` (`0x0100`) — a virtual-key press (`mainfunction.cpp:1282`).
 pub const WM_KEYDOWN: u32 = 0x0100;
@@ -266,6 +283,12 @@ pub const WM_LBUTTONUP: u32 = 0x0202;
 /// of** the second `WM_LBUTTONDOWN`; D18 maps it to one more `LeftDown`
 /// (legacy pushes a left-press key too, `mainfunction.cpp:218-230`).
 pub const WM_LBUTTONDBLCLK: u32 = 0x0203;
+/// Step 8.4 (WO-8.4 D24): `WM_ENTER_WORLD` (`0x8001`, `WM_APP + 1`,
+/// port-added) — the composition's stage-arming message. Legacy had no
+/// arming message at all (`WO-8.4.md` §2.3-1): the port posts this once
+/// `main`'s trigger Layer sees the driver's frozen `Entered` record, and
+/// the `window_proc` arm it carries is the feed's only writer.
+pub const WM_ENTER_WORLD: u32 = 0x8001;
 
 /// Step 8.3 (WO-8.3 D17): one window message → one raw input fact, or
 /// `None` for messages outside the table (and for a `WM_CHAR` whose
@@ -529,6 +552,29 @@ extern "system" fn window_proc(hwnd: isize, msg: u32, w_param: usize, l_param: i
                 }
                 0
             }
+            // Step 8.4 (WO-8.4 D24): the composition's stage trigger — the
+            // message `main`'s Layer posts when the driver's frozen
+            // `Entered` record fires. The arm builds the view from the
+            // render's own inputs (D27) and arms the feed; headless demo
+            // (`input: None`) is inert here, exactly like the 8.3 arm
+            // before composition. One thread: the pump (D1 single-writer).
+            WM_ENTER_WORLD => {
+                let state = DEMO_STATE.load(Ordering::Relaxed);
+                if !state.is_null() {
+                    let state = &mut *state;
+                    if let Some(feed) = state.input.as_mut() {
+                        let view = enter_world_view(
+                            state.geometry.screen_rect(),
+                            (
+                                i32::from(state.map.header.map_xsize),
+                                i32::from(state.map.header.map_ysize),
+                            ),
+                        );
+                        feed.enter_world(view); // D20 mechanism, live trigger (D24)
+                    }
+                }
+                0
+            }
             // mainfunction.cpp:1695 - DefWindowProc fallthrough.
             _ => DefWindowProcA(hwnd, msg, w_param, l_param),
         }
@@ -675,17 +721,103 @@ fn load_pal_checked() -> Result<TPal, String> {
         .map_err(|e| format!("monarch.pal: {e}"))
 }
 
+/// Step 8.4 (WO-8.4 D24): post the stage-arming message at the composed
+/// window — the composition's one call into this module from `main`'s
+/// trigger Layer. The HWND travels through `main`'s `Arc<OnceLock<isize>>`
+/// slot (D25 fills it before the driver starts), and the message itself is
+/// inert until the pump's `window_proc` arm sees it. No other Win32 type
+/// or call lives on the trigger's side of the seam (P4-C4: gate tests
+/// never reach this function).
+pub fn post_enter_world(hwnd: isize) {
+    unsafe {
+        PostMessageW(hwnd, WM_ENTER_WORLD, 0, 0);
+    }
+}
+
+/// Step 8.4 (WO-8.4 D26): the session-end half of the shutdown pairing —
+/// post `WM_CLOSE` at the live demo window so the pump runs the legacy
+/// close chain (`DefWindowProc` → `DestroyWindow` → `WM_DESTROY` →
+/// `PostQuitMessage(0)`, `mainfunction.cpp:1598,1656`) and the window
+/// thread returns. No-op when no window exists (already closed), so
+/// `main` may call it before the join on any exit path.
+pub fn close_demo() {
+    let state = DEMO_STATE.load(Ordering::Relaxed);
+    if !state.is_null() {
+        unsafe {
+            let hwnd = (*state).hwnd;
+            if hwnd != 0 {
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            }
+        }
+    }
+}
+
+/// Step 8.4 (WO-8.4 D27): the composition view, built only from
+/// render-derived inputs — the exact rect [`render_and_present`] draws
+/// through (`screen_rect()`, `screen.rs:129-138`), the render's own
+/// center (`draw_map(…, 32, 32, …)`, the `32, 32` literals above), and
+/// the map actually on screen (`build_scene`'s header, `map_xsize: 64`).
+/// Pure: no state, no Win32 (T58 pins it). Stated divergences (D27): the
+/// center does not follow the player (legacy `Client.cpp:4336`) and the
+/// live map's true dimensions never reach the client — this is the
+/// *rendered* demo map's.
+fn enter_world_view(screen: ScreenRect, map_size: (i32, i32)) -> MapView {
+    MapView {
+        screen,
+        center: (32, 32),
+        map_size,
+    }
+}
+
 /// Runs the on-screen demo: registers the legacy-shaped window class,
 /// creates the real game window, builds the 16-bpp present path, and
 /// pumps [`run_tick`] until the window closes.
 ///
 /// Returns an error string instead of panicking so the operator gets a
 /// readable failure (P3-2 discipline extends to the demo seam).
+///
+/// Step 8.4 (WO-8.4 §7.2 item 5): a thin delegate over [`run_demo_with`]
+/// with no session feed and a discarded ready channel — the 7.2 operator
+/// test's behavior is unchanged.
 pub fn run_demo() -> Result<(), String> {
+    let (ready, _held) = std::sync::mpsc::channel();
+    run_demo_with(None, ready)
+}
+
+/// Step 8.4 (WO-8.4 §7.2 item 5): [`run_demo`] with the session's input
+/// feed handed to the window state before the `DEMO_STATE` store, and
+/// **exactly one** `Result<isize, String>` delivered on `ready`:
+/// `Ok(hwnd)` from `run_demo_inner` once `CreateWindowExA` succeeded —
+/// before `ShowWindow`/the tick loop, so `main`'s ready ordering (D25
+/// step 5) is provable — or `Err(reason)` (that same reason, then
+/// returned) whenever the window could not be built. `main` pairs this
+/// with [`close_demo`] and a join (D26).
+pub fn run_demo_with(
+    feed: Option<InputFeed>,
+    ready: std::sync::mpsc::Sender<Result<isize, String>>,
+) -> Result<(), String> {
+    let result = run_demo_session(feed, &ready);
+    if let Err(why) = &result {
+        let _ = ready.send(Err(why.clone()));
+    }
+    result
+}
+
+/// The [`run_demo_with`] body: the delivered `run_demo` code verbatim,
+/// plus the feed hand-off before the state is boxed and stored (the pump
+/// thread is the feed's only writer from there — D1, as 8.3's input arm)
+/// and the `ready` plumb through [`run_demo_inner`].
+fn run_demo_session(
+    feed: Option<InputFeed>,
+    ready: &std::sync::mpsc::Sender<Result<isize, String>>,
+) -> Result<(), String> {
     // Scene first (pure Rust: fixture sprite + palette + synthetic map) -
     // nothing window-shaped exists yet, so a scene failure surfaces as a
     // plain error string.
-    let state = build_scene()?;
+    let mut state = build_scene()?;
+    // Step 8.4 (WO-8.4 §7.2 item 5): the session's feed moves into the
+    // window state before the `DEMO_STATE` store below.
+    state.input = feed;
     let geometry = state.geometry;
     let state_ptr: *mut WindowState = Box::into_raw(Box::new(state));
     // Re-entry guard: one demo window at a time.
@@ -702,7 +834,7 @@ pub fn run_demo() -> Result<(), String> {
         return Err("a demo window is already running".into());
     }
 
-    let result = unsafe { run_demo_inner(state_ptr, geometry) };
+    let result = unsafe { run_demo_inner(state_ptr, geometry, ready) };
 
     // Reclaim: clear the global first so a late WM_PAINT sees nothing.
     DEMO_STATE.store(std::ptr::null_mut(), Ordering::SeqCst);
@@ -727,6 +859,7 @@ pub fn run_demo() -> Result<(), String> {
 unsafe fn run_demo_inner(
     state_ptr: *mut WindowState,
     geometry: ScreenGeometry,
+    ready: &std::sync::mpsc::Sender<Result<isize, String>>,
 ) -> Result<(), String> {
     let instance = GetModuleHandleA(std::ptr::null());
     if instance == 0 {
@@ -820,6 +953,12 @@ unsafe fn run_demo_inner(
         return Err(format!("CreateWindowExA failed ({err})"));
     }
     (*state_ptr).hwnd = hwnd;
+    // Step 8.4 (WO-8.4 §7.2 item 5): the single success delivery — the
+    // HWND reaches `main` before the window is shown or pumped, so the
+    // driver can never start before the trigger has a target (D25 step 5).
+    // Every failure path returns `Err` instead, and `run_demo_with`
+    // delivers that one reason: exactly one `Result` per session.
+    let _ = ready.send(Ok(hwnd));
 
     // Show it (main.cpp:1077-1078 - legacy guards this with
     // gamemode == 1; the demo's purpose is to be visible, per the

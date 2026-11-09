@@ -555,3 +555,582 @@ async fn pre_world_messages_enqueue_nothing_and_the_session_still_tears_down() {
          hand-placed conversation, byte for byte"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Step 8.4 — the in-gate acceptance script (WO-8.4 §7.3, T52–T55), appended
+// after T50 with zero deletions (T47–T50, the mirrors and every existing
+// `use` line stay byte-identical; the new `use` statements below are new
+// statements, not edits).
+//
+// F-07: every wire expectation is §2.4's hand arithmetic over the frozen
+// §8.3 goldens (§8.3-A layout instances for the three-click walk), never
+// regenerated from the client's encoder; the conversation prefix comes
+// only from the harness's hand-placed `expected_conversation`.
+// ---------------------------------------------------------------------------
+
+use std::sync::Mutex;
+
+use frames::{chat_body, frame, CHAR_UNIQUE, OP_CHAT};
+
+// ---------------------------------------------------------------------------
+// D30 (WO-8.4 §2.2-9): a local byte sink + DEBUG fmt subscriber, copied
+// from the frozen `e2e_loopback.rs:227-282` pattern. That file is
+// READ-ONLY (D22), so each new test binary carries its own small copy —
+// both copies (this file and `live_acceptance.rs`) are disclosed in the
+// delivery note. `set_default` is thread-scoped: the current-thread test
+// runtime runs the driver on this very thread, so the capture is hermetic
+// to the test that installs it.
+// ---------------------------------------------------------------------------
+
+/// A byte sink the scoped tracing subscriber writes into.
+#[derive(Clone, Default)]
+struct Capture(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for Capture {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("capture lock").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
+    type Writer = Capture;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// The D30 DEBUG, ANSI-free fmt subscriber over the capture sink.
+fn debug_capture_subscriber(capture: Capture) -> impl tracing::Subscriber + Send + Sync {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_ansi(false)
+        .with_writer(capture)
+        .finish()
+}
+
+// ---------------------------------------------------------------------------
+// WO-8.4 §2.4-1: the three-click walk goldens — hand instances of the
+// frozen §8.3-A Move layout (`usSize 0A 00` · `ucChk 00` · `cmd F0 00` ·
+// `kind 00` · x LE16 · y LE16), derived from the (103,101) instance
+// `MOVE_103_101_WIRE` by substituting the G1–G3 hand tiles — never read
+// back from the encoder (F-07).
+// ---------------------------------------------------------------------------
+
+/// G1: window (400,300) → backbuffer (480,340) → tile (100,100).
+const MOVE_100_100_WIRE: [u8; 10] = [0x0A, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x64, 0x00, 0x64, 0x00];
+/// G2: window (440,320) → backbuffer (520,360) → tile (101,100).
+const MOVE_101_100_WIRE: [u8; 10] = [0x0A, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x65, 0x00, 0x64, 0x00];
+/// G3: window (360,320) → backbuffer (440,360) → tile (100,101).
+const MOVE_100_101_WIRE: [u8; 10] = [0x0A, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x64, 0x00, 0x65, 0x00];
+
+/// T52 (WO-8.4 §9, E42) — the three-click walk: three raw
+/// `WM_LBUTTONDOWN` at the §2.4 window points decode through the +80/+40
+/// border to their hand tiles, enqueue three `Order::Move`, and reach the
+/// wire byte-exact **in script order** as the session's only C2S frames —
+/// then a clean `Stage::TornDown`.
+#[tokio::test]
+async fn three_click_walk_reaches_the_wire_as_three_frozen_moves() {
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 3,
+            reply: Vec::new(),
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    let (sender, receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+    feed.enter_world(wired_view());
+
+    // §2.4 G1–G3: packed window point → +80/+40 backbuffer → hand tile →
+    // frozen §8.3-A golden instance (each row: decode, then feed).
+    type WalkRow = (isize, (i32, i32), (u16, u16), [u8; 10]);
+    let script: [WalkRow; 3] = [
+        (pack(400, 300), (480, 340), (100, 100), MOVE_100_100_WIRE),
+        (pack(440, 320), (520, 360), (101, 100), MOVE_101_100_WIRE),
+        (pack(360, 320), (440, 360), (100, 101), MOVE_100_101_WIRE),
+    ];
+    let mut enqueued = 0usize;
+    for (l_param, backbuffer, tile, _golden) in script {
+        let decoded = wm_to_input(WM_LBUTTONDOWN, 0, l_param);
+        assert_eq!(
+            decoded,
+            Some(InputEvent::LeftDown {
+                x: backbuffer.0,
+                y: backbuffer.1,
+            }),
+            "E30/§2.4: the packed window point decodes through the \
+             +80/+40 border to {backbuffer:?}"
+        );
+        let fed = feed
+            .feed(decoded.expect("WM_LBUTTONDOWN always decodes"))
+            .expect("the receiver is alive for the feed");
+        assert_eq!(
+            fed,
+            Some(ClientCommand::Order(Order::Move {
+                x: tile.0,
+                y: tile.1,
+            })),
+            "E42/§2.4 G-row: the click must resolve to tile {tile:?}"
+        );
+        enqueued += 1;
+    }
+    assert_eq!(
+        enqueued, 3,
+        "E42: all three clicks must enqueue (drained count 3)"
+    );
+    drop(feed);
+
+    let outcome = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect("the command session must complete cleanly");
+    assert_eq!(
+        outcome.stage,
+        Stage::TornDown,
+        "the server-side FIN after the walk must end at TornDown"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete as in every happy path"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        !game_report.saw_corruption,
+        "no frame on the game leg may arrive short or fail its integrity check"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "the three moves fly within the first milliseconds — long before \
+         the 10 s heartbeat tick"
+    );
+
+    // The byte-exact conversation: the hand-placed prefix, then the three
+    // Moves byte-exact in script order (WO-8.4 §2.4 goldens, wire_len 10
+    // each — the session's only C2S frames).
+    let mut expected = expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC);
+    for (_, _, _, golden) in script {
+        expected.push(Entry {
+            leg: Leg::Game,
+            dir: Dir::C2S,
+            plain: golden.to_vec(),
+            wire_len: golden.len(),
+        });
+    }
+    assert_eq!(
+        transcript.snapshot(),
+        expected,
+        "the three clicks must reach the wire byte-exact in script order \
+         as the session's only C2S frames (E42)"
+    );
+}
+
+/// T53 (WO-8.4 §9, E43) — the typed-chat chain with its echo: focus,
+/// type `hi`, flush → the frozen §8.3-D C2S golden on the wire, and the
+/// game double's 118 reply for the session's **own** character
+/// (`CHAR_UNIQUE`, roster name "Hero") is dispatched as
+/// `DispatchOutcome::Chat` — proven through the local D30 DEBUG capture
+/// (`in-world frame dispatched` + `opcode=118` + `outcome=Chat`) — then a
+/// clean `Stage::TornDown`.
+#[tokio::test]
+async fn typed_chat_flushes_and_its_echo_dispatches() {
+    // Callsite-interest guard (disclosed in the WO-8.4 §14 delivery note):
+    // tracing-core caches each callsite's interest from whichever thread
+    // registers it first — a concurrent test thread with no dispatcher
+    // registers against `NoSubscriber` (`tracing-core subscriber.rs:676`,
+    // `Interest::never`) and poisons that callsite for the whole process,
+    // which empties this capture (observed: parallel-gate runs failed with
+    // `capture: ""`; isolated runs passed). A `set_default` alone repairs
+    // only the callsites registered at that instant. So a process-global
+    // DEBUG subscriber — same dependency set, `std::io::sink` writer — is
+    // installed FIRST (every later registration answers `always`, so no
+    // further poison), and the scoped capture's own `Dispatch::new`
+    // rebuild runs LAST (repairing whatever was poisoned before). From
+    // then on this thread's records go to the scoped capture and every
+    // other thread's events are discarded into the sink.
+    let _global = tracing::subscriber::set_global_default(
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_writer(std::io::sink)
+            .finish(),
+    );
+    let capture = Capture::default();
+    let _guard = tracing::subscriber::set_default(debug_capture_subscriber(capture.clone()));
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    // The reply's char_unique is a roster id the in-world set upserted
+    // (frames.rs:659 chat_body) — dispatch has no other gate on 118.
+    let reply = frame(OP_CHAT, &chat_body(CHAR_UNIQUE as i16, "Hero", "hi"));
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 1,
+            reply: vec![reply.clone()],
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    let (sender, receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+    feed.enter_world(wired_view());
+
+    let open = wm_to_input(WM_KEYDOWN, 0x0D, 0).expect("WM_KEYDOWN always decodes");
+    assert_eq!(
+        feed.feed(open).expect("the receiver is alive"),
+        None,
+        "the first RETURN opens the chat line — no send (E1, ChatFocus)"
+    );
+    let h = wm_to_input(WM_CHAR, 'h' as u32 as usize, 0).expect("WM_CHAR 'h' decodes");
+    assert_eq!(
+        feed.feed(h).expect("the receiver is alive"),
+        None,
+        "'h' enters the buffer — no send (D3: the cap is refused at flush)"
+    );
+    let i = wm_to_input(WM_CHAR, 'i' as u32 as usize, 0).expect("WM_CHAR 'i' decodes");
+    assert_eq!(
+        feed.feed(i).expect("the receiver is alive"),
+        None,
+        "'i' enters the buffer — no send"
+    );
+    let flush = wm_to_input(WM_KEYDOWN, 0x0D, 0).expect("WM_KEYDOWN always decodes");
+    assert_eq!(
+        feed.feed(flush).expect("the receiver is alive"),
+        Some(ClientCommand::Chat {
+            mode: ChatMode::Normal,
+            text: "hi".to_owned(),
+        }),
+        "the second RETURN flushes the whole line as a Normal chat"
+    );
+    drop(feed);
+
+    let outcome = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect("the command session must complete cleanly");
+    assert_eq!(
+        outcome.stage,
+        Stage::TornDown,
+        "the server-side FIN after the chat must end at TornDown"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete as in every happy path"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        !game_report.saw_corruption,
+        "no frame on the game leg may arrive short or fail its integrity check"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "the chat flies within the first milliseconds — long before the \
+         10 s heartbeat tick"
+    );
+
+    // The byte-exact conversation: prefix, the frozen §8.3-D C2S golden,
+    // then the 118 reply byte-exact (S2C plaintext, wire_len = plain.len).
+    let mut expected = expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC);
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::C2S,
+        plain: CHAT_NORMAL_HI_WIRE.to_vec(),
+        wire_len: CHAT_NORMAL_HI_WIRE.len(),
+    });
+    expected.push(Entry {
+        leg: Leg::Game,
+        dir: Dir::S2C,
+        plain: reply.clone(),
+        wire_len: reply.len(),
+    });
+    assert_eq!(
+        transcript.snapshot(),
+        expected,
+        "the typed chat and its echo must reach the wire byte-exact \
+         (08 00 00 75 00 01 68 69 out, frame(OP_CHAT, …) back)"
+    );
+
+    // The dispatch side of the echo (E43): the capture holds the frozen
+    // driver record with opcode 118 and a Chat outcome. The prefix
+    // conversation already carries a "someone" 118, so the first two
+    // contains-checks are multi-hit by construction (per WO §7.3); the
+    // `player_name: "Hero"` pin singles out the session's own reply —
+    // only that dispatch renders the roster name (frames.rs:793).
+    let log = String::from_utf8_lossy(&capture.0.lock().expect("capture lock")).into_owned();
+    assert!(
+        log.contains("in-world frame dispatched"),
+        "E43: the frozen driver dispatch record must appear (driver.rs:850); \
+         got:\n{log}"
+    );
+    assert!(
+        log.contains("opcode=118"),
+        "E43: the echo dispatch must be recorded with opcode=118; got:\n{log}"
+    );
+    assert!(
+        log.contains("outcome=Chat"),
+        "E43: the echo dispatch must render outcome=Chat; got:\n{log}"
+    );
+    assert!(
+        log.contains("player_name: \"Hero\""),
+        "E43: the session's own reply (Hero), not just the prefix's chat, \
+         must be dispatched as Chat; got:\n{log}"
+    );
+}
+
+/// T54 (WO-8.4 §9, E44) — two physical Insert presses (Down/Up/Down)
+/// enqueue **two** `Order::SitDown`: the KeyUp only clears the D9.1
+/// repeat guard, so the second press fires again — two identical frames
+/// by design (the server owns the toggle, Q2) — and both reach the wire
+/// byte-exact in order, then a clean `Stage::TornDown`.
+#[tokio::test]
+async fn two_insert_presses_enqueue_two_sitdowns() {
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 2,
+            reply: Vec::new(),
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    let (sender, receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+    feed.enter_world(wired_view());
+
+    let down1 = wm_to_input(WM_KEYDOWN, 0x2D, 0).expect("WM_KEYDOWN always decodes");
+    assert_eq!(
+        feed.feed(down1).expect("the receiver is alive"),
+        Some(ClientCommand::Order(Order::SitDown)),
+        "E44: the first INSERT press enqueues the frozen sit toggle"
+    );
+    let up = wm_to_input(WM_KEYUP, 0x2D, 0).expect("WM_KEYUP always decodes");
+    assert_eq!(
+        feed.feed(up).expect("the receiver is alive"),
+        None,
+        "E44: the KeyUp enqueues nothing — it only clears the D9.1 guard \
+         (keybinds.rs:141)"
+    );
+    let down2 = wm_to_input(WM_KEYDOWN, 0x2D, 0).expect("WM_KEYDOWN always decodes");
+    assert_eq!(
+        feed.feed(down2).expect("the receiver is alive"),
+        Some(ClientCommand::Order(Order::SitDown)),
+        "E44: the second physical press fires again — one action per press \
+         (Q2: the server toggles)"
+    );
+    drop(feed);
+
+    let outcome = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect("the command session must complete cleanly");
+    assert_eq!(
+        outcome.stage,
+        Stage::TornDown,
+        "the server-side FIN after the two presses must end at TornDown"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete as in every happy path"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        !game_report.saw_corruption,
+        "no frame on the game leg may arrive short or fail its integrity check"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "the two presses fly within the first milliseconds — long before \
+         the 10 s heartbeat tick"
+    );
+
+    // The byte-exact conversation: prefix, then two identical SitDown
+    // goldens in order (WO-8.3 §8.3-C, wire_len 6 each).
+    let mut expected = expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC);
+    for _ in 0..2 {
+        expected.push(Entry {
+            leg: Leg::Game,
+            dir: Dir::C2S,
+            plain: SITDOWN_WIRE.to_vec(),
+            wire_len: SITDOWN_WIRE.len(),
+        });
+    }
+    assert_eq!(
+        transcript.snapshot(),
+        expected,
+        "both presses must reach the wire as two identical frozen SitDown \
+         frames (06 00 00 F0 00 02), in order"
+    );
+}
+
+/// T55 (WO-8.4 §9, E45) — Escape cancels the typed line **UI-only**: the
+/// §7.3 script's every step enqueues nothing, the cancelled line is
+/// cleared (`chat_open=false`, `line` empty), and the final flush of the
+/// now-empty line is refused by `validate` before any send — zero C2S
+/// frames, transcript byte-identical to `expected_conversation`, clean
+/// `Stage::TornDown`.
+///
+/// Script note (disclosed in the delivery note): §9's prose says
+/// "seven-message" while §7.3 enumerates eight (both `KeyUp Enter`
+/// releases included) — this test implements §7.3's enumeration: the
+/// KeyUps clear the D9.1 repeat guard so the final flush passes the guard
+/// and actually reaches `validate` (E45's substance).
+#[tokio::test]
+async fn escape_cancels_the_line_and_nothing_reaches_the_wire() {
+    let transcript = Arc::new(Transcript::new());
+
+    let (front_listener, front_addr) = bind().await;
+    let (game_listener, game_addr) = bind().await;
+    let front = spawn_front(front_listener, Mutation::None, Arc::clone(&transcript));
+    let game = spawn_game_with(
+        game_listener,
+        Mutation::None,
+        Arc::clone(&transcript),
+        game_double::Tail::Commands {
+            expect: 0, // the T50 fast path: reply-less FIN
+            reply: Vec::new(),
+        },
+        DOUBLE_TIME_BUDGET,
+    );
+
+    let (sender, receiver) = channel();
+    let mut feed = InputFeed::new(sender);
+    feed.enter_world(wired_view());
+
+    // WO-8.4 §7.3's script, as enumerated there (eight raw messages).
+    let script: [(u32, usize, isize, &str); 8] = [
+        (
+            WM_KEYDOWN,
+            0x0D,
+            0,
+            "the first RETURN opens the chat line (E1)",
+        ),
+        (
+            WM_KEYUP,
+            0x0D,
+            0,
+            "the release clears the D9.1 repeat guard (keybinds.rs:141)",
+        ),
+        (
+            WM_CHAR,
+            'h' as u32 as usize,
+            0,
+            "'h' enters the line buffer",
+        ),
+        (
+            WM_CHAR,
+            'i' as u32 as usize,
+            0,
+            "'i' enters the line buffer",
+        ),
+        (
+            WM_KEYDOWN,
+            0x1B,
+            0,
+            "Escape cancels the line UI-only (E3 — no intent leaves translate)",
+        ),
+        (
+            WM_KEYDOWN,
+            0x0D,
+            0,
+            "the RETURN re-focuses the (now empty) line",
+        ),
+        (WM_KEYUP, 0x0D, 0, "the release clears the guard again"),
+        (
+            WM_KEYDOWN,
+            0x0D,
+            0,
+            "the flush of the EMPTY line — validate refuses before any send (E45)",
+        ),
+    ];
+    for (msg, w_param, l_param, why) in script {
+        let event = wm_to_input(msg, w_param, l_param)
+            .expect("every scripted message decodes — armed types only");
+        assert_eq!(
+            feed.feed(event).expect("the receiver is alive"),
+            None,
+            "E45: {why} — must enqueue nothing"
+        );
+    }
+    // The cancel's substance (E3/E45): the line is gone, nothing lingers
+    // for the flush to send. (`in_world`/`view` stay armed — that is
+    // `enter_world`'s own state, untouched by the script.)
+    assert!(
+        !feed.ui().chat_open,
+        "E3: Escape closed the chat line (chat_open=false)"
+    );
+    assert!(
+        feed.ui().line.is_empty(),
+        "E3/E45: the cancelled line is cleared — nothing survives to flush"
+    );
+    assert!(
+        !feed.ui().dialog_open,
+        "no InterfaceMgr dialog exists for Escape to open (validate.rs:46-47)"
+    );
+    drop(feed);
+
+    let outcome = run_driver_with_commands(config(front_addr, game_addr), receiver)
+        .await
+        .expect("the command session must complete cleanly with zero commands");
+    assert_eq!(
+        outcome.stage,
+        Stage::TornDown,
+        "the server-side FIN must end at TornDown"
+    );
+
+    let front_report = joined(front).await;
+    assert!(
+        front_report.closed_cleanly,
+        "the front leg must complete as in every happy path"
+    );
+
+    let game_report = joined(game).await;
+    assert!(
+        !game_report.saw_corruption,
+        "no frame on the game leg may arrive short or fail its integrity check"
+    );
+    assert_eq!(
+        game_report.heartbeats, 0,
+        "expect: 0 means the reply-less FIN lands long before the 10 s tick"
+    );
+
+    // Transcript == the hand-placed happy path byte-for-byte: zero pushed
+    // entries — if the cancelled line had survived, the flush would have
+    // pushed the D golden and this equality fails (E45).
+    assert_eq!(
+        transcript.snapshot(),
+        expected_conversation(TEST_PASSWORD, TEST_USER, TEST_MAC),
+        "the cancelled line must push nothing — the transcript stays the \
+         hand-placed conversation, byte for byte"
+    );
+}

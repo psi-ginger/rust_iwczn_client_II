@@ -1,0 +1,13 @@
+Step 8.4 - src/input/** untouched (DoD 13.2/13.5, section 11) - dddd822 -> d47d57c
+
+git diff --name-only dddd822 d47d57c -- src/input/ : []  (empty required)
+git diff --stat dddd822 d47d57c -- src/input/ : []  (empty required)
+git diff --name-status dddd822 d47d57c -- src/input/ : []
+
+blob-identity spot check (sha of src/input/tests.rs + feed.rs at base vs delivery):
+  src/input/tests.rs : base=70ec7ec44eb6827d8d13ca1c6f9734447282d85c delivery=70ec7ec44eb6827d8d13ca1c6f9734447282d85c identical=True
+  src/input/feed.rs : base=5f1548aa5b0fce4204089c27bbd6909a4f41e791 delivery=5f1548aa5b0fce4204089c27bbd6909a4f41e791 identical=True
+  src/input/mod.rs : base=38803bbc0a82fe70a2c03528a1927b9fc1b6cf19 delivery=38803bbc0a82fe70a2c03528a1927b9fc1b6cf19 identical=True
+
+cargo test --lib input::tests (43/43 required):
+  test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 331 filtered out; finished in 0.00s

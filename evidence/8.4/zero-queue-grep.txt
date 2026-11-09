@@ -1,0 +1,35 @@
+Zero-queue audit (WO-8.4 section 11, gate item 4 / DoD 13.7) - F-8.0-01 disposition pattern
+S4 clone step/8.4-live-acceptance @ 19e603d; audited against delivery commit d47d57c via git grep
+captured: 2026-11-09 20:55:28 +07:00
+
+WO section 11 literal command: grep -rinE 'VecDeque|coalesc|MAX_KEY|\bring\b' src/input/
+
+--- (1) literal pattern as one extended regex ---
+exit: 0 (0 = matches, 1 = none)
+d47d57c:src/input/tests.rs:1541:/// (P4-C1 — no `VecDeque`/ring/cap anywhere in `src/input/**`).
+
+--- (2) machinery subset VecDeque|coalesc|MAX_KEY ---
+exit: 0
+d47d57c:src/input/tests.rs:1541:/// (P4-C1 — no `VecDeque`/ring/cap anywhere in `src/input/**`).
+
+--- (3) code-only scan (comment text stripped) over src/input/ ---
+code-only hits: 0  (0 required)
+
+--- (4) base comparison at dddd822 (same pattern) ---
+exit: 0
+dddd822:src/input/tests.rs:1541:/// (P4-C1 — no `VecDeque`/ring/cap anywhere in `src/input/**`).
+
+--- (5) disposition ---
+FINDING CARRY-OVER (not a new finding): the literal pattern returns exactly 1 match -
+src/input/tests.rs:1541, the T46 doc comment prose that ASSERTS the absence of
+VecDeque/ring/cap. This line is byte-identical to the base (src-input-untouched.txt:
+blob 70ec7ec == base) - it was delivered by 8.3 and adjudicated as F-8.3-01
+(non-blocking, WO-8.3 verdict + WO-8.0 F-8.0-01 precedent); this step does not touch
+src/input/** at all, so no F-8.4-NN is raised for it. Machinery subset = 0, code-only = 0.
+
+--- (6) main.rs composition: no buffer between event and CommandSender::send ---
+  main.rs:125: let (sender, receiver) = commands::channel();
+  (frozen commands::channel() + InputFeed::feed synchronous chain; no queue type above)
+
+--- (7) .await between decode and send in the composed path ---
+  main.rs composition call: decode -> state.inp.feed(...) synchronous; window_proc arm has no .await

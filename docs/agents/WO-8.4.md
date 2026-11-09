@@ -978,6 +978,90 @@ row 8.4 stays `PENDING` (Verifier-owned, evidence per §11).
 
 ### Verdict - Verifier
 
-_(appended at verification: S4 clone SHA, both gate runs, DoD 13.1–13.8 table, probe
-re-runs, live-evidence disposition (run or not-run disclosure), findings `F-8.4-NN` and
-their adjudication)_
+**Status: PASSED** (no `F-8.4-NN` findings; the zero-queue literal-pattern hit is the
+already-adjudicated **F-8.3-01 carry-over**, unchanged from the frozen base) — formally
+verified 2026-11-09 (+07:00) on a fresh S4 clean clone of
+`git@github.com:psi-ginger/rust_iwczn_client_II.git`, branch `step/8.4-live-acceptance`,
+checked out at the note tip **`19e603d66bad5c9cf5a2f8582e318ba9ea98cb61`** (tree
+`3d28e2fa2b39580b8be073747556599dc7b14e80`), porcelain clean before and after every run.
+**Delivery SHA `d47d57cfe79d69348a52c88c92a43b368ff15d9d`** (parent `dddd822`, the Scribe
+WO-8.4 commit = the branch's cut point and current `origin/main`);
+`d47d57c..19e603d` = this WO's section-14 note alone, docs-only — `src/`, `tests/` and
+`Cargo.*` at the tip are byte-identical to the delivery SHA, so gating the tip fully
+characterizes the delivery (the 8.0–8.3 docs-only note pattern).
+
+**Both gate runs green** (`RUSTFLAGS=-D warnings` on gates 1–2; run 1 pre-probe, run 2
+post-probe on the restored pristine tree):
+
+| Gate | Command | Run 1 | Run 2 |
+|---|---|---:|---:|
+| 1 | `RUSTFLAGS=-D warnings cargo check --workspace --all-targets` | 0 | 0 |
+| 2 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | 0 |
+| 3 | `cargo fmt --all --check` | 0 — 0 diffs | 0 — 0 diffs |
+| 4 | `cargo doc --workspace --no-deps` | 0 — 0 warnings | 0 — 0 warnings |
+| 5 | `cargo test --workspace` | 0 — **421 passed / 0 failed, 6 ignored** | 0 — **421 passed / 0 failed, 6 ignored** |
+
+**Baseline:** 414 → **421** (+7 = T52–T58; matrix copy target **421/421** from `test.log`
+only). Composition: 373 lib + 1 `goonzu_client` bin + 11 `asset_fixtures` + 25
+`e2e_loopback` + 11 `input_loopback` = 421; ignored 5 → **6** (1 lib operator + 4
+`live_integration` preserved, +1 `live_acceptance` named); 0 doc-tests. Cross-checks, all
+matching §9: `graphics::window` **6 + 1 ignored**, `input_loopback` **11/11**,
+`--bin goonzu_client` **1/1**, `input::tests` **43/43** unchanged. All seven T52–T58 names
+green in `test.log`.
+
+**DoD (§13) 1–8:**
+
+| # | DoD item | Verdict |
+|---:|---|---|
+| 1 | Five gates exit-0 at 421, fmt 0 diffs, doc 0 warnings, porcelain clean | **PASS** — both runs, table above; *disclosed:* off-Windows doc cannot execute on this Windows-only host, so D29's `#[cfg]` boundary was structurally audited instead (cfg pairs at `main.rs:25/30/32/40/83`, predicate `#[cfg(any(windows, test))]` at `:198`, Layer/trigger `#[cfg(windows)]`, no cross-boundary intra-doc link; doc green on-host) — matches the Implementer's disclosure 3 |
+| 2 | T1–T51 byte-identical: `src/input/**` empty + append-only tests, 6 ignored | **PASS** — `src-input-untouched.txt` (name-only/stat/name-status all empty; `tests.rs`/`feed.rs`/`mod.rs` blob-identical; 43/43); `tests-unchanged.txt`: exactly one hunk each (`@@ -218,0 +219,170 @@`, `@@ -557,0 +558,579 @@`), **zero deletion lines**, base byte-identical **prefix** of delivered; frozen `e2e_loopback`/`asset_fixtures`/`live_integration` empty; 6 ignored with the new `live_acceptance` named |
+| 3 | D24–D30 pinned | **PASS** — D24 → T57 + probes 3–4 (Win32 posting half operator-only, P4-C4); D25/D26 → `evidence/8.4/live/windowed-run.md` under the **NOT RUN disclosure** (`live/README.md`, `CONTRIBUTING.md:28-46`; explicitly non-blocking per §11); D27 → T58 + probe 2; D28 → vehicle `#[ignore]`d (1 ignored both runs) + not-run disclosure; D29 → **0 new env vars/flags** in the diff + boundary audit above; D30 → T53 capture green 7/7 |
+| 4 | Probes 4/4 at exit 101 with tabled assertions, pristine restores, green post-probe baseline | **PASS** — re-run independently (`mutation-probes.md`): P1 T52 `E30/§2.4 … (480, 340)` left `{400,300}` (default flags, disclosure p1 verified); P2 T58 `E47` center `(100,100)` vs `(32,32)`; P3 T57 `E48: message "heartbeat sent" …`; P4 T57 `E48: outcome "Chat(ChatMessage …)" …` — every restore CLEAN; run 2 green at 421 afterwards |
+| 5 | Write guard: §6 files only, `src/input/**` etc. untouched, window.rs seam-only, exit match 0/1/2 after close+join | **PASS** — `write-guard.txt`: exactly the five §6 code files; whole forbidden set empty — **`src/input/**` strictly untouched** (empty diff + blob identity); `window.rs` = 14 seam hunks, render/present/tick/pump/scene zero, only 4 deletion lines (2 `use` joins + 2 `run_demo` delegate lines), `_ => DefWindowProcA` byte-identical, the 8.3 input arm untouched; `main.rs` exit match keeps messages + codes 0/1/2 reached after `close_demo()` + `join` (`main.rs:162-166`) |
+| 6 | F-07: E42–E48 each trace to legacy `file:line`/frozen golden/§2.4 arithmetic | **PASS** — row census complete (E42–E45: `input_loopback` 21 citation lines; E46/E47: `window/tests.rs` 9; E48: `main.rs` 7), spot checks: `E42/§2.4 G-row`, T58's hand rect `Client.cpp:3206-3208`, `driver.rs:850` + `dispatcher.rs:766` literals — none read back from the code under test |
+| 7 | Zero-queue audit + structural claim | **PASS with F-8.3-01 carry-over disclosed** — literal §11 pattern returns exactly 1 match (`src/input/tests.rs:1541`, the T46 doc prose asserting absence), **byte-identical to base** (step does not touch `src/input/**`) → not a new finding; machinery subset 0, code-only 0; composed chain = `decode → feed → send` over frozen `commands::channel()` (`main.rs:125`), no queue/buffer added; T56's 100-event `<16 ms` batch green with margin documented; T10/T51 green unchanged |
+| 8 | No new crates/opcodes/wire bytes, frozen surfaces empty, no Win32 object in gates, no live gate, +7 arithmetic + D30 copies disclosed | **PASS** — `Cargo.*`/opcodes empty; deep scan of all four delivered files = 0 `unsafe`/`DEMO_STATE`/`CreateWindow`/`GetDC`/`BeginPaint`/`PostMessage` (single `DefWindowProc` hit is a comment); vehicle `#[ignore]`d, never a gate; `summary.md` discloses the +7 arithmetic and **both D30 `Capture` copies** (`input_loopback` + `live_acceptance`; e2e's frozen one deliberately not reused) |
+
+**Directive item 4 — §14 Item 7 (tracing subscriber) disclosure: VERIFIED, structurally
+and behaviorally.**
+1. Fix present in both capture tests (`set_global_default` → DEBUG → `io::sink` before the
+   scoped `set_default`; `input_loopback.rs:767`, `live_acceptance.rs:160`) with the
+   order-rationale comment.
+2. Both citations exact at their sources: `tracing-core subscriber.rs:676` =
+   `NoSubscriber::register_callsite → Interest::never()` (tracing-core 0.1.36);
+   `driver.rs:850` = the frozen `debug!(… "in-world frame dispatched")` record in
+   `src/client/driver.rs` (blob-identical).
+3. With the guard: **7/7 full parallel gate runs green** (runs 1+2 + 5 campaign runs,
+   `evidence/8.4/item7-parallel-runs.txt`) — 421/421 each, T53 `… ok` every time,
+   reproducing the disclosed "7/7 parallel runs green after".
+4. Without the guard (ad-hoc verifier reverse check, disclosed): the parallel
+   `input_loopback` binary went **3/3 RED** (T53 FAILED, exit 101) while the **isolated**
+   T53 run still **PASSED**, with the exact disclosed signature `E43: the frozen driver
+   dispatch record must appear (driver.rs:850); got:` and an empty capture — reproducing
+   "2/2 red before" and "isolated runs passed" on this host. Restored, porcelain clean.
+
+**Findings:** none new. **F-8.3-01 carry-over** recorded (zero-queue literal pattern vs
+the frozen T46 doc prose — already adjudicated non-blocking in the 8.3 verdict; this
+step's zero touch of `src/input/**` makes it not a delivery defect of 8.4). Never edited —
+P3-6.
+
+**Evidence:** `evidence/8.4/` — all §11 required files present (`head.txt`, `check.log`,
+`clippy.log`, `fmt.log`, `test.log`, `doc.log`, `env.txt`, `summary.md`,
+`mutation-probes.md`, `zero-queue-grep.txt`, `write-guard.txt`, `tests-unchanged.txt`,
+`src-input-untouched.txt`, `SHA256SUMS`) plus `gate-exits.txt`,
+`item7-parallel-runs.txt`, `postprobe/` (run 2) and `live/README.md`. **`SHA256SUMS`:
+22 entries, verified 22/22** by independent recomputation over the committed (LF-
+normalized) bytes (6.3 L-2 lesson).
+
+**Live-evidence disposition:** **NOT RUN — no reachable game service**
+(`evidence/8.4/live/README.md` records the `CONTRIBUTING.md:28-46` citation), per §11's
+closing clause: no gate item and no §13 item requires the bundle — **PASSED is
+unaffected**. D25/D26's windowed operator record is pending a reachable service + display
+(explicitly operator-only under P4-C4).
+
+**Integration considerations:** `TASK_MATRIX.md` untouched — row 8.4 stays **`PENDING`**;
+this verdict and `evidence/8.4/` are produced for Custodian acceptance. **No matrix flip,
+no commit, no push** is authorized by this verification directive (8.2/8.3 precedent —
+the `docs(qc)` sign-off commit lands after acceptance). The Implementer's §14 note matches
+every measured number (421, 6 ignored, 6+1, 11/11, 1/1, 43/43, probes 4/4 verbatim,
+14-hunk write guard, append-only proofs) — no discrepancy found.

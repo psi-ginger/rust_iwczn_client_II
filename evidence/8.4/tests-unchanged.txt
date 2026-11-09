@@ -1,0 +1,30 @@
+Step 8.4 - append-only proofs (DoD 13.2 / section 11) - dddd822 -> d47d57c
+
+== src/graphics/window/tests.rs ==
+  hunk headers: 1
+@@ -218,0 +219,170 @@ async fn the_composed_decode_and_feed_chain_stays_within_the_16ms_frame_budget()
+  real deletion lines: 0  => zero required
+  diffstat:  1 file changed, 170 insertions(+)
+  base lines: 218, delivered lines: 388
+  base is exact prefix of delivered: YES (byte-identical through line 218)
+
+== tests/input_loopback.rs ==
+  hunk headers: 1
+@@ -557,0 +558,579 @@ async fn pre_world_messages_enqueue_nothing_and_the_session_still_tears_down() {
+  real deletion lines: 0  => zero required
+  diffstat:  1 file changed, 579 insertions(+)
+  base lines: 557, delivered lines: 1136
+  base is exact prefix of delivered: YES (byte-identical through line 557)
+
+== frozen e2e + asset + live diffs (must be empty) ==
+  tests/e2e_loopback.rs : empty
+  tests/asset_fixtures.rs : empty
+  tests/live_integration.rs : empty
+
+== ignored count: 5 -> 6 (1 new live_acceptance) ==
+  test graphics::window::operator_game_window_opens_on_screen ... ignored, opens a real window on screen - operator verification only (P3-3)
+  test live_session_walks_chats_sits_and_cancels_within_budget ... ignored, live acceptance: needs a reachable game service (GOONZU_GAME_ADDR) and credentials (GOONZU_USER_ID, GOONZU_USER_PW, GOONZU_MAC_ADDRESS, GOONZU_CHAR_SLOT)
+  test live_event_loop_idles_cleanly_and_ticks ... ignored, live integration: needs a reachable game service (GOONZU_LIVE_GAME)
+  test live_front_handshake_extracts_secret_key ... ignored, live integration: needs a reachable front service (GOONZU_LIVE_FRONT)
+  test live_game_handshake_decodes_the_link_cipher ... ignored, live integration: needs a reachable game service (GOONZU_LIVE_GAME)
+  test live_heartbeat_keeps_the_connection_up_over_60s ... ignored, live soak: 70s against a reachable game service (GOONZU_LIVE_GAME)

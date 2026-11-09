@@ -1,0 +1,79 @@
+Step 8.4 - write guard (DoD 13.5) + cross-checks - dddd822 -> d47d57c, S4 clone @ 19e603d
+
+== changed files (name-only) ==
+src/graphics/window.rs
+src/graphics/window/tests.rs
+src/main.rs
+tests/input_loopback.rs
+tests/live_acceptance.rs
+
+== FORBIDDEN set - all must be EMPTY ==
+  src/client : empty
+  src/game : empty
+  src/input : empty
+  src/lib.rs : empty
+  tests/e2e_loopback.rs : empty
+  tests/e2e_loopback : empty
+  tests/asset_fixtures.rs : empty
+  tests/live_integration.rs : empty
+  Cargo.toml : empty
+  Cargo.lock : empty
+  TASK_MATRIX.md : empty
+  CONTRIBUTING.md : empty
+  CONTRIBUTING_PHASE4.md : empty
+  README.md : empty
+  GoonZu_Source : empty
+
+== src/input/** strictly untouched (directive 3) ==
+  git diff --stat src/input: EMPTY - no touched byte
+  git diff --name-only src/input: empty
+
+== window.rs hunk headers (14 expected, all seam-lines) ==
+@@ -33,0 +34,9 @@
+@@ -56 +65 @@ use std::sync::atomic::{AtomicPtr, Ordering};
+@@ -64 +73 @@ use super::present::{present_crop, present_to_window, PresentCrop, SCREEN_RX, SC
+@@ -201,0 +211,3 @@ extern "system" {
+@@ -249,0 +262,5 @@ const WM_QUIT: u32 = 0x0012;
+@@ -268,0 +286,6 @@ pub const WM_LBUTTONDBLCLK: u32 = 0x0203;
+@@ -531,0 +555,23 @@ extern "system" fn window_proc(hwnd: isize, msg: u32, w_param: usize, l_param: i
+@@ -677,0 +724,48 @@ fn load_pal_checked() -> Result<TPal, String> {
+@@ -683,0 +778,4 @@ fn load_pal_checked() -> Result<TPal, String> {
+@@ -684,0 +783,31 @@ pub fn run_demo() -> Result<(), String> {
+@@ -688 +817,4 @@ pub fn run_demo() -> Result<(), String> {
+@@ -705 +837 @@ pub fn run_demo() -> Result<(), String> {
+@@ -729,0 +862 @@ unsafe fn run_demo_inner(
+@@ -822,0 +956,6 @@ unsafe fn run_demo_inner(
+window.rs real deletion lines: 4
+  DELETED: -use crate::input::{InputEvent, InputFeed};
+  DELETED: -use super::screen::{ScreenGeometry, ScreenMode, MAP_TILE_XSIZE, MAP_TILE_YSIZE};
+  DELETED: -    let state = build_scene()?;
+  DELETED: -    let result = unsafe { run_demo_inner(state_ptr, geometry) };
+
+== fallthrough byte-identical (base vs delivery) ==
+  base    : [            _ => DefWindowProcA(hwnd, msg, w_param, l_param),]
+  delivery: [            _ => DefWindowProcA(hwnd, msg, w_param, l_param),]
+  identical: True
+
+== 8.3 input arm byte-identical (context audit) ==
+  delivery arm line:             WM_MOUSEMOVE | WM_LBUTTONDOWN | WM_LBUTTONUP | WM_LBUTTONDBLCLK | WM_KEYDOWN
+  arm in base diff (changed lines only): no changed line touches the 8.3 arm
+
+== main.rs exit match (codes 0/1/2 kept) ==
+  main.rs:6: //! exit codes, nothing more.
+  main.rs:11: //! the window as `WM_ENTER_WORLD`, and the exit codes below are
+  main.rs:15: //! Exit codes (WO-6.1 §5): `0` a session that ended at `Stage::TornDown`, `1`
+  main.rs:38: /// delivered exit match. The `#[cfg]` boundary *is* the portability story:
+  main.rs:49: std::process::exit(2);
+  main.rs:68: std::process::exit(2);
+  main.rs:72: std::process::exit(1);
+  main.rs:81: /// (§7.2); the exit arms at the bottom are byte-for-byte the delivered
+  main.rs:110: // contract never flashes a window (exit 2, unchanged).
+  main.rs:115: std::process::exit(2);
+  main.rs:144: std::process::exit(1);
+  main.rs:149: std::process::exit(1);
+
+== cross-checks (DoD 9 expected values) ==
+  cargo test --lib graphics::window : test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 367 filtered out; finished in 0.00s
+  cargo test --test input_loopback : test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+  cargo test --bin goonzu_client : test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  cargo test --lib input::tests : test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 331 filtered out; finished in 0.00s

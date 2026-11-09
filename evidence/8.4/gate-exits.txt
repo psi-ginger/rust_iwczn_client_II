@@ -1,0 +1,22 @@
+Step 8.4 verification - gate exits (run 1, pre-probe) - S4 clone @ 19e603d (delivery d47d57c)
+porcelain before run 1: CLEAN (fresh clone)
+
+gate exits: check=0 clippy=0 fmt=0 doc=0 test=0
+fmt.log bytes: 0 (0 diffs)
+doc.log warning lines: 0
+cargo test: 421 passed, 0 failed = 373 lib + 1 bin + 11 asset_fixtures + 25 e2e_loopback + 11 input_loopback
+  (ignored: 6 = 1 lib operator + 1 live_acceptance new + 4 live_integration; 0 doc-tests)
+cross-checks: graphics::window 6+1ignored; input_loopback 11/11; bin goonzu_client 1/1; input::tests 43/43
+T52-T58: all 7 green (named in test.log)
+
+full result lines:
+  test result: ok. 373 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 4.87s
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.20s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+  test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+porcelain after run 1: CLEAN (logs held outside the tree, in evidence/8.4/)

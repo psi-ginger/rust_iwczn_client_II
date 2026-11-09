@@ -1,0 +1,9 @@
+Step 8.4 S4 verification - clean clone head
+clone: C:\Users\DK2\AppData\Local\Temp\opencode\s4-verify-8.4
+branch: step/8.4-live-acceptance
+tip (note SHA): 19e603d66bad5c9cf5a2f8582e318ba9ea98cb61
+delivery SHA: d47d57cfe79d69348a52c88c92a43b368ff15d9d
+base (WO commit): dddd822f6e668b3c2ea0a8be3acee243459b1cc2
+tree: 3d28e2fa2b39580b8be073747556599dc7b14e80
+captured: 2026-11-09 20:51:05 +07:00
+porcelain before: []
